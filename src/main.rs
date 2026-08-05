@@ -301,15 +301,21 @@ impl eframe::App for App {
 
                     if resp.hovered() || resp.dragged() {
                         ui.set_cursor_icon(CursorIcon::PointingHand);
-                        if let Some(pos) = ui.pointer_latest_pos() && let Some(p) = dragging_progress { egui::Popup::new(
-                            ui.id().with("seeker_tooltip"),
-                            ui.ctx().clone(),
-                            egui::PopupAnchor::Position(Pos2::new(pos.x.clamp(rect.left(), rect.right()), rect.top() - 5.0)),
-                            ui.layer_id(),
-                        ).align(RectAlign::TOP).kind(PopupKind::Tooltip).open(true).show(|ui| {
-                            let point = state.duration().mul_f32(p).as_secs();
-                            ui.label(format!("{}:{:02}", point / 60, point % 60));
-                        }); }
+                        if let Some(pos) = ui.pointer_latest_pos() && let Some(p) = dragging_progress {
+                            egui::Popup::new(
+                                ui.id().with("seeker_tooltip"),
+                                ui.ctx().clone(),
+                                egui::PopupAnchor::Position(Pos2::new(pos.x.clamp(rect.left(), rect.right()), rect.top() - 5.0)),
+                                ui.layer_id(),
+                            )
+                                .align(RectAlign::TOP)
+                                .kind(PopupKind::Tooltip)
+                                .open(true)
+                                .show(|ui| {
+                                    let point = state.duration().mul_f32(p).as_secs();
+                                    ui.add(egui::Label::new(RichText::new(format!("{}:{:02}", point / 60, point % 60)).size(12.0)).wrap_mode(TextWrapMode::Extend));
+                                });
+                        }
                     }
 
                     if resp.clicked() || resp.dragged() {
