@@ -1,0 +1,3 @@
+[submodule "neurokaraoke-metadata-mirror"]
+	path = neurokaraoke-metadata-mirror
+	url = https://github.com/AverseMoon/neurokaraoke-metadata-mirror.git
