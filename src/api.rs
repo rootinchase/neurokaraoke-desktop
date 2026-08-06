@@ -1,21 +1,17 @@
-use std::mem::forget;
-use std::string::ToString;
-use std::sync::Arc;
 use anyhow::anyhow;
 use dashmap::DashMap;
-use dashmap::mapref::one::Ref;
-use reqwest::Client;
-use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use serde_with::{serde_as, DefaultOnNull, Seq};
-use uuid::Uuid;
-use crate::util::IntoAs;
 use internal::*;
+use reqwest::Client;
+use serde::Deserialize;
+use serde_json::{json, Value};
+use serde_with::{serde_as, DefaultOnNull};
+use std::string::ToString;
+use std::sync::Arc;
+use uuid::Uuid;
 
 mod internal {
-    use std::sync::Arc;
     use serde::{Deserialize, Deserializer};
+    use std::sync::Arc;
     use uuid::Uuid;
 
     // WHY????? I DON'T KNOW??????
@@ -55,6 +51,7 @@ mod internal {
 #[serde_as]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct Artist {
     pub id: Uuid,
     #[serde(default)]
@@ -71,6 +68,7 @@ pub struct Artist {
 #[serde_as]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct Artwork {
     pub id: Uuid,
     #[serde(default)]
@@ -88,6 +86,7 @@ pub struct Artwork {
 #[serde_as]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct Song {
     pub id: Uuid,
     #[serde(default)]
@@ -116,7 +115,6 @@ impl<T> LoadingState<T> {
 /// This database is cheap to clone, clone it all you need!
 #[derive(Clone)]
 pub struct LazySongDatabase {
-    rt: tokio::runtime::Handle,
     client: Client,
     map: Arc<DashMap<Uuid, LoadingState<Song>>>,
 }
@@ -124,9 +122,8 @@ pub struct LazySongDatabase {
 impl LazySongDatabase {
     const SONGS_API_URL: &str = "https://api.neurokaraoke.com/api/songs";
 
-    pub fn new(rt: tokio::runtime::Handle, client: Client) -> Self {
+    pub fn new(client: Client) -> Self {
         Self {
-            rt,
             client,
             map: Arc::new(DashMap::new()),
         }

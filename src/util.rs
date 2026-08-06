@@ -4,6 +4,7 @@ use serde_with::{DeserializeAs, SerializeAs};
 use tokio::sync::Mutex;
 
 // for use with #[serde_as(as = ...)]
+#[allow(dead_code)]
 pub struct IntoAs<T>(std::marker::PhantomData<T>);
 impl<'de, U, T: Deserialize<'de> + Into<U>> DeserializeAs<'de, U> for IntoAs<T> {
     fn deserialize_as<D>(deserializer: D) -> Result<U, D::Error>

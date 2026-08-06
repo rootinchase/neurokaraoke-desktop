@@ -3,8 +3,6 @@ use eframe::egui::Context;
 #[derive(Debug, Clone)]
 pub struct HomeActivity {
     pub ctx: Context,
-    
-    
 }
 
 impl HomeActivity {

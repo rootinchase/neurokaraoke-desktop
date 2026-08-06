@@ -1,17 +1,15 @@
-use std::io::SeekFrom;
-use std::path::PathBuf;
-use std::sync::{Arc, OnceLock};
-use std::sync::atomic::AtomicU64;
-use std::thread::JoinHandle;
-use std::time::{Duration, SystemTime};
+use crate::config::CacheConfig;
 use dashmap::DashMap;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_with::__private__::DeserializeOwned;
-use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+use std::path::PathBuf;
+use std::sync::atomic::AtomicU64;
+use std::sync::{Arc, OnceLock};
+use std::time::{Duration, SystemTime};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 use uuid::Uuid;
-use crate::config::CacheConfig;
 
 static CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -52,19 +50,21 @@ pub struct Cache {
 impl Cache {
     const CACHE_FILE_NAME: &'static str = "cache.ron";
 
-    pub fn new() -> Arc<Self> {
-        Arc::default()
-    }
-
     pub fn load_or_default_custom<T: DeserializeOwned + Serialize + Default>(filename: &str) -> T {
         let path = cache_dir().join(filename);
         let data = match std::fs::read(&path) {
             Ok(d) => Some(d),
-            Err(e) => None,
+            Err(e) => {
+                eprintln!("cache load failed: {}", e);
+                None
+            },
         };
 
         if let Some(data) = data {
-            ron::de::from_bytes(data.as_slice()).unwrap_or_else(|_| T::default())
+            ron::de::from_bytes(data.as_slice()).unwrap_or_else(|e| {
+                eprintln!("cache load failed: {}", e);
+                T::default()
+            })
         } else {
             T::default()
         }

@@ -1,25 +1,25 @@
 mod theme;
-mod activity;
+#[allow(dead_code)]
+mod activity; // not finished yet, hence we allow dead code so we don't get warned a bunch
 mod audio;
 mod api;
 mod util;
 mod cache;
 mod config;
 
-use crate::activity::home::HomeActivity;
 use crate::activity::ActivityType;
-use crate::audio::Player;
-use crate::theme::{SelectableTheme, Theme, ThemeManager};
-use eframe::egui::{include_image, lerp, Align, Color32, CornerRadius, CursorIcon, ImageSource, Layout, PopupKind, Pos2, RectAlign, Rgba, RichText, Sense, Stroke, TextWrapMode, Tooltip, Ui, Vec2};
-use eframe::{egui, Frame};
-use std::sync::Arc;
-use std::time::Duration;
-use mimalloc::MiMalloc;
-use reqwest::Client;
-use uuid::Uuid;
 use crate::api::{LazySongDatabase, LoadingState};
+use crate::audio::Player;
 use crate::cache::Cache;
 use crate::config::Config;
+use crate::theme::{SelectableTheme, ThemeManager};
+use eframe::egui::{include_image, lerp, Align, Color32, CornerRadius, CursorIcon, ImageSource, Layout, PopupKind, Pos2, RectAlign, Rgba, RichText, Sense, Stroke, TextWrapMode, Ui, Vec2};
+use eframe::{egui, Frame};
+use mimalloc::MiMalloc;
+use reqwest::Client;
+use std::sync::Arc;
+use std::time::Duration;
+use uuid::Uuid;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -52,7 +52,7 @@ struct App {
 
     // activity stuff
     pub activity: ActivityType,
-    pub home_activity: HomeActivity,
+    //pub home_activity: HomeActivity,
 
     pub rt: Arc<tokio::runtime::Runtime>,
     pub client: Client,
@@ -96,7 +96,7 @@ impl App {
 
         let cache = Cache::load_or_default();
         let client = Client::new();
-        let songs = LazySongDatabase::new(rt.handle().clone(), client.clone());
+        let songs = LazySongDatabase::new(client.clone());
         let s = songs.clone();
         rt.block_on(rt.spawn(async move { s.load_all(|_| ()).await })).unwrap().unwrap();
 
@@ -119,7 +119,7 @@ impl App {
             theme: ThemeManager::new(config.theme.as_theme()),
 
             activity: ActivityType::Home,
-            home_activity: HomeActivity::new(ctx.clone()),
+            //home_activity: HomeActivity::new(ctx.clone()),
 
             rt,
             client,

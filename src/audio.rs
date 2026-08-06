@@ -1,17 +1,16 @@
+use crate::api::{LazySongDatabase, LoadingState};
+use crate::cache::{AssetType, Cache};
 use eframe::egui;
 use rand::prelude::SliceRandom;
 use rodio::decoder::DecoderBuilder;
 use rodio::Source;
-use std::io::Cursor;
+use std::io::BufReader;
 use std::sync::atomic::AtomicU32;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use std::io::BufReader;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
-use crate::api::{LazySongDatabase, LoadingState};
-use crate::cache::{AssetType, Cache};
 
 #[derive(Debug, Clone, Copy)]
 /// Represents a state of playback
@@ -147,7 +146,7 @@ impl Player {
 
             loop {
                 'block: {
-                    let mut lock = player.state.lock().unwrap();
+                    let lock = player.state.lock().unwrap();
                     if let Some(state) = lock.as_ref() && !state.paused() && state.position() == state.duration {
                         let state = state.clone();
                         drop(lock);

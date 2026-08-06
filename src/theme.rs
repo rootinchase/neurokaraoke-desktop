@@ -1,7 +1,7 @@
-use std::ops::{Deref, DerefMut};
-use eframe::egui::{lerp, Color32, Rgba};
 use eframe::egui;
+use eframe::egui::{lerp, Color32, Rgba};
 use serde::{Deserialize, Serialize};
+use std::ops::Deref;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Theme {
