@@ -98,6 +98,8 @@ impl App {
 
         let player = Player::new(rt.clone(), ctx.clone(), songs.clone(), cache.clone());
         player.volume(config.volume);
+        player.shuffle(config.shuffle);
+        player.looping(config.looping);
 
         cache.clone().create_worker(rt.handle().clone(), client.clone(), Duration::from_secs(60));
 
