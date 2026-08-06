@@ -14,11 +14,15 @@ use eframe::egui::{include_image, lerp, Align, Color32, CornerRadius, CursorIcon
 use eframe::{egui, Frame};
 use std::sync::Arc;
 use std::time::Duration;
+use mimalloc::MiMalloc;
 use reqwest::Client;
 use uuid::Uuid;
 use crate::api::{LazySongDatabase, LoadingState};
 use crate::cache::Cache;
 use crate::config::Config;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 fn main() -> eframe::Result<()> {
     cache::init_cache_dir();

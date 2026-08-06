@@ -79,7 +79,7 @@ impl Cache {
         rt.clone().spawn(async move {
             loop {
                 // don't clean cache if you are offline as you won't be able to re-download what gets deleted
-                if async { client.get("https://api.neurokaraoke.com/healthz").send().await?.text().await }.await.map(|s| s == "Healthy").unwrap_or(false) {
+                if async { client.get("https://api.neurokaraoke.com/healthz").timeout(Duration::from_secs(5)).send().await?.text().await }.await.map(|s| s == "Healthy").unwrap_or(false) {
                     let now = SystemTime::now()
                         .duration_since(SystemTime::UNIX_EPOCH)
                         .expect("Time went backwards (why is your clock before 12AM UTC January 1st 1970?)")
