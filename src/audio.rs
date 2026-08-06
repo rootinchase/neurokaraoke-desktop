@@ -7,9 +7,11 @@ use std::sync::atomic::AtomicU32;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
+use std::io::BufReader;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
 use crate::api::{LazySongDatabase, LoadingState};
+use crate::cache::{AssetType, Cache};
 
 #[derive(Debug, Clone, Copy)]
 /// Represents a state of playback
@@ -69,7 +71,7 @@ enum PlaybackCommand {
     Loop(bool),
     Playlist(Option<Arc<[Uuid]>>),
     Song(Option<Uuid>, Box<dyn FnOnce(&Player) + Send + 'static>),
-    SongBytes(Uuid, Vec<u8>),
+    SongReady(Uuid, std::fs::File),
     Seek(Duration),
     Shutdown,
 }
@@ -83,7 +85,7 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn new(rt: Arc<Runtime>, ctx: egui::Context, database: LazySongDatabase) -> Player {
+    pub fn new(rt: Arc<Runtime>, ctx: egui::Context, database: LazySongDatabase, cache: Arc<Cache>) -> Player {
         let (tx, mut rx) = tokio::sync::mpsc::channel(64);
 
         let p = Player {
@@ -216,7 +218,8 @@ impl Player {
                                     ctx.request_repaint();
                                 }
                             },
-                            PlaybackCommand::Volume(v) => {
+                            PlaybackCommand::Volume(mut v) => {
+                                v = v.powi(3);
                                 mixer.set_volume(v);
                                 player.player_state.lock().unwrap().volume = v;
                             }
@@ -269,9 +272,12 @@ impl Player {
 
                                                 let req = client.get(audio.unwrap().clone());
                                                 let handle = player.clone();
+                                                let cache = cache.clone();
                                                 rt.spawn(async move {
-                                                    handle.sender.try_send(PlaybackCommand::SongBytes(uuid, req.send().await.unwrap().bytes().await.unwrap().into())).unwrap();
-                                                    cb(&handle);
+                                                    if let Ok(file) = cache.get_or_else(&(uuid, AssetType::Audio), || async move { req.send().await.unwrap().bytes().await }).await {
+                                                        handle.sender.try_send(PlaybackCommand::SongReady(uuid, file.into_std().await)).unwrap();
+                                                        cb(&handle);
+                                                    }
                                                 });
                                             }
 
@@ -295,11 +301,14 @@ impl Player {
                                 ctx.request_repaint();
                             },
 
-                            PlaybackCommand::SongBytes(uuid, bytes) => {
-                                let len = bytes.len();
+                            PlaybackCommand::SongReady(uuid, file) => {
+                                let len = match file.metadata() {
+                                    Ok(meta) => meta.len(),
+                                    Err(_) => continue,
+                                };
                                 if let Ok(decoder) = DecoderBuilder::new()
-                                    .with_data(Cursor::new(bytes))
-                                    .with_byte_len(len as u64)
+                                    .with_data(BufReader::new(file))
+                                    .with_byte_len(len)
                                     .build()
                                 {
                                     let mut lock = player.state.lock().unwrap();

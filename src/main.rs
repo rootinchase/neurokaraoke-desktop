@@ -3,6 +3,8 @@ mod activity;
 mod audio;
 mod api;
 mod util;
+mod cache;
+mod config;
 
 use crate::activity::home::HomeActivity;
 use crate::activity::ActivityType;
@@ -15,8 +17,13 @@ use std::time::Duration;
 use reqwest::Client;
 use uuid::Uuid;
 use crate::api::{LazySongDatabase, LoadingState};
+use crate::cache::Cache;
+use crate::config::Config;
 
 fn main() -> eframe::Result<()> {
+    cache::init_cache_dir();
+    config::init_config_dir();
+
     let runtime = Arc::new(tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -28,25 +35,24 @@ fn main() -> eframe::Result<()> {
 }
 
 struct App {
-    pub rt: Arc<tokio::runtime::Runtime>,
+    pub config: Config,
 
+    pub cache: Arc<Cache>,
     pub songs: LazySongDatabase,
     pub player: Player,
 
     pub search: String,
     pub dragging_seeker: bool,
     pub dragging_volume: bool,
-    pub volume: f32,
-    pub shuffle: bool,
-    pub looping: bool,
 
     // theme stuff
     pub theme: ThemeManager,
-    pub theme_selector: SelectableTheme,
 
     // activity stuff
     pub activity: ActivityType,
     pub home_activity: HomeActivity,
+
+    pub rt: Arc<tokio::runtime::Runtime>,
 }
 
 impl App {
@@ -82,25 +88,31 @@ impl App {
         #[cfg(debug_assertions)]
         ctx.global_style_mut(|s| s.debug.warn_if_rect_changes_id = false); // workaround for https://github.com/emilk/egui/issues/8092
 
-        let songs = LazySongDatabase::new(rt.handle().clone(), Client::new());
+        let config = Config::read().unwrap_or_default();
+
+        let cache = Cache::load_or_default();
+        let client = Client::new();
+        let songs = LazySongDatabase::new(rt.handle().clone(), client.clone());
         let s = songs.clone();
         rt.block_on(rt.spawn(async move { s.load_all(|_| ()).await })).unwrap().unwrap();
 
-        let player = Player::new(rt.clone(), ctx.clone(), songs.clone());
+        let player = Player::new(rt.clone(), ctx.clone(), songs.clone(), cache.clone());
+        player.volume(config.volume);
+
+        cache.clone().create_worker(rt.handle().clone(), client.clone(), Duration::from_secs(60));
 
         Self {
+            config,
+
+            cache,
             songs,
             player,
 
             search: "".to_string(),
             dragging_seeker: false,
             dragging_volume: false,
-            volume: 1.0,
-            shuffle: false,
-            looping: false,
 
-            theme: ThemeManager::new(Theme::neuro()),
-            theme_selector: SelectableTheme::Neuro,
+            theme: ThemeManager::new(config.theme.as_theme()),
 
             activity: ActivityType::Home,
             home_activity: HomeActivity::new(ctx.clone()),
@@ -162,7 +174,7 @@ impl eframe::App for App {
                     );
                     ui.with_layout(
                         Layout::top_down(Align::Center),
-                        |ui| ui.label(RichText::new(self.theme_selector.karaoke_str()).color(self.theme.primary_dark).size(24.0))
+                        |ui| ui.label(RichText::new(self.config.theme.karaoke_str()).color(self.theme.primary_dark).size(24.0))
                     );
                 });
 
@@ -203,7 +215,7 @@ impl eframe::App for App {
 
                         // theme switcher
                         ui.horizontal(|ui| {
-                            let current = self.theme_selector;
+                            let current = self.config.theme;
                             let mut button = |ui: &mut Ui, select_theme: SelectableTheme| {
                                 let mut button = egui::Button::new(select_theme.as_str())
                                     .fill(if current == select_theme { self.theme.primary } else { self.theme.background_elevated });
@@ -215,7 +227,7 @@ impl eframe::App for App {
                                 };
 
                                 if ui.add_sized([ui.available_width(), 0.0], button).clicked() {
-                                    self.theme_selector = select_theme;
+                                    self.config.theme = select_theme;
                                 }
                             };
 
@@ -233,8 +245,8 @@ impl eframe::App for App {
                             let spacing = ui.spacing_mut();
                             (spacing.item_spacing, spacing.button_padding) = old_spacing;
 
-                            if current != self.theme_selector {
-                                self.theme.set(self.theme_selector.as_theme());
+                            if current != self.config.theme {
+                                self.theme.set(self.config.theme.as_theme());
                             }
                         });
 
@@ -367,8 +379,8 @@ impl eframe::App for App {
                                 }
                             }
 
-                            btn(&self.theme, ui, include_image!("../assets/shuffle.png"), self.shuffle, |x| {
-                                self.shuffle = x;
+                            btn(&self.theme, ui, include_image!("../assets/shuffle.png"), self.config.shuffle, |x| {
+                                self.config.shuffle = x;
                                 self.player.shuffle(x);
                             });
 
@@ -394,8 +406,8 @@ impl eframe::App for App {
 
                             ui.add_space(10.0);
 
-                            btn(&self.theme, ui, include_image!("../assets/loop.png"), self.looping, |x| {
-                                self.looping = x;
+                            btn(&self.theme, ui, include_image!("../assets/loop.png"), self.config.looping, |x| {
+                                self.config.looping = x;
                                 self.player.looping(x);
                             });
                         });
@@ -410,8 +422,8 @@ impl eframe::App for App {
 
                                 ui.painter().rect_filled(rect, 0.0, self.theme.background_elevated);
                                 let mut mesh = egui::Mesh::default();
-                                let lerped_color: Color32 = lerp(Rgba::from(self.theme.accent)..=Rgba::from(self.theme.accent_light), self.volume).into();
-                                let h = rect.height() * self.volume;
+                                let lerped_color: Color32 = lerp(Rgba::from(self.theme.accent)..=Rgba::from(self.theme.accent_light), self.config.volume).into();
+                                let h = rect.height() * self.config.volume;
                                 mesh.colored_vertex(rect.left_bottom(), self.theme.accent);
                                 mesh.colored_vertex(rect.left_bottom() - Vec2::new(0.0, h), lerped_color);
                                 mesh.colored_vertex(rect.right_bottom() - Vec2::new(0.0, h), lerped_color);
@@ -430,12 +442,12 @@ impl eframe::App for App {
                                     ui.set_cursor_icon(CursorIcon::Grabbing);
                                     self.dragging_volume = true;
                                     if let Some(pos) = ui.pointer_latest_pos() {
-                                        self.volume = 1.0 - ((pos.y - rect.top()).clamp(0.0, rect.height()) / rect.height());
+                                        self.config.volume = 1.0 - ((pos.y - rect.top()).clamp(0.0, rect.height()) / rect.height());
                                     }
                                 }
 
                                 if (resp.clicked() || !resp.dragged()) && self.dragging_volume {
-                                    self.player.volume(self.volume.powi(3));
+                                    self.player.volume(self.config.volume);
                                     self.dragging_volume = false;
                                 }
 
@@ -498,6 +510,14 @@ impl eframe::App for App {
             ui.request_repaint();
         } else {
             ui.request_repaint_after(Duration::from_millis(500));
+        }
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        if let Err(e) = self.config.write() {
+            eprintln!("config write failed: {}", e);
         }
     }
 }

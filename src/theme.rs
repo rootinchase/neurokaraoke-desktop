@@ -1,6 +1,7 @@
 use std::ops::{Deref, DerefMut};
 use eframe::egui::{lerp, Color32, Rgba};
 use eframe::egui;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Theme {
@@ -260,7 +261,7 @@ impl Deref for ThemeManager {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum SelectableTheme {
     Neuro, Evil, Twins
 }
@@ -288,5 +289,11 @@ impl SelectableTheme {
             Self::Evil => Theme::evil(),
             Self::Twins => Theme::twins(),
         }
+    }
+}
+
+impl Default for SelectableTheme {
+    fn default() -> Self {
+        Self::Neuro
     }
 }
