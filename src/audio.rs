@@ -1,5 +1,4 @@
 use eframe::egui;
-use neurokaraoke_metadata_client::{Database, Song};
 use rand::prelude::SliceRandom;
 use rodio::decoder::DecoderBuilder;
 use rodio::Source;
@@ -10,6 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 use uuid::Uuid;
+use crate::api::{LazySongDatabase, LoadingState};
 
 #[derive(Debug, Clone, Copy)]
 /// Represents a state of playback
@@ -83,7 +83,7 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn new(rt: Arc<Runtime>, ctx: egui::Context, database: Arc<Database<Song>>) -> Player {
+    pub fn new(rt: Arc<Runtime>, ctx: egui::Context, database: LazySongDatabase) -> Player {
         let (tx, mut rx) = tokio::sync::mpsc::channel(64);
 
         let p = Player {
@@ -262,15 +262,28 @@ impl Player {
                                         mixer.clear();
                                         *lock = None;
                                         drop(lock);
-                                        let mp3 = database[uuid].audio.mp3.as_ref();
-                                        if mp3.is_none() { continue; }
+                                        match database.get(&uuid, |s| s.absolute_path.clone()) {
+                                            LoadingState::Loaded(path) => {
+                                                let audio = path.map(|path| format!("https://storage.neurokaraoke.com/{}", path));
+                                                if audio.is_none() { continue; }
 
-                                        let req = client.get(mp3.unwrap().clone());
-                                        let handle = player.clone();
-                                        rt.spawn(async move {
-                                            handle.sender.try_send(PlaybackCommand::SongBytes(uuid, req.send().await.unwrap().bytes().await.unwrap().into())).unwrap();
-                                            cb(&handle);
-                                        });
+                                                let req = client.get(audio.unwrap().clone());
+                                                let handle = player.clone();
+                                                rt.spawn(async move {
+                                                    handle.sender.try_send(PlaybackCommand::SongBytes(uuid, req.send().await.unwrap().bytes().await.unwrap().into())).unwrap();
+                                                    cb(&handle);
+                                                });
+                                            }
+
+                                            LoadingState::Loading => {
+                                                player.sender.try_send(PlaybackCommand::Song(Some(uuid), cb)).unwrap();
+                                                break false;
+                                            }
+
+                                            LoadingState::Failed(_) => {
+                                                continue;
+                                            }
+                                        }
                                     } else {
                                         player.seek(Duration::default());
                                     }

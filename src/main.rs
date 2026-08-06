@@ -1,6 +1,8 @@
 mod theme;
 mod activity;
 mod audio;
+mod api;
+mod util;
 
 use crate::activity::home::HomeActivity;
 use crate::activity::ActivityType;
@@ -8,10 +10,11 @@ use crate::audio::Player;
 use crate::theme::{SelectableTheme, Theme, ThemeManager};
 use eframe::egui::{include_image, lerp, Align, Color32, CornerRadius, CursorIcon, ImageSource, Layout, PopupKind, Pos2, RectAlign, Rgba, RichText, Sense, Stroke, TextWrapMode, Tooltip, Ui, Vec2};
 use eframe::{egui, Frame};
-use neurokaraoke_metadata_client::{Artwork, AsUuid, Database, DatabaseBuilder, Song};
 use std::sync::Arc;
 use std::time::Duration;
+use reqwest::Client;
 use uuid::Uuid;
+use crate::api::{LazySongDatabase, LoadingState};
 
 fn main() -> eframe::Result<()> {
     let runtime = Arc::new(tokio::runtime::Builder::new_multi_thread()
@@ -27,9 +30,7 @@ fn main() -> eframe::Result<()> {
 struct App {
     pub rt: Arc<tokio::runtime::Runtime>,
 
-    pub songs: Arc<Database<Song>>,
-    pub artwork: Arc<Database<Artwork>>,
-
+    pub songs: LazySongDatabase,
     pub player: Player,
 
     pub search: String,
@@ -81,15 +82,14 @@ impl App {
         #[cfg(debug_assertions)]
         ctx.global_style_mut(|s| s.debug.warn_if_rect_changes_id = false); // workaround for https://github.com/emilk/egui/issues/8092
 
-        let songs = Arc::new(rt.block_on(DatabaseBuilder::songs()/*.cache_file("./songcache.msgpack.zst")*/.zstd().msgpack().build()).unwrap());
-        let artwork = Arc::new(rt.block_on(DatabaseBuilder::art()/*.cache_file("./artcache.msgpack.zst")*/.zstd().msgpack().build()).unwrap());
+        let songs = LazySongDatabase::new(rt.handle().clone(), Client::new());
+        let s = songs.clone();
+        rt.block_on(rt.spawn(async move { s.load_all(|_| ()).await })).unwrap().unwrap();
 
         let player = Player::new(rt.clone(), ctx.clone(), songs.clone());
 
         Self {
             songs,
-            artwork: artwork.clone(),
-
             player,
 
             search: "".to_string(),
@@ -266,7 +266,7 @@ impl eframe::App for App {
                 );
             });
 
-        if let Some(state) = self.player.get_playback_state() {
+        if let Some(state) = self.player.get_playback_state() && let LoadingState::Loaded(song) = self.songs.get(&state.song(), |song| song.clone()) {
             egui::Panel::bottom("player")
                 .resizable(false)
                 .frame(
@@ -281,7 +281,6 @@ impl eframe::App for App {
                     // progress bar (but really fancy and overcomplicated)
                     let mut rect = ui.max_rect();
                     rect.set_height(3.0);
-                    let song = &self.songs[state.song()];
                     let dragging_progress = ui.pointer_latest_pos().map(|pos| (pos.x - rect.left()).clamp(0.0, rect.width()) / rect.width());
                     let position = if self.dragging_seeker && let Some(p) = dragging_progress { state.duration().mul_f32(p) } else { state.position() };
                     let progress = (position.as_millis() as f64 / state.duration().as_millis() as f64) as f32;
@@ -332,15 +331,18 @@ impl eframe::App for App {
                     ui.columns_const(|columns: &mut [Ui; 3]| {
                         columns[0].horizontal(|ui| {
                             ui.add_space(7.5);
-                            ui.add(egui::Image::new(
-                                self.artwork[song.cover_art_uuid.unwrap_or_else(|| "68441d52-a231-4c0d-a221-92e1b52ace2e".parse().unwrap())].cloudflare_url.as_str().to_string() +
-                                    "w=70,h=70,fit=cover,quality=90"
-                            ).fit_to_exact_size(Vec2::new(70.0, 70.0)).corner_radius(8.0));
+                            if let Some(cover_art) = &song.cover_art {
+                                ui.add(egui::Image::new(
+                                    format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90", cover_art.cloudflare_id),
+                                    //self.artwork[song.cover_art_uuid.unwrap_or_else(|| "68441d52-a231-4c0d-a221-92e1b52ace2e".parse().unwrap())].cloudflare_url.as_str().to_string() +
+                                    //"w=70,h=70,fit=cover,quality=90"
+                                ).fit_to_exact_size(Vec2::new(70.0, 70.0)).corner_radius(8.0));
+                            }
 
                             ui.with_layout(Layout::top_down(Align::LEFT), |ui| {
                                 ui.add_space(5.0);
                                 ui.add(egui::Label::new(RichText::new(format!("{}", song.title)).size(24.0)).wrap_mode(TextWrapMode::Truncate));
-                                ui.add(egui::Label::new(RichText::new(format!("{} (feat. {})", song.artists.join(" & "), song.covered_by.join(" & "))).color(self.theme.text_muted).size(12.0)).wrap_mode(TextWrapMode::Truncate));
+                                ui.add(egui::Label::new(RichText::new(format!("{} (feat. {})", song.original_artists.join(" & "), song.cover_artists.join(" & "))).color(self.theme.text_muted).size(12.0)).wrap_mode(TextWrapMode::Truncate));
                                 let position = state.position().as_secs();
                                 let duration = state.duration().as_secs();
                                 ui.add(egui::Label::new(RichText::new(format!("{}:{:02} / {}:{:02}", position / 60, position % 60, duration / 60, duration % 60)).color(self.theme.text_muted).size(10.0)).wrap_mode(TextWrapMode::Truncate))
@@ -459,13 +461,13 @@ impl eframe::App for App {
                             ui.horizontal(|ui| {
                                 if ui.button("find and play").clicked() {
                                     let search = self.search.to_lowercase();
-                                    self.player.song(self.songs.iter().find(|x| x.title.to_lowercase().starts_with(search.as_str())).map(|x| x.uuid), Player::play);
+                                    self.player.song(self.songs.get_map().iter().find(|x| x.value().if_loaded_or_else(|s| s.title.to_lowercase().starts_with(search.as_str()), false)).map(|x| *x.key()), Player::play);
                                 }
 
                                 if ui.button("add search results to playlist").clicked() {
                                     let search = self.search.to_lowercase();
                                     let mut pl = self.player.get_playlist().map(|x| Vec::from(&*x)).unwrap_or_else(Vec::new);
-                                    pl.append(&mut self.songs.iter().filter(|x| x.title.to_lowercase().starts_with(search.as_str())).map(|x| x.uuid()).collect::<Vec<Uuid>>());
+                                    pl.append(&mut self.songs.get_map().iter().filter(|x| x.value().if_loaded_or_else(|s| s.title.to_lowercase().starts_with(search.as_str()), false)).map(|x| *x.key()).collect::<Vec<Uuid>>());
                                     self.player.playlist(Some(pl.into()));
                                 }
 
@@ -479,7 +481,9 @@ impl eframe::App for App {
                                 egui::Frame::new().fill(self.theme.background_elevated).show(ui, |ui| {
                                     ui.vertical(|ui| {
                                         for song in &*pl {
-                                            ui.label(self.songs[*song].title.clone());
+                                            if let LoadingState::Loaded(title) = self.songs.get(song, |s| s.title.clone()) {
+                                                ui.label(title.to_string());
+                                            }
                                         }
                                     });
                                 });
