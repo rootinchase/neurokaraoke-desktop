@@ -25,6 +25,7 @@ mod defaults {
     pub fn cache_expiration_secs() -> u64 { 24 * 60 * 60 }
     pub fn cache_sweep_interval_secs() -> u64 { 60 }
     pub fn cache_size_limit_mb() -> u64 { 1024 }
+    pub fn framerate_when_not_focused() -> f32 { 1.0 }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,7 +63,10 @@ pub struct Config {
 
     #[serde(default)]
     #[serde_as(as = "AsArcMutex<CacheConfig>")]
-    pub cache: Arc<Mutex<CacheConfig>>
+    pub cache: Arc<Mutex<CacheConfig>>,
+
+    #[serde(default = "defaults::framerate_when_not_focused")]
+    pub framerate_when_not_focused: f32,
 }
 
 impl Config {
@@ -86,6 +90,8 @@ impl Default for Config {
             theme: Default::default(),
 
             cache: Default::default(),
+
+            framerate_when_not_focused: defaults::framerate_when_not_focused(),
         }
     }
 }

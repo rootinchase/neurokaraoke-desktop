@@ -511,11 +511,10 @@ impl eframe::App for App {
                 });
         });
 
-        // power saving while still doing rapid redraws
         if ui.input(|i| i.focused) {
             ui.request_repaint();
-        } else {
-            ui.request_repaint_after(Duration::from_millis(500));
+        } else if self.config.framerate_when_not_focused > 0.0 {
+            ui.request_repaint_after(Duration::from_micros((1_000_000.0 / self.config.framerate_when_not_focused) as u64));
         }
     }
 }
