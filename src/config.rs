@@ -1,7 +1,10 @@
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use tokio::sync::Mutex;
 use crate::theme::SelectableTheme;
+use crate::util::AsArcMutex;
 
 static CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -18,9 +21,34 @@ pub fn config_file() -> PathBuf { config_dir().join("config.ron") }
 
 mod defaults {
     pub fn volume() -> f32 { 0.5 }
+
+    pub fn cache_expiration_secs() -> u64 { 24 * 60 * 60 }
+    pub fn cache_sweep_interval_secs() -> u64 { 60 }
+    pub fn cache_size_limit_mb() -> u64 { 1024 }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CacheConfig {
+    #[serde(default = "defaults::cache_expiration_secs")]
+    pub cache_expiration_secs: u64,
+    #[serde(default = "defaults::cache_sweep_interval_secs")]
+    pub cache_sweep_interval_secs: u64,
+    #[serde(default = "defaults::cache_size_limit_mb")]
+    pub cache_size_limit_mb: u64,
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self {
+            cache_expiration_secs: defaults::cache_expiration_secs(),
+            cache_sweep_interval_secs: defaults::cache_sweep_interval_secs(),
+            cache_size_limit_mb: defaults::cache_size_limit_mb(),
+        }
+    }
+}
+
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default = "defaults::volume")]
     pub volume: f32,
@@ -31,6 +59,10 @@ pub struct Config {
 
     #[serde(default)]
     pub theme: SelectableTheme,
+
+    #[serde(default)]
+    #[serde_as(as = "AsArcMutex<CacheConfig>")]
+    pub cache: Arc<Mutex<CacheConfig>>
 }
 
 impl Config {
@@ -52,6 +84,8 @@ impl Default for Config {
             looping: false,
 
             theme: Default::default(),
+
+            cache: Default::default(),
         }
     }
 }

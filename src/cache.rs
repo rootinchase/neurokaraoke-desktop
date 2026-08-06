@@ -9,7 +9,9 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_with::__private__::DeserializeOwned;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+use tokio::sync::Mutex;
 use uuid::Uuid;
+use crate::config::CacheConfig;
 
 static CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -37,7 +39,8 @@ pub enum AssetType {
 pub struct CacheEntry {
     pub id: u64,
     /// if 0, this item never expires
-    pub expires: u64,
+    pub last_touched: u64,
+    pub size: u64,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -57,15 +60,11 @@ impl Cache {
         let path = cache_dir().join(filename);
         let data = match std::fs::read(&path) {
             Ok(d) => Some(d),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-            Err(e) => panic!("Failed to read cache, delete this file to reset it: {}\n{e}", path.display()),
+            Err(e) => None,
         };
 
         if let Some(data) = data {
-            match ron::de::from_bytes(data.as_slice()) {
-                Ok(c) => c,
-                Err(e) => panic!("Failed to deserialize cache, delete this file to reset it: {}\n{e}", path.display()),
-            }
+            ron::de::from_bytes(data.as_slice()).unwrap_or_else(|_| T::default())
         } else {
             T::default()
         }
@@ -75,28 +74,57 @@ impl Cache {
         Self::load_or_default_custom(Self::CACHE_FILE_NAME)
     }
 
-    pub fn create_worker(self: Arc<Self>, rt: tokio::runtime::Handle, client: Client, interval: Duration) {
+    pub async fn cache_pass(self: &Arc<Self>, client: Client, config: &CacheConfig) {
+        // don't clean cache if you are offline as you won't be able to re-download what gets deleted
+        if async { client.get("https://api.neurokaraoke.com/healthz").timeout(Duration::from_secs(5)).send().await?.text().await }.await.map(|s| s == "Healthy").unwrap_or(false) {
+            let mut total = 0u64;
+            let expires = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .expect("Time went backwards (why is your clock before 12AM UTC January 1st 1970?)")
+                .as_secs() - config.cache_expiration_secs;
+            let mut removed = Vec::new();
+            let mut keys = Vec::new();
+            self.entries.retain(|key, entry| {
+                keys.push((*key, (entry.last_touched, entry.size)));
+                total += entry.size;
+
+                if entry.last_touched == 0 || entry.last_touched >= expires { true } else {
+                    removed.push(entry.id);
+                    false
+                }
+            });
+            for id in removed {
+                let path = cache_dir().join(format!("assets/{:016x}", id));
+                let _ = tokio::fs::remove_file(path).await;
+            }
+
+            let max = config.cache_size_limit_mb * 1024 * 1024;
+            if total > max {
+                keys.sort_by_key(|x| x.1.0);
+                let mut iter = keys.iter();
+                while total > max {
+                    let value = iter.next().expect("how did we run out of items to grab if the total size > 0?");
+                    if value.1.0 == 0 { continue; }
+                    total -= value.1.1;
+
+                    let id = self.entries.remove(&value.0)
+                        .unwrap()
+                        .1.id;
+                    let path = cache_dir().join(format!("assets/{:016x}", id));
+                    let _ = tokio::fs::remove_file(path).await;
+                }
+            }
+        } else { println!("[Cache] it appears you are offline, cache will not be cleaned to ensure you get the most out of what you have cached"); }
+        let s = self.clone();
+        tokio::fs::write(&cache_dir().join(Self::CACHE_FILE_NAME), ron::ser::to_string_pretty(s.as_ref(), Default::default()).unwrap()).await.unwrap();
+    }
+
+    pub fn create_worker(self: Arc<Self>, rt: tokio::runtime::Handle, client: Client, config: Arc<Mutex<CacheConfig>>) {
         rt.clone().spawn(async move {
             loop {
-                // don't clean cache if you are offline as you won't be able to re-download what gets deleted
-                if async { client.get("https://api.neurokaraoke.com/healthz").timeout(Duration::from_secs(5)).send().await?.text().await }.await.map(|s| s == "Healthy").unwrap_or(false) {
-                    let now = SystemTime::now()
-                        .duration_since(SystemTime::UNIX_EPOCH)
-                        .expect("Time went backwards (why is your clock before 12AM UTC January 1st 1970?)")
-                        .as_secs();
-                    let mut removed = Vec::new();
-                    self.entries.retain(|_, entry| if entry.expires == 0 || entry.expires >= now { true } else {
-                        removed.push(entry.id);
-                        false
-                    });
-                    for id in removed {
-                        let path = cache_dir().join(format!("assets/{:016x}", id));
-                        let _ = tokio::fs::remove_file(path).await;
-                    }
-                } else { println!("[Cache] it appears you are offline, cache will not be cleaned to ensure you get the most out of what you have cached"); }
-                let s = self.clone();
-                tokio::fs::write(&cache_dir().join(Self::CACHE_FILE_NAME), rt.spawn_blocking(move || ron::ser::to_string_pretty(s.as_ref(), Default::default()).unwrap()).await.unwrap()).await.unwrap();
-                tokio::time::sleep(interval).await;
+                let config = { config.lock().await.clone() };
+                self.cache_pass(client.clone(), &config).await;
+                tokio::time::sleep(Duration::from_secs(config.cache_sweep_interval_secs)).await;
             }
         });
     }
@@ -104,11 +132,11 @@ impl Cache {
     pub async fn get(&self, key: &(Uuid, AssetType)) -> Option<tokio::fs::File> {
         match match self.entries.get_mut(key) {
             Some(mut entry) => {
-                if entry.expires != 0 {
-                    entry.expires = SystemTime::now()
+                if entry.last_touched != 0 {
+                    entry.last_touched = SystemTime::now()
                         .duration_since(SystemTime::UNIX_EPOCH)
                         .expect("Time went backwards (why is your clock before 12AM UTC January 1st 1970?)")
-                        .as_secs() + (60 * 60 * 24);
+                        .as_secs();
                 }
                 Some(entry.id)
             },
@@ -136,15 +164,20 @@ impl Cache {
                 let id = self.next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 let path = cache_dir().join(format!("assets/{:016x}", id));
                 let mut file = tokio::fs::File::create(&path).await?;
-                file.write_all(f().await?.as_ref()).await?;
+                let buf = f().await?;
+                let buf_ref = buf.as_ref();
+                let size = buf_ref.len();
+                file.write_all(buf_ref).await?;
+                drop(buf);
                 file.flush().await?;
                 drop(file);
                 self.entries.insert(*key, CacheEntry {
                     id,
-                    expires: SystemTime::now()
+                    last_touched: SystemTime::now()
                         .duration_since(SystemTime::UNIX_EPOCH)
                         .expect("Time went backwards (why is your clock before 12AM UTC January 1st 1970?)")
-                        .as_secs() + (60 * 60 * 24),
+                        .as_secs(),
+                    size: size as u64,
                 });
                 Ok(tokio::fs::File::open(&path).await?)
             }

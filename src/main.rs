@@ -39,8 +39,6 @@ fn main() -> eframe::Result<()> {
 }
 
 struct App {
-    pub config: Config,
-
     pub cache: Arc<Cache>,
     pub songs: LazySongDatabase,
     pub player: Player,
@@ -57,6 +55,8 @@ struct App {
     pub home_activity: HomeActivity,
 
     pub rt: Arc<tokio::runtime::Runtime>,
+    pub client: Client,
+    pub config: Config,
 }
 
 impl App {
@@ -105,11 +105,9 @@ impl App {
         player.shuffle(config.shuffle);
         player.looping(config.looping);
 
-        cache.clone().create_worker(rt.handle().clone(), client.clone(), Duration::from_secs(60));
+        cache.clone().create_worker(rt.handle().clone(), client.clone(), config.cache.clone());
 
         Self {
-            config,
-
             cache,
             songs,
             player,
@@ -124,6 +122,8 @@ impl App {
             home_activity: HomeActivity::new(ctx.clone()),
 
             rt,
+            client,
+            config,
         }
     }
 
@@ -524,6 +524,11 @@ impl Drop for App {
     fn drop(&mut self) {
         if let Err(e) = self.config.write() {
             eprintln!("config write failed: {}", e);
+        }
+
+        let (cache, client, config) = (self.cache.clone(), self.client.clone(), self.config.clone());
+        if let Err(e) = self.rt.block_on(self.rt.spawn(async move { cache.cache_pass(client, &config.cache.lock().await.clone()).await; })) {
+            eprintln!("cache write failed: {}", e);
         }
     }
 }
