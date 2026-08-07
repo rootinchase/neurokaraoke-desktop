@@ -4,14 +4,13 @@
 
 ## Features:
 - Playlists (kinda)
-- Song playback
+- Song playback (opus and standard supported, will try to use opus)
 - Song search (kinda)
 - Shuffle, loop, and volume controls
 - Themes
 - ...and more coming soon!
 
 ## Upcoming Features:
-- Opus audio playback when opus is available (via [magnum](https://lib.rs/crates/magnum))
 - Authentication & Accounts
 
 ## Contributing:

@@ -26,6 +26,7 @@ mod defaults {
     pub fn cache_sweep_interval_secs() -> u64 { 60 }
     pub fn cache_size_limit_mb() -> u64 { 1024 }
     pub fn framerate_when_not_focused() -> f32 { 1.0 }
+    pub fn song_database_update_interval_secs() -> u64 { 4 * 60 * 60 }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,6 +37,8 @@ pub struct CacheConfig {
     pub cache_sweep_interval_secs: u64,
     #[serde(default = "defaults::cache_size_limit_mb")]
     pub cache_size_limit_mb: u64,
+    #[serde(default = "defaults::song_database_update_interval_secs")]
+    pub song_database_update_interval_secs: u64,
 }
 
 impl Default for CacheConfig {
@@ -44,6 +47,7 @@ impl Default for CacheConfig {
             cache_expiration_secs: defaults::cache_expiration_secs(),
             cache_sweep_interval_secs: defaults::cache_sweep_interval_secs(),
             cache_size_limit_mb: defaults::cache_size_limit_mb(),
+            song_database_update_interval_secs: defaults::song_database_update_interval_secs(),
         }
     }
 }

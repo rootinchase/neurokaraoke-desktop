@@ -4,7 +4,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_with::__private__::DeserializeOwned;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime};
 use tokio::io::AsyncWriteExt;
@@ -25,11 +25,7 @@ pub fn cache_dir() -> &'static PathBuf {
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AssetType {
-    /// Standard audio formats (eg. MP3, Wav, Vorbis)
     Audio,
-    /// Opus Ogg
-    AudioOpus,
-    /// Standard image formats
     Image,
 }
 
@@ -43,6 +39,8 @@ pub struct CacheEntry {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Cache {
+    #[serde(skip)]
+    pub online: AtomicBool,
     pub next_id: AtomicU64,
     pub entries: DashMap<(Uuid, AssetType), CacheEntry>,
 }
@@ -50,7 +48,7 @@ pub struct Cache {
 impl Cache {
     const CACHE_FILE_NAME: &'static str = "cache.ron";
 
-    pub fn load_or_default_custom<T: DeserializeOwned + Serialize + Default>(filename: &str) -> T {
+    pub fn load_or_default_custom<T: DeserializeOwned + Default>(filename: &str) -> T {
         let path = cache_dir().join(filename);
         let data = match std::fs::read(&path) {
             Ok(d) => Some(d),
@@ -77,6 +75,8 @@ impl Cache {
     pub async fn cache_pass(self: &Arc<Self>, client: Client, config: &CacheConfig) {
         // don't clean cache if you are offline as you won't be able to re-download what gets deleted
         if async { client.get("https://api.neurokaraoke.com/healthz").timeout(Duration::from_secs(5)).send().await?.text().await }.await.map(|s| s == "Healthy").unwrap_or(false) {
+            self.online.store(true, Ordering::Release);
+
             let mut total = 0u64;
             let expires = SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
@@ -114,16 +114,16 @@ impl Cache {
                     let _ = tokio::fs::remove_file(path).await;
                 }
             }
-        } else { println!("[Cache] it appears you are offline, cache will not be cleaned to ensure you get the most out of what you have cached"); }
-        let s = self.clone();
-        tokio::fs::write(&cache_dir().join(Self::CACHE_FILE_NAME), ron::ser::to_string_pretty(s.as_ref(), Default::default()).unwrap()).await.unwrap();
+        } else { self.online.store(false, Ordering::Release); }
+        tokio::fs::write(&cache_dir().join(Self::CACHE_FILE_NAME), ron::ser::to_string_pretty(&self, Default::default()).unwrap()).await.unwrap();
     }
 
-    pub fn create_worker(self: Arc<Self>, rt: tokio::runtime::Handle, client: Client, config: Arc<Mutex<CacheConfig>>) {
+    pub fn create_worker<F: Future + Send + Sync + 'static>(self: Arc<Self>, mut extra_pass: impl FnMut() -> F + Send + 'static, rt: tokio::runtime::Handle, client: Client, config: Arc<Mutex<CacheConfig>>) {
         rt.clone().spawn(async move {
             loop {
                 let config = { config.lock().await.clone() };
                 self.cache_pass(client.clone(), &config).await;
+                extra_pass().await;
                 tokio::time::sleep(Duration::from_secs(config.cache_sweep_interval_secs)).await;
             }
         });
@@ -182,5 +182,9 @@ impl Cache {
                 Ok(tokio::fs::File::open(&path).await?)
             }
         }
+    }
+
+    pub fn is_online(&self) -> bool {
+        self.online.load(Ordering::Acquire)
     }
 }

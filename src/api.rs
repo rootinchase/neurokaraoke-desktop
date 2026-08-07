@@ -2,11 +2,12 @@ use anyhow::anyhow;
 use dashmap::DashMap;
 use internal::*;
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{json, Value};
 use serde_with::{serde_as, DefaultOnNull};
 use std::string::ToString;
 use std::sync::Arc;
+use serde::ser::SerializeMap;
 use uuid::Uuid;
 
 mod internal {
@@ -34,13 +35,23 @@ mod internal {
         }
     }
 
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum MaybeArtists {
+        Artists(Vec<PossiblyWithId>),
+        Optional(Option<Vec<PossiblyWithId>>),
+    }
+
     pub fn deserialize_artists<'de, D>(d: D) -> Result<Arc<[Arc<str>]>, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let artists: Option<Vec<PossiblyWithId>> = Option::deserialize(d)?;
+        let artists = match MaybeArtists::deserialize(d)? {
+            MaybeArtists::Artists(artists) => artists,
+            MaybeArtists::Optional(artists) => artists.unwrap_or_default(),
+        };
+
         Ok(artists
-            .unwrap_or_default()
             .into_iter()
             .map(Into::into)
             .collect::<Vec<_>>()
@@ -49,7 +60,7 @@ mod internal {
 }
 
 #[serde_as]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
 pub struct Artist {
@@ -66,7 +77,7 @@ pub struct Artist {
 }
 
 #[serde_as]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
 pub struct Artwork {
@@ -84,7 +95,7 @@ pub struct Artwork {
 }
 
 #[serde_as]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
 pub struct Song {
@@ -93,6 +104,7 @@ pub struct Song {
     #[serde_as(as = "DefaultOnNull")]
     pub title: Arc<str>,
     pub absolute_path: Option<Arc<str>>,
+    pub opus: Option<Arc<str>>,
     #[serde(default, deserialize_with = "deserialize_artists")]
     pub cover_artists: Arc<[Arc<str>]>,
     #[serde(default, deserialize_with = "deserialize_artists")]
@@ -115,17 +127,17 @@ impl<T> LoadingState<T> {
 /// This database is cheap to clone, clone it all you need!
 #[derive(Clone)]
 pub struct LazySongDatabase {
-    client: Client,
-    map: Arc<DashMap<Uuid, LoadingState<Song>>>,
+    pub client: Client,
+    pub map: Arc<DashMap<Uuid, LoadingState<Song>>>,
 }
 
 impl LazySongDatabase {
     const SONGS_API_URL: &str = "https://api.neurokaraoke.com/api/songs";
 
-    pub fn new(client: Client) -> Self {
+    pub fn new(client: Client, map: Arc<DashMap<Uuid, LoadingState<Song>>>) -> Self {
         Self {
             client,
-            map: Arc::new(DashMap::new()),
+            map,
         }
     }
 
@@ -182,4 +194,22 @@ impl LazySongDatabase {
     }
 
     pub fn get_map(&self) -> &Arc<DashMap<Uuid, LoadingState<Song>>> { &self.map }
+}
+
+impl Serialize for LazySongDatabase {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(None)?;
+
+        for entry in self.map.iter() {
+            if let LoadingState::Loaded(song) = entry.value() {
+                map.serialize_entry(entry.key(), song)
+                    .map_err(serde::ser::Error::custom)?;
+            }
+        }
+
+        map.end()
+    }
 }

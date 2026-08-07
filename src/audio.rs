@@ -264,7 +264,7 @@ impl Player {
                                         mixer.clear();
                                         *lock = None;
                                         drop(lock);
-                                        match database.get(&uuid, |s| s.absolute_path.clone()) {
+                                        match database.get(&uuid, |s| s.opus.clone().or_else(|| s.absolute_path.clone())) {
                                             LoadingState::Loaded(path) => {
                                                 let audio = path.map(|path| format!("https://storage.neurokaraoke.com/{}", path));
                                                 if audio.is_none() { continue; }
@@ -273,10 +273,21 @@ impl Player {
                                                 let handle = player.clone();
                                                 let cache = cache.clone();
                                                 rt.spawn(async move {
-                                                    if let Ok(file) = cache.get_or_else(&(uuid, AssetType::Audio), || async move { req.send().await.unwrap().bytes().await }).await {
-                                                        handle.sender.try_send(PlaybackCommand::SongReady(uuid, file.into_std().await)).unwrap();
-                                                        cb(&handle);
+                                                    if cache.is_online() {
+                                                        if let Ok(file) = cache.get_or_else(&(uuid, AssetType::Audio), || async move { req.send().await.unwrap().bytes().await }).await {
+                                                            handle.sender.try_send(PlaybackCommand::SongReady(uuid, file.into_std().await)).unwrap();
+                                                            cb(&handle);
+                                                        }
+                                                    } else {
+                                                        if let Some(file) = cache.get(&(uuid, AssetType::Audio)).await {
+                                                            handle.sender.try_send(PlaybackCommand::SongReady(uuid, file.into_std().await)).unwrap();
+                                                            cb(&handle);
+                                                        } else {
+                                                            eprintln!("song not cached and offline");
+                                                        }
                                                     }
+
+
                                                 });
                                             }
 
@@ -305,11 +316,7 @@ impl Player {
                                     Ok(meta) => meta.len(),
                                     Err(_) => continue,
                                 };
-                                if let Ok(decoder) = DecoderBuilder::new()
-                                    .with_data(BufReader::new(file))
-                                    .with_byte_len(len)
-                                    .build()
-                                {
+                                if let Ok(decoder) = DecoderBuilder::new().with_data(BufReader::new(file)).with_byte_len(len).build() {
                                     let mut lock = player.state.lock().unwrap();
 
                                     mixer.clear();

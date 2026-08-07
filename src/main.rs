@@ -7,8 +7,9 @@ mod util;
 mod cache;
 mod config;
 
+use std::collections::HashMap;
 use crate::activity::ActivityType;
-use crate::api::{LazySongDatabase, LoadingState};
+use crate::api::{LazySongDatabase, LoadingState, Song};
 use crate::audio::Player;
 use crate::cache::Cache;
 use crate::config::Config;
@@ -19,6 +20,8 @@ use mimalloc::MiMalloc;
 use reqwest::Client;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Mutex;
+use tokio::time::Instant;
 use uuid::Uuid;
 
 #[global_allocator]
@@ -96,16 +99,33 @@ impl App {
 
         let cache = Cache::load_or_default();
         let client = Client::new();
-        let songs = LazySongDatabase::new(client.clone());
-        let s = songs.clone();
-        rt.block_on(rt.spawn(async move { s.load_all(|_| ()).await })).unwrap().unwrap();
+        let songs = LazySongDatabase::new(client.clone(), Arc::new(Cache::load_or_default_custom::<HashMap<Uuid, Song>>("songs.ron").into_iter().map(|(uuid, song)| (uuid, LoadingState::Loaded(song))).collect()));
 
         let player = Player::new(rt.clone(), ctx.clone(), songs.clone(), cache.clone());
         player.volume(config.volume);
         player.shuffle(config.shuffle);
         player.looping(config.looping);
 
-        cache.clone().create_worker(rt.handle().clone(), client.clone(), config.cache.clone());
+        let s = songs.clone();
+        let c = cache.clone();
+        let cc = config.cache.clone();
+        let last_update: Arc<Mutex<Option<Instant>>> = Arc::default();
+        cache.clone().create_worker(move || {
+            let s = s.clone();
+            let c = c.clone();
+            let cc = cc.clone();
+            let last_update = last_update.clone();
+            async move {
+                let d = Duration::from_secs(cc.lock().await.cache_expiration_secs);
+                if last_update.lock().await.map(|i| Instant::now() - i >= d).unwrap_or(true) && c.is_online() {
+                    last_update.lock().await.replace(Instant::now());
+                    s.load_all(|_| ()).await.unwrap();
+                    tokio::fs::write(cache::cache_dir().join("songs.ron"), ron::ser::to_string_pretty(&s, Default::default()).unwrap())
+                        .await
+                        .unwrap();
+                }
+            }
+        }, rt.handle().clone(), client.clone(), config.cache.clone());
 
         Self {
             cache,

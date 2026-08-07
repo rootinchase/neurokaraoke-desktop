@@ -26,7 +26,8 @@ tokio = { version = "1.53.1", features = ["full"]}
 eframe = "=0.35.0"
 egui_extras = { version = "*", features = ["image", "http"] }
 image = { version = "0.25", features = ["png"] }
-rodio = { version = "0.22.2", features = ["default"] }
+# magnum wasn't working but OMG THIS GOT MERGED https://github.com/RustAudio/rodio/pull/851
+rodio = { git = "https://github.com/RustAudio/rodio", rev = "4aa22e8", features = ["default", "symphonia-libopus"] } #{ version = "0.22.2", features = ["default"] }
 url = "2.5.8"
 uuid = { version = "1.24.0", features = ["serde"] }
 reqwest = { version = "0.13.4", features = ["json"] }
