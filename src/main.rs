@@ -10,7 +10,7 @@ mod config;
 use std::collections::HashMap;
 use crate::activity::ActivityType;
 use crate::api::{LazySongDatabase, LoadingState, Song};
-use crate::audio::Player;
+use crate::audio::{Player, PlaybackState};
 use crate::cache::Cache;
 use crate::config::Config;
 use crate::theme::{SelectableTheme, ThemeManager};
@@ -21,8 +21,12 @@ use reqwest::Client;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
+use tokio::sync::mpsc;
 use tokio::time::Instant;
 use uuid::Uuid;
+
+// For media controls on Linux, macOS, and Windows
+use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, PlatformConfig, MediaPosition};
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -41,29 +45,35 @@ fn main() -> eframe::Result<()> {
     App::run(runtime)
 }
 
-struct App {
-    pub cache: Arc<Cache>,
-    pub songs: LazySongDatabase,
-    pub player: Player,
+pub struct App {
+    cache: Arc<Cache>,
+    songs: LazySongDatabase,
+    player: Player,
+    media_controls: Option<MediaControls>,
 
-    pub search: String,
-    pub dragging_seeker: bool,
-    pub dragging_volume: bool,
+    search: String,
+    dragging_seeker: bool,
+    dragging_volume: bool,
 
     // theme stuff
-    pub theme: ThemeManager,
+    theme: ThemeManager,
 
     // activity stuff
-    pub activity: ActivityType,
-    //pub home_activity: HomeActivity,
+    activity: ActivityType,
+    //home_activity: HomeActivity,
 
-    pub rt: Arc<tokio::runtime::Runtime>,
-    pub client: Client,
+    current_song_uuid: Option<Uuid>,
+    current_playback_state: Option<PlaybackState>,
+    last_os_playback_update: Instant,
+
+    rt: Arc<tokio::runtime::Runtime>,
+    client: Client,
     pub config: Config,
 }
 
+
 impl App {
-    fn new(ctx: &egui::Context, rt: Arc<tokio::runtime::Runtime>) -> Self {
+    fn new(creation_context: &eframe::CreationContext<'_>, ctx: &egui::Context, rt: Arc<tokio::runtime::Runtime>) -> Self {
         egui_extras::install_image_loaders(ctx);
 
         let mut fonts = egui::FontDefinitions::default();
@@ -127,11 +137,33 @@ impl App {
             }
         }, rt.handle().clone(), client.clone(), config.cache.clone());
 
+        let mut media_controls = init_souvlaki(creation_context);
+        if let Some(controls) = &mut media_controls {
+            let player_clone = player.clone();
+            let _ = controls.attach(move |event| {
+                match event {
+                    MediaControlEvent::Play => { player_clone.play() },
+                    MediaControlEvent::Pause => { player_clone.pause(); },
+                    MediaControlEvent::Toggle => {
+                        if let Some(state) = player_clone.get_playback_state() {
+                            if state.paused() { player_clone.play(); }
+                            else { player_clone.pause(); }
+                        }
+                    },
+                    MediaControlEvent::Next => player_clone.next_song(),
+                    MediaControlEvent::Previous => player_clone.previous(),
+                    MediaControlEvent::SetVolume(vol) => player_clone.volume(vol as f32),
+                    _ => {}
+                }
+            });
+        }
+
         Self {
             cache,
             songs,
             player,
 
+            media_controls,
             search: "".to_string(),
             dragging_seeker: false,
             dragging_volume: false,
@@ -141,12 +173,43 @@ impl App {
             activity: ActivityType::Home,
             //home_activity: HomeActivity::new(ctx.clone()),
 
+            current_song_uuid: None,
+            current_playback_state: None,
+            last_os_playback_update: Instant::now(),
+
             rt,
             client,
             config,
         }
     }
 
+
+
+    pub fn update_os_metadata(&mut self, title: &str, artist: &str, duration_secs: u64, cover_url: &str ) {
+        if let Some(controls) = &mut self.media_controls {
+            let meta = MediaMetadata {
+                title: Some(title),
+                artist: Some(artist),
+                album: Some("NeuroKaraoke Live"),
+                duration: Some(Duration::from_secs(duration_secs)),
+                cover_url: Some(cover_url),
+            };
+            let _ = controls.set_metadata(meta);
+        }
+    }
+
+    pub fn update_os_playback(&mut self) {
+        if let Some(controls) = &mut self.media_controls {
+             if let Some(state) = self.player.get_playback_state() {
+                let playback = if state.paused() {
+                    MediaPlayback::Paused { progress: Some(MediaPosition(state.position())) }
+                } else {
+                    MediaPlayback::Playing { progress: Some(MediaPosition(state.position())) }
+                };
+                let _ = controls.set_playback(playback);
+             }
+        }
+    }
     fn run(rt: Arc<tokio::runtime::Runtime>) -> eframe::Result<()> {
         let icon = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png"))
             .expect("Invalid icon");
@@ -161,10 +224,45 @@ impl App {
         eframe::run_native(
             "Karaoke App",
             options,
-            Box::new(|cc| Ok(Box::new(Self::new(&cc.egui_ctx, rt)))),
+            Box::new(|cc| Ok(Box::new(Self::new( cc, &cc.egui_ctx, rt)))),
         )
     }
 }
+
+fn init_souvlaki(cc: &eframe::CreationContext<'_>) -> Option<MediaControls> {
+    let hwnd_ptr: Option<*mut std::ffi::c_void> = None;
+
+    #[cfg(target_os = "windows")]
+    {
+        // Extract raw pointer from eframe's 0.6 handle to pass down to souvlaki's structure
+        if let Ok(window_handle) = cc.integration_info.window_handle {
+            if let Ok(RawWindowHandle::Win32(handle)) = window_handle.as_raw() {
+                // Convert the NonZeroIsize HWND into a raw c_void pointer
+                hwnd_ptr = Some(handle.hwnd.get() as *mut std::ffi::c_void);
+            }
+        }
+
+        if hwnd_ptr.is_none() {
+            eprintln!("Warning: Windows HWND could not be resolved. Media controls disabled.");
+            return None;
+        }
+    }
+
+    let config = PlatformConfig {
+        dbus_name: "neurokaraoke.desktop",
+        display_name: "NeuroKaraoke Player",
+        hwnd: hwnd_ptr,
+    };
+
+    match MediaControls::new(config) {
+        Ok(controls) => Some(controls),
+        Err(e) => {
+            eprintln!("Failed to initialize Souvlaki media sublayer: {:?}", e);
+            None
+        }
+    }
+}
+
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
@@ -305,6 +403,30 @@ impl eframe::App for App {
             });
 
         if let Some(state) = self.player.get_playback_state() && let LoadingState::Loaded(song) = self.songs.get(&state.song(), |song| song.clone()) {
+            if self.current_song_uuid != Some(state.song()) {
+                self.current_song_uuid = Some(state.song());
+                
+                let cover_art_url = song.cover_art.as_ref()
+                    .map(|ca| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90", ca.cloudflare_id))
+                    .unwrap_or_else(|| "".to_string());
+                
+                self.update_os_metadata(
+                    &song.title,
+                    &format!("{} (feat. {})", song.original_artists.join(" & "), song.cover_artists.join(" & ")),
+                    state.duration().as_secs(),
+                    &cover_art_url
+                );
+            }
+
+            let now = Instant::now();
+            if self.current_playback_state.as_ref().map(|s| s.paused()) != Some(state.paused())
+               || (now - self.last_os_playback_update > Duration::from_secs(1) && !state.paused())
+            {
+                 self.update_os_playback();
+                 self.last_os_playback_update = now;
+            }
+            self.current_playback_state = Some(state);
+
             egui::Panel::bottom("player")
                 .resizable(false)
                 .frame(

@@ -176,24 +176,24 @@ impl Player {
                                     if shuffle { reorder(&mut ordered_playlist, shuffle, false); }
                                     let playlist = ordered_playlist.as_ref().unwrap();
                                     player.song(Some(playlist[idx % playlist.len()]), Player::play);
-                                    return false
+                                    break 'block;
                                 } else {
                                     player.player_state.lock().unwrap().playlist = None;
                                     ordered_playlist = None;
-                                    return true
+                                    break 'block;
                                 }
                             } else {
                                 // Normal transition
                                 player.song(Some(playlist[idx]), Player::play);
-                                return false
+                                break 'block;
                             }
                         } else {
                             // No playlist set yet
                             if looping {
                                 player.song(Some(state.song), Player::play);
-                                return false
+                                break 'block;
                             } else {
-                                return true
+                                break 'block;
                             }
                         } {
                             *player.state.lock().unwrap() = None;
@@ -263,7 +263,7 @@ impl Player {
                                         if let Some(idx) = current_index {
                                             let (len, _) = (playlist.len(), idx + 1);
 
-                                            if let Some(next_idx) = (idx + 1).checked_add(1).filter(|&i| i < len) {
+                                            if let Some(next_idx) = Some(idx + 1).filter(|&i| i < len) {
                                                 let next_uuid = playlist[next_idx];
 
                                                 // Reset state and signal new song request
@@ -396,15 +396,7 @@ impl Player {
     pub fn song(&self, song: Option<Uuid>, commands_after_load: impl FnOnce(&Player) + Send + 'static) {
         self.sender.try_send(PlaybackCommand::Song(song, Box::new(commands_after_load))).unwrap();
     }
-
-    pub fn skip(&self) {
-        if let Some(state) = self.state.lock().unwrap().as_ref() {
-            // Skip forward 15 seconds
-            let new_position = Duration::from_secs(15);
-            self.seek(new_position);
-        }
-    }
-
+    
     pub fn previous(&self) {
         // Lock player_state to access the playlist reference
         let player_state = self.player_state.lock().unwrap();
@@ -443,7 +435,7 @@ impl Player {
             if let Some(idx) = current_index {
                 let (len, _) = (playlist.len(), idx + 1);
 
-                if let Some(next_idx) = (idx + 1).checked_add(1).filter(|&i| i < len) {
+                if let Some(next_idx) = Some(idx + 1).filter(|&i| i < len) {
                     let next_uuid = playlist[next_idx];
 
                     // Reset state and signal new song request
