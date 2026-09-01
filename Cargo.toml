@@ -23,13 +23,13 @@ winresource = "0.1.31"
 mimalloc = "0.1.52"
 
 tokio = { version = "1.53.1", features = ["full"]}
-eframe = "=0.35.0"
-egui_extras = { version = "*", features = ["image", "http"] }
-image = { version = "0.25", features = ["png"] }
+eframe = "=0.36.1"
+egui_extras = { version = "0.36.1", features = ["image", "http", "svg"] }
+image = { version = "0.25.10", features = ["png"] }
 # magnum wasn't working, but OMG THIS GOT MERGED https://github.com/RustAudio/rodio/pull/851
 rodio = { git = "https://github.com/RustAudio/rodio", rev = "4aa22e8", features = ["default", "symphonia-libopus"] } #{ version = "0.22.2", features = ["default"] }
 url = "2.5.8"
-uuid = { version = "1.24.0", features = ["serde"] }
+uuid = { version = "1.26.0", features = ["serde", "v4"] }
 reqwest = { version = "0.13.4", features = ["json"] }
 rand = "0.10.2"
 serde = { version = "1.0.229", features = ["derive", "rc"] }
@@ -40,4 +40,3 @@ anyhow = "1.0.104"
 souvlaki = { version = "0.8.3", default-features = false, features = ["use_zbus"] }
 ron = "0.12.2"
 dirs = "6.0.0"
-raw-window-handle = "0.6.2"

@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use crate::api::{LazySongDatabase, LoadingState};
 use crate::cache::{AssetType, Cache};
 use eframe::egui;
@@ -5,7 +6,7 @@ use rand::prelude::SliceRandom;
 use rodio::decoder::DecoderBuilder;
 use rodio::Source;
 use std::io::BufReader;
-use std::sync::atomic::AtomicU32;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -13,7 +14,6 @@ use tokio::runtime::Runtime;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy)]
-/// Represents a state of playback
 pub struct PlaybackState {
     start: Instant,
     paused: Option<Instant>,
@@ -27,11 +27,11 @@ impl PlaybackState {
     pub fn paused(&self) -> bool { self.paused.is_some() }
     pub fn song(&self) -> Uuid { self.song }
 
-    fn new(duration: Duration, song: Uuid) -> Self {
+    fn new(duration: Duration, song: Uuid, is_playing: bool) -> Self {
         let now = Instant::now();
         Self {
             start: now,
-            paused: Some(now),
+            paused: if is_playing { None } else { Some(now) },
             duration,
             song,
         }
@@ -54,12 +54,16 @@ impl PlaybackState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum LoopMode { #[default] None, One, All }
+
 #[derive(Debug, Clone)]
 struct PlayerState {
     volume: f32,
     shuffle: bool,
-    looping: bool,
-    playlist: Option<Arc<[Uuid]>>
+    loop_mode: LoopMode,
+    playlist: Option<Arc<[Uuid]>>,
+    url_playlist: Option<Arc<[crate::api::SongDTO]>>,
 }
 
 enum PlaybackCommand {
@@ -67,13 +71,15 @@ enum PlaybackCommand {
     Play,
     Volume(f32),
     Shuffle(bool),
-    Loop(bool),
+    Loop(LoopMode),
     Playlist(Option<Arc<[Uuid]>>),
+    UrlPlaylist(Option<Arc<[crate::api::SongDTO]>>),
     Song(Option<Uuid>, Box<dyn FnOnce(&Player) + Send + 'static>),
-    SongReady(Uuid, std::fs::File),
+    UrlPlayback(Option<Uuid>, crate::api::SongDTO, Box<dyn FnOnce(&Player) + Send + 'static>),
+    SongReady(Option<Uuid>, std::fs::File, Option<Box<dyn FnOnce(&Player) + Send + 'static>>),
     Seek(Duration),
     Shutdown,
-    NextSong, // NEW: Added NextSong command
+    NextSong,
 }
 
 #[derive(Debug)]
@@ -82,6 +88,20 @@ pub struct Player {
     state: Arc<Mutex<Option<PlaybackState>>>,
     player_state: Arc<Mutex<PlayerState>>,
     sender: tokio::sync::mpsc::Sender<PlaybackCommand>,
+    pub current_url_metadata: Arc<Mutex<Option<crate::api::SongDTO>>>,
+}
+
+impl Clone for Player {
+    fn clone(&self) -> Self {
+        if let Some(refs) = &self.refs { refs.fetch_add(1, Ordering::Relaxed); }
+        Self {
+            refs: self.refs.clone(),
+            state: self.state.clone(),
+            player_state: self.player_state.clone(),
+            sender: self.sender.clone(),
+            current_url_metadata: self.current_url_metadata.clone(),
+        }
+    }
 }
 
 impl Player {
@@ -94,10 +114,12 @@ impl Player {
             player_state: Arc::new(Mutex::new(PlayerState {
                 volume: 1.0,
                 shuffle: false,
-                looping: false,
+                loop_mode: LoopMode::None,
                 playlist: None,
+                url_playlist: None,
             })),
             sender: tx,
+            current_url_metadata: Arc::new(Mutex::new(None)),
         };
 
         let mut player = p.clone();
@@ -114,249 +136,315 @@ impl Player {
 
             let mut ordered_playlist: Option<Arc<[Uuid]>> = None;
             let mut shuffle = false;
-            let mut looping = false;
+            let mut loop_mode = LoopMode::None;
 
             let p = player.clone();
             let reorder = |playlist: &mut Option<Arc<[Uuid]>>, shuffle: bool, swap: bool| {
-                let pl = p.player_state.lock().unwrap().playlist.clone();
-                *playlist = if shuffle {
+                let mut ps = p.player_state.lock().unwrap();
+                let pl = ps.playlist.clone();
+                let upl = ps.url_playlist.clone();
+                
+                if shuffle {
                     let song = p.state.lock().unwrap().map(|x| x.song());
-                    pl.and_then(|pl| {
-                        let mut vec = pl.to_vec();
-                        vec.shuffle(&mut rand::rng());
-                        let len = vec.len();
+                    if let Some(pl) = pl {
+                        let len = pl.len();
+                        let mut indices: Vec<usize> = (0..len).collect();
+                        indices.shuffle(&mut rand::rng());
+                        
+                        let mut new_pl: Vec<Uuid> = indices.iter().map(|&i| pl[i]).collect();
+                        let mut new_upl: Vec<crate::api::SongDTO> = upl.map(|upl| indices.iter().map(|&i| upl[i].clone()).collect()).unwrap_or_else(|| vec![]);
+                        
                         if let Some(song) = song {
-                            if let Some(i) = vec.iter().position(|s| *s == song) {
+                            if let Some(i) = new_pl.iter().position(|s| *s == song) {
                                 if swap {
-                                    vec.swap(0, i);
+                                    new_pl.swap(0, i);
+                                    if !new_upl.is_empty() { new_upl.swap(0, i); }
                                 } else if i == 0 && len > 1 {
-                                    vec.swap(0, rand::random_range(1..len));
+                                    let swap_idx = rand::random_range(1..len);
+                                    new_pl.swap(0, swap_idx);
+                                    if !new_upl.is_empty() { new_upl.swap(0, swap_idx); }
                                 }
-                                Some(vec.into())
-                            } else {
-                                None
                             }
-                        } else {
-                            Some(vec.into())
                         }
-                    })
+                        *playlist = Some(new_pl.clone().into());
+                        ps.playlist = Some(new_pl.into());
+                        ps.url_playlist = if new_upl.is_empty() { None } else { Some(new_upl.into()) };
+                    }
                 } else {
-                    pl.clone()
+                    *playlist = pl;
                 }
             };
 
             loop {
                 'block: {
                     let lock = player.state.lock().unwrap();
-                    if let Some(state) = lock.as_ref() && !state.paused() && state.position() == state.duration {
-                        let state = state.clone();
-                        drop(lock);
+                    if let Some(state) = lock.as_ref() && !state.paused() {
+                        let pos = state.position();
+                        let dur = state.duration();
+                        if pos >= dur && dur > Duration::from_secs(0) {
+                            crate::debug_log!("Transition: Position {} >= Duration {}", pos.as_secs(), dur.as_secs());
+                            let state = state.clone();
+                            drop(lock);
 
-                        if let Some(playlist) = ordered_playlist.as_ref().map(|p| p.clone()) {
-                            let (len, idx) = {
-                                let mut idx = 0;
-                                for i in 0..playlist.len() {
-                                    if state.song == playlist[i] {
-                                        idx = i + 1;
-                                        break;
+                            if let Some(playlist) = ordered_playlist.as_ref().map(|p| p.clone()) {
+                                let (len, idx) = {
+                                    let mut idx = None;
+                                    for i in 0..playlist.len() {
+                                        if state.song == playlist[i] {
+                                            idx = Some(i);
+                                            break;
+                                        }
                                     }
-                                }
-                                (playlist.len(), idx)
-                            };
+                                    (playlist.len(), idx)
+                                };
 
-                            if idx == 0 {
-                                player.player_state.lock().unwrap().playlist = None;
-                                ordered_playlist = None;
-                                break 'block;
-                            }
-
-                            if idx >= len {
-                                // Song ended, check loop/shuffle
-                                if looping {
-                                    if shuffle { reorder(&mut ordered_playlist, shuffle, false); }
-                                    let playlist = ordered_playlist.as_ref().unwrap();
-                                    player.song(Some(playlist[idx % playlist.len()]), Player::play);
-                                    break 'block;
+                                if let Some(idx) = idx {
+                                    if idx + 1 >= len {
+                                        // Song ended, check loop/shuffle
+                                        crate::debug_log!("Transition: Song ended, index {} >= len {}", idx, len);
+                                        match loop_mode {
+                                            LoopMode::All => {
+                                                if shuffle { reorder(&mut ordered_playlist, shuffle, false); }
+                                                let playlist = ordered_playlist.as_ref().unwrap();
+                                                let next_idx = 0; // Loop back
+                                                
+                                                let player_state = player.player_state.lock().unwrap();
+                                                if let Some(url_playlist) = &player_state.url_playlist && url_playlist.len() == playlist.len() {
+                                                    crate::debug_log!("Transition: Loading next URL song at index {}", next_idx);
+                                                    player.url_playback(Some(playlist[next_idx]), url_playlist[next_idx].clone(), Player::play);
+                                                } else {
+                                                    player.song(Some(playlist[next_idx]), Player::play);
+                                                }
+                                                break 'block;
+                                            }
+                                            LoopMode::One => {
+                                                // Replay current song
+                                                player.song(Some(playlist[idx]), Player::play);
+                                                break 'block;
+                                            }
+                                            LoopMode::None => {
+                                                player.player_state.lock().unwrap().playlist = None;
+                                                ordered_playlist = None;
+                                                break 'block;
+                                            }
+                                        }
+                                    } else {
+                                        // Normal transition
+                                        let next_idx = idx + 1;
+                                        crate::debug_log!("Transition: Normal transition to index {}", next_idx);
+                                        let player_state = player.player_state.lock().unwrap();
+                                        if let Some(url_playlist) = &player_state.url_playlist && url_playlist.len() == playlist.len() {
+                                            crate::debug_log!("Transition: Loading next URL song at index {}", next_idx);
+                                            player.url_playback(Some(playlist[next_idx]), url_playlist[next_idx].clone(), Player::play);
+                                        } else {
+                                            player.song(Some(playlist[next_idx]), Player::play);
+                                        }
+                                        break 'block;
+                                    }
                                 } else {
+                                    // Current song not in playlist, stop
                                     player.player_state.lock().unwrap().playlist = None;
                                     ordered_playlist = None;
                                     break 'block;
                                 }
                             } else {
-                                // Normal transition
-                                player.song(Some(playlist[idx]), Player::play);
-                                break 'block;
+                                // No playlist set yet
+                                if loop_mode != LoopMode::None {
+                                    player.song(Some(state.song), Player::play);
+                                    break 'block;
+                                } else {
+                                    break 'block;
+                                }
                             }
-                        } else {
-                            // No playlist set yet
-                            if looping {
-                                player.song(Some(state.song), Player::play);
-                                break 'block;
-                            } else {
-                                break 'block;
-                            }
-                        } {
-                            *player.state.lock().unwrap() = None;
-                            mixer.clear();
                         }
                     }
                 }
 
-                if loop {
-                    match rx.try_recv() {
-                        Ok(command) => match command {
-                            PlaybackCommand::Pause => {
-                                if let Some(state) = player.state.lock().unwrap().as_mut() {
-                                    mixer.pause();
-                                    state.pause();
-                                    ctx.request_repaint();
-                                }
-                            },
-                            PlaybackCommand::Play => {
-                                if let Some(state) = player.state.lock().unwrap().as_mut() {
-                                    mixer.play();
-                                    state.play();
-                                    ctx.request_repaint();
-                                }
-                            },
-                            PlaybackCommand::Volume(mut v) => {
-                                v = v.powi(3);
-                                mixer.set_volume(v);
-                                player.player_state.lock().unwrap().volume = v;
+                match rx.try_recv() {
+                    Ok(command) => match command {
+                        PlaybackCommand::Pause => {
+                            if let Some(state) = player.state.lock().unwrap().as_mut() {
+                                mixer.pause();
+                                state.pause();
+                                ctx.request_repaint();
                             }
-                            PlaybackCommand::Shuffle(enabled) => {
-                                player.player_state.lock().unwrap().shuffle = enabled;
-                                if shuffle != enabled { reorder(&mut ordered_playlist, enabled, true); }
-                                shuffle = enabled;
+                        },
+                        PlaybackCommand::Play => {
+                            if let Some(state) = player.state.lock().unwrap().as_mut() {
+                                mixer.play();
+                                state.play();
+                                ctx.request_repaint();
                             }
-                            PlaybackCommand::Loop(enabled) => {
-                                player.player_state.lock().unwrap().looping = enabled;
-                                looping = enabled;
+                        },
+                        PlaybackCommand::Volume(mut v) => {
+                            v = v.powi(3);
+                            mixer.set_volume(v);
+                            player.player_state.lock().unwrap().volume = v;
+                        }
+                        PlaybackCommand::Shuffle(enabled) => {
+                            player.player_state.lock().unwrap().shuffle = enabled;
+                            if shuffle != enabled { reorder(&mut ordered_playlist, enabled, true); }
+                            shuffle = enabled;
+                        }
+                        PlaybackCommand::Loop(mode) => {
+                            player.player_state.lock().unwrap().loop_mode = mode;
+                            loop_mode = mode;
+                        }
+                        PlaybackCommand::Playlist(playlist) => {
+                            let lock = player.state.lock().unwrap();
+                            if let Some(playlist) = playlist.as_ref() && let Some(state) = lock.as_ref() && !playlist.contains(&state.song()) {
+                                player.sender.try_send(PlaybackCommand::Song(None, Box::new(|_| {}))).unwrap();
                             }
-                            PlaybackCommand::Playlist(playlist) => {
-                                let lock = player.state.lock().unwrap();
-                                if let Some(playlist) = playlist.as_ref() && let Some(state) = lock.as_ref() && !playlist.contains(&state.song) {
-                                    player.sender.try_send(PlaybackCommand::Song(None, Box::new(|_| {}))).unwrap();
+                            drop(lock);
+
+                            player.player_state.lock().unwrap().playlist = playlist;
+                            reorder(&mut ordered_playlist, shuffle, true);
+                        }
+                        PlaybackCommand::UrlPlaylist(playlist) => {
+                            player.player_state.lock().unwrap().url_playlist = playlist;
+                        }
+
+                        PlaybackCommand::Seek(mut position) => {
+                            if let Some(state) = player.state.lock().unwrap().as_mut() {
+                                position = position.min(state.duration);
+                                if let Err(e) = mixer.try_seek(position) {
+                                    eprintln!("{}", e);
                                 }
-                                drop(lock);
 
-                                player.player_state.lock().unwrap().playlist = playlist;
-                                reorder(&mut ordered_playlist, shuffle, true);
+                                state.seek(position);
+                                ctx.request_repaint();
                             }
-                            PlaybackCommand::Seek(mut position) => {
-                                if let Some(state) = player.state.lock().unwrap().as_mut() {
-                                    position = position.min(state.duration);
-                                    if let Err(e) = mixer.try_seek(position) {
-                                        eprintln!("{}", e);
-                                    }
+                        },
+                        PlaybackCommand::NextSong => {
+                            let lock = player.state.lock().unwrap();
+                            let player_state = player.player_state.lock().unwrap();
+                            
+                            if let Some(playlist) = player_state.playlist.clone() && let Some(state) = lock.as_ref() {
+                                let current_index = playlist.iter().position(|&uuid| uuid == state.song());
+                                crate::debug_log!("NextSong: Current index: {:?}, Playlist len: {}", current_index, playlist.len());
 
-                                    state.seek(position);
-                                    ctx.request_repaint();
-                                }
-                            },
-                            PlaybackCommand::NextSong => {
-                                let lock = player.state.lock().unwrap();
-                                if let Some(playlist) = player.player_state.lock().unwrap().playlist.clone() {
-                                    if let Some(state) = lock.as_ref() {
-                                        let current_index = playlist.iter().position(|&uuid| uuid == state.song());
-
-                                        if let Some(idx) = current_index {
-                                            let (len, _) = (playlist.len(), idx + 1);
-
-                                            if let Some(next_idx) = Some(idx + 1).filter(|&i| i < len) {
-                                                let next_uuid = playlist[next_idx];
-
-                                                // Reset state and signal new song request
-                                                let mut lock = player.state.lock().unwrap();
-                                                *lock = None;
-
-                                                // This sends a request to the background thread to load and play the next song
-                                                player.song(Some(next_uuid), Player::play);
-                                                ctx.request_repaint();
-                                            }
+                                if let Some(idx) = current_index {
+                                    let len = playlist.len();
+                                    if let Some(next_idx) = Some(idx + 1).filter(|&i| i < len) {
+                                        
+                                        // Check if there's a corresponding song in the url_playlist
+                                        if let Some(url_playlist) = &player_state.url_playlist && url_playlist.len() == playlist.len() {
+                                            crate::debug_log!("NextSong: Loading URL song at index {}", next_idx);
+                                            player.url_playback(Some(playlist[next_idx]), url_playlist[next_idx].clone(), Player::play);
+                                        } else {
+                                            player.song(Some(playlist[next_idx]), Player::play);
                                         }
+                                        ctx.request_repaint();
                                     }
                                 }
-                            },
-                            PlaybackCommand::Shutdown => break true,
+                            }
+                            drop(lock);
+                            drop(player_state);
+                        },
+                        PlaybackCommand::Shutdown => break,
 
-                            PlaybackCommand::Song(uuid, cb) => {
-                                let mut lock = player.state.lock().unwrap();
-                                if let Some(uuid) = uuid {
-                                    if let Some(pl) = ordered_playlist.as_ref() && !pl.contains(&uuid) {
-                                        player.sender.try_send(PlaybackCommand::Playlist(None)).unwrap();
-                                    }
-                                    if lock.as_ref().map(|s| s.song != uuid).unwrap_or(true) || mixer.empty() {
-                                        mixer.clear();
-                                        *lock = None;
-                                        drop(lock);
-                                        match database.get(&uuid, |s| s.opus.clone().or_else(|| s.absolute_path.clone())) {
-                                            LoadingState::Loaded(path) => {
-                                                let audio = path.map(|path| format!("https://storage.neurokaraoke.com/{}", path));
-                                                if audio.is_none() { continue; }
-
-                                                let req = client.get(audio.unwrap().clone());
-                                                let handle = player.clone();
-                                                let cache = cache.clone();
-                                                rt.spawn(async move {
-                                                    if cache.is_online() {
-                                                        if let Ok(file) = cache.get_or_else(&(uuid, AssetType::Audio), || async move { req.send().await.unwrap().bytes().await }).await {
-                                                            handle.sender.try_send(PlaybackCommand::SongReady(uuid, file.into_std().await)).unwrap();
-                                                            cb(&handle);
-                                                        }
-                                                    } else {
-                                                        if let Some(file) = cache.get(&(uuid, AssetType::Audio)).await {
-                                                            handle.sender.try_send(PlaybackCommand::SongReady(uuid, file.into_std().await)).unwrap();
-                                                            cb(&handle);
-                                                        } else {
-                                                            eprintln!("song not cached and offline");
-                                                        }
-                                                    }
-
-
-                                                });
-                                            }
-
-                                            LoadingState::Loading => {
-                                                player.sender.try_send(PlaybackCommand::Song(Some(uuid), cb)).unwrap();
-                                                break false;
-                                            }
-
-                                            LoadingState::Failed(_) => {
-                                                continue;
-                                            }
-                                        }
-                                    } else {
-                                        player.seek(Duration::default());
-                                    }
-                                } else {
+                        PlaybackCommand::Song(uuid, cb) => {
+                            let mut lock = player.state.lock().unwrap();
+                            if let Some(uuid) = uuid {
+                                if let Some(pl) = ordered_playlist.as_ref() && !pl.contains(&uuid) {
+                                    player.sender.try_send(PlaybackCommand::Playlist(None)).unwrap();
+                                }
+                                if lock.as_ref().map(|s| s.song != uuid).unwrap_or(true) || mixer.empty() {
                                     mixer.clear();
                                     *lock = None;
+                                    drop(lock);
+                                    match database.get(&uuid, |s| s.opus.clone().or_else(|| s.absolute_path.clone())) {
+                                        LoadingState::Loaded(path) => {
+                                            let audio = path.map(|path| format!("https://storage.neurokaraoke.com/{}", path));
+                                            if audio.is_none() { continue; }
+
+                                            let req = client.get(audio.unwrap().clone());
+                                            let handle = player.clone();
+                                            let cache = cache.clone(); // Correct clone
+                                            rt.spawn(async move {
+                                                if cache.is_online() {
+
+                                                    if let Ok(file) = cache.get_or_else(&(uuid, AssetType::Audio), || async move { req.send().await.unwrap().bytes().await }).await {
+                                                        handle.sender.try_send(PlaybackCommand::SongReady(Some(uuid), file.into_std().await, Some(cb))).unwrap();
+                                                    }
+                                                } else {
+                                                    if let Some(file) = cache.get(&(uuid, AssetType::Audio)).await {
+                                                        handle.sender.try_send(PlaybackCommand::SongReady(Some(uuid), file.into_std().await, Some(cb))).unwrap();
+                                                    } else {
+                                                        crate::debug_log!("song not cached and offline");
+                                                    }
+                                                }
+                                            });
+                                        }
+
+                                        LoadingState::Loading => {
+                                            player.sender.try_send(PlaybackCommand::Song(Some(uuid), cb)).unwrap();
+                                        }
+
+                                        LoadingState::Failed(_) => {
+                                            continue;
+                                        }
+                                    }
+                                } else {
+                                    player.seek(Duration::default());
+                                }
+                            } else {
+                                mixer.clear();
+                                *lock = None;
+                            }
+
+                            ctx.request_repaint();
+                        },
+
+                        PlaybackCommand::UrlPlayback(uuid, song_dto, cb) => {
+                            let mut lock = player.state.lock().unwrap();
+                            mixer.clear();
+                            // Initialize with the provided UUID (or new one if None)
+                            *lock = Some(PlaybackState::new(Duration::from_secs(0), uuid.unwrap_or_else(Uuid::new_v4), true));
+                            drop(lock);
+
+                            *player.current_url_metadata.lock().unwrap() = Some(song_dto.clone());
+
+                            let req = client.get(song_dto.audio_url.to_string());
+                            let handle = player.clone();
+                            let cache = cache.clone();
+                            rt.spawn(async move {
+                                let temp_path = std::env::temp_dir().join(format!("audio_{}", Uuid::new_v4()));
+
+                                if let Ok(response) = req.send().await {
+                                    if let Ok(bytes) = response.bytes().await {
+                                        tokio::fs::write(&temp_path, &bytes).await.unwrap();
+                                        let file = std::fs::File::open(&temp_path).unwrap();
+                                        handle.sender.try_send(PlaybackCommand::SongReady(uuid, file, Some(cb))).unwrap();
+                                    }
+                                }
+                            });
+                            ctx.request_repaint();
+                        },
+                        PlaybackCommand::SongReady(uuid, file, cb) => {
+                            let len = match file.metadata() {
+                                Ok(meta) => meta.len(),
+                                Err(_) => continue,
+                            };
+                            if let Ok(decoder) = DecoderBuilder::new().with_data(BufReader::new(file)).with_byte_len(len).build() {
+
+                                let mut lock = player.state.lock().unwrap();
+
+                                mixer.clear();
+                                *lock = Some(PlaybackState::new(decoder.total_duration().unwrap_or_else(Duration::default), uuid.unwrap_or_else(Uuid::new_v4), true));
+                                mixer.append(decoder);
+
+                                if let Some(cb) = cb {
+                                    cb(&player);
                                 }
 
                                 ctx.request_repaint();
-                            },
-
-                            PlaybackCommand::SongReady(uuid, file) => {
-                                let len = match file.metadata() {
-                                    Ok(meta) => meta.len(),
-                                    Err(_) => continue,
-                                };
-                                if let Ok(decoder) = DecoderBuilder::new().with_data(BufReader::new(file)).with_byte_len(len).build() {
-                                    let mut lock = player.state.lock().unwrap();
-
-                                    mixer.clear();
-                                    *lock = Some(PlaybackState::new(decoder.total_duration().unwrap_or_else(Duration::default), uuid));
-                                    mixer.append(decoder);
-
-                                    ctx.request_repaint();
-                                }
-                            },
+                            }
                         },
-                        Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break false,
-                        Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => break true,
-                    }
-                } { break false }
+                    },
+                    Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {},
+                    Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => break,
+                }
 
                 thread::sleep(Duration::from_millis(10));
             }
@@ -378,100 +466,64 @@ impl Player {
     pub fn volume(&self, volume: f32) {
         self.sender.try_send(PlaybackCommand::Volume(volume)).unwrap();
     }
-    pub fn shuffle(&self, enabled: bool) {
-        self.sender.try_send(PlaybackCommand::Shuffle(enabled)).unwrap();
+    pub fn shuffle(&self, shuffle: bool) {
+        self.sender.try_send(PlaybackCommand::Shuffle(shuffle)).unwrap();
     }
-    pub fn looping(&self, enabled: bool) {
-        self.sender.try_send(PlaybackCommand::Loop(enabled)).unwrap();
+    pub fn looping(&self, mode: LoopMode) {
+        self.sender.try_send(PlaybackCommand::Loop(mode)).unwrap();
     }
     pub fn playlist(&self, playlist: Option<Arc<[Uuid]>>) {
         self.sender.try_send(PlaybackCommand::Playlist(playlist)).unwrap();
     }
-    pub fn get_playlist(&self) -> Option<Arc<[Uuid]>> {
-        self.player_state.lock().unwrap().playlist.clone()
+    pub fn url_playlist(&self, playlist: Option<Arc<[crate::api::SongDTO]>>) {
+        self.sender.try_send(PlaybackCommand::UrlPlaylist(playlist)).unwrap();
     }
-    pub fn seek(&self, position: Duration) {
-        self.sender.try_send(PlaybackCommand::Seek(position)).unwrap();
+    pub fn url_playback(&self, uuid: Option<Uuid>, song_dto: crate::api::SongDTO, commands_after_load: impl FnOnce(&Player) + Send + 'static) {
+        self.sender.try_send(PlaybackCommand::UrlPlayback(uuid, song_dto, Box::new(commands_after_load))).unwrap();
+    }
+    pub fn previous(&self) {
+        let player_state = self.player_state.lock().unwrap();
+        let playlist = player_state.playlist.as_ref().cloned();
+        let url_playlist = player_state.url_playlist.as_ref().cloned();
+        drop(player_state);
+        
+        if let Some(playlist) = playlist {
+            let lock = self.state.lock().unwrap();
+            if let Some(state) = lock.as_ref() {
+                let current_index = playlist.iter().position(|&uuid| uuid == state.song());
+                if let Some(idx) = current_index && idx > 0 {
+                    let prev_idx = idx - 1;
+                    
+                    if let Some(url_playlist) = &url_playlist && url_playlist.len() == playlist.len() {
+                        crate::debug_log!("Previous: Loading previous URL song at index {}", prev_idx);
+                        self.url_playback(Some(playlist[prev_idx]), url_playlist[prev_idx].clone(), Player::play);
+                    } else {
+                        crate::debug_log!("Previous: Loading previous DB song");
+                        self.song(Some(playlist[prev_idx]), Player::play);
+                    }
+                }
+            }
+        }
+    }
+    pub fn next_song(&self) {
+        self.sender.try_send(PlaybackCommand::NextSong).unwrap();
     }
     pub fn song(&self, song: Option<Uuid>, commands_after_load: impl FnOnce(&Player) + Send + 'static) {
         self.sender.try_send(PlaybackCommand::Song(song, Box::new(commands_after_load))).unwrap();
     }
-    
-    pub fn previous(&self) {
-        // Lock player_state to access the playlist reference
-        let player_state = self.player_state.lock().unwrap();
-        let playlist_option = player_state.playlist.as_ref().map(|p| p.clone());
-
-        // Lock state to get current song UUID
-        let player_state_guard = self.state.lock().unwrap();
-        let current_uuid_option = player_state_guard.as_ref().map(|s| s.song());
-        drop(player_state_guard);
-
-        if let (Some(playlist), Some(current_uuid)) = (playlist_option, current_uuid_option) {
-            // Find the index of the currently playing song
-            let current_index = playlist.iter().position(|&uuid| uuid == current_uuid);
-
-            if let Some(index) = current_index {
-                // Check if there is a song available before the current one
-                if index > 0 {
-                    let prev_index = index - 1;
-                    let prev_uuid = playlist[prev_index];
-
-                    // Signal the player to load and play the previous song UUID.
-                    self.song(Some(prev_uuid), Player::play);
-                }
-            }
-        }
-        // If no playlist is set or the current song is the first in the list, do nothing.
+    pub fn seek(&self, position: Duration) {
+        self.sender.try_send(PlaybackCommand::Seek(position)).unwrap();
     }
-
-    pub fn next_song(&self) {
-        let playlist = self.player_state.lock().unwrap().playlist.clone();
-        let state = *self.state.lock().unwrap();
-
-        if let (Some(playlist), Some(state_ref)) = (playlist, state) {
-            let current_index = playlist.iter().position(|&uuid| uuid == state_ref.song()).map(|i| i);
-
-            if let Some(idx) = current_index {
-                let (len, _) = (playlist.len(), idx + 1);
-
-                if let Some(next_idx) = Some(idx + 1).filter(|&i| i < len) {
-                    let next_uuid = playlist[next_idx];
-
-                    // Reset state and signal new song request
-                    {
-                        let mut lock = self.state.lock().unwrap();
-                        *lock = None;
-                    }
-
-                    // This sends a request to the background thread to load and play the next song,
-                    // forcing the state machine to re-evaluate the playlist using the internal logic.
-                    self.song(Some(next_uuid), Player::play);
-                }
-            }
-        }
+    pub fn get_playlist(&self) -> Option<Arc<[Uuid]>> {
+        self.player_state.lock().unwrap().playlist.clone()
     }
-
     fn internal(&mut self) {
-        self.refs = None;
+        if let Some(refs) = &self.refs { refs.fetch_add(1, Ordering::Relaxed); }
     }
 }
-
-impl Clone for Player {
-    fn clone(&self) -> Self {
-        if let Some(refs) = &self.refs { refs.fetch_add(1, std::sync::atomic::Ordering::Relaxed); }
-        Self {
-            refs: self.refs.clone(),
-            state: self.state.clone(),
-            player_state: self.player_state.clone(),
-            sender: self.sender.clone(),
-        }
-    }
-}
-
 impl Drop for Player {
     fn drop(&mut self) {
-        if let Some(refs) = &self.refs && refs.fetch_sub(1, std::sync::atomic::Ordering::Relaxed) == 1 {
+        if let Some(refs) = &self.refs && refs.fetch_sub(1, Ordering::Relaxed) == 1 {
             self.sender.try_send(PlaybackCommand::Shutdown).unwrap();
         }
     }

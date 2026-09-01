@@ -63,6 +63,39 @@ mod internal {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
+pub struct Playlist {
+    pub id: Uuid,
+    #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
+    pub name: Arc<str>,
+    #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
+    pub creator: Arc<str>,
+}
+
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct PlaylistDetail {
+    pub name: Arc<str>,
+    pub songs: Vec<SongDTO>,
+}
+
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct SongDTO {
+    pub title: Arc<str>,
+    pub audio_url: Arc<str>,
+    pub cover_art: Option<Arc<str>>, // URL for cover art
+}
+
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct Artist {
     pub id: Uuid,
     #[serde(default)]
@@ -139,6 +172,26 @@ impl LazySongDatabase {
             client,
             map,
         }
+    }
+
+    pub async fn get_public_playlists(&self) -> anyhow::Result<Vec<Playlist>> {
+        let response = self.client.get("https://api.neurokaraoke.com/api/playlist/public").send().await?;
+        let json: Value = response.json().await?;
+        
+        // The API returns an Array directly, not an object containing "items"
+        let playlists: Vec<Playlist> = serde_json::from_value(json)?;
+        Ok(playlists)
+    }
+
+    pub async fn get_playlist_details(&self, id: Uuid) -> anyhow::Result<PlaylistDetail> {
+        let response = self.client.get(format!("https://api.neurokaraoke.com/public/playlist/{}", id)).send().await?;
+        let json: Value = response.json().await?;
+        
+        // Log for debugging
+        // eprintln!("Raw Playlist Detail response: {:?}", json);
+        
+        let detail: PlaylistDetail = serde_json::from_value(json)?;
+        Ok(detail)
     }
 
     pub fn get<T>(&self, id: &Uuid, f: impl FnOnce(&Song) -> T) -> LoadingState<T> {

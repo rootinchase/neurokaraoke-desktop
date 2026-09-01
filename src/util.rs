@@ -3,7 +3,14 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{DeserializeAs, SerializeAs};
 use tokio::sync::Mutex;
 
-// for use with #[serde_as(as = ...)]
+#[macro_export]
+macro_rules! debug_log {
+    ($($arg:tt)*) => {
+        if std::env::var("DEBUG_PLAYBACK").is_ok() {
+            eprintln!($($arg)*);
+        }
+    };
+}
 #[allow(dead_code)]
 pub struct IntoAs<T>(std::marker::PhantomData<T>);
 impl<'de, U, T: Deserialize<'de> + Into<U>> DeserializeAs<'de, U> for IntoAs<T> {

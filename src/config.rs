@@ -60,7 +60,7 @@ pub struct Config {
     #[serde(default)]
     pub shuffle: bool,
     #[serde(default)]
-    pub looping: bool,
+    pub loop_mode: crate::audio::LoopMode,
 
     #[serde(default)]
     pub theme: SelectableTheme,
@@ -89,7 +89,7 @@ impl Default for Config {
         Self {
             volume: defaults::volume(),
             shuffle: false,
-            looping: false,
+            loop_mode: crate::audio::LoopMode::None,
 
             theme: Default::default(),
 

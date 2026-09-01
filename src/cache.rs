@@ -50,19 +50,27 @@ impl Cache {
 
     pub fn load_or_default_custom<T: DeserializeOwned + Default>(filename: &str) -> T {
         let path = cache_dir().join(filename);
+        crate::debug_log!("Loading cache from: {:?}", path);
         let data = match std::fs::read(&path) {
             Ok(d) => Some(d),
             Err(e) => {
-                eprintln!("cache load failed: {}", e);
+                crate::debug_log!("cache load failed: {}", e);
                 None
             },
         };
 
         if let Some(data) = data {
-            ron::de::from_bytes(data.as_slice()).unwrap_or_else(|e| {
-                eprintln!("cache load failed: {}", e);
-                T::default()
-            })
+            let res = ron::de::from_bytes(data.as_slice());
+            match res {
+                Ok(val) => {
+                    crate::debug_log!("Cache loaded successfully");
+                    val
+                },
+                Err(e) => {
+                    crate::debug_log!("cache deserialization failed: {}", e);
+                    T::default()
+                }
+            }
         } else {
             T::default()
         }

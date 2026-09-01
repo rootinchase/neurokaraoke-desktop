@@ -1,10 +1,11 @@
 pub mod home;
+pub mod playlist;
 
 use eframe::egui::{include_image, ImageSource};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ActivityType {
-    Home, Search, Profile
+    Home, Search, Profile, Playlists
 }
 
 impl ActivityType {
@@ -13,6 +14,7 @@ impl ActivityType {
             Self::Home => "Home",
             Self::Search => "Search",
             Self::Profile => "Profile",
+            Self::Playlists => "Public Playlists",
         }
     }
 
@@ -20,6 +22,7 @@ impl ActivityType {
         match self {
             Self::Home => Some(include_image!("../../assets/home.png")),
             Self::Search => Some(include_image!("../../assets/search.png")),
+            Self::Playlists => Some(include_image!("../../assets/search.png")),
             _ => None,
         }
     }

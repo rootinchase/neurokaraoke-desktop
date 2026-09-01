@@ -8,9 +8,9 @@ mod cache;
 mod config;
 
 use std::collections::HashMap;
-use crate::activity::ActivityType;
+use crate::activity::{ActivityType, home::HomeActivity, playlist::PlaylistActivity};
 use crate::api::{LazySongDatabase, LoadingState, Song};
-use crate::audio::{Player, PlaybackState};
+use crate::audio::{Player, PlaybackState, LoopMode};
 use crate::cache::Cache;
 use crate::config::Config;
 use crate::theme::{SelectableTheme, ThemeManager};
@@ -21,7 +21,6 @@ use reqwest::Client;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
-use tokio::sync::mpsc;
 use tokio::time::Instant;
 use uuid::Uuid;
 
@@ -60,7 +59,8 @@ pub struct App {
 
     // activity stuff
     activity: ActivityType,
-    //home_activity: HomeActivity,
+    home_activity: HomeActivity,
+    playlist_activity: PlaylistActivity,
 
     current_song_uuid: Option<Uuid>,
     current_playback_state: Option<PlaybackState>,
@@ -75,7 +75,7 @@ pub struct App {
 impl App {
     fn new(creation_context: &eframe::CreationContext<'_>, ctx: &egui::Context, rt: Arc<tokio::runtime::Runtime>) -> Self {
         egui_extras::install_image_loaders(ctx);
-
+        // ... (skipping font loading, same as before) ...
         let mut fonts = egui::FontDefinitions::default();
 
         fonts.font_data.insert(
@@ -114,7 +114,7 @@ impl App {
         let player = Player::new(rt.clone(), ctx.clone(), songs.clone(), cache.clone());
         player.volume(config.volume);
         player.shuffle(config.shuffle);
-        player.looping(config.looping);
+        player.looping(config.loop_mode);
 
         let s = songs.clone();
         let c = cache.clone();
@@ -137,10 +137,10 @@ impl App {
             }
         }, rt.handle().clone(), client.clone(), config.cache.clone());
 
-        let mut media_controls = init_souvlaki(creation_context);
+        let mut media_controls = init_souvlaki();
         if let Some(controls) = &mut media_controls {
             let player_clone = player.clone();
-            let _ = controls.attach(move |event| {
+            if let Err(e) = controls.attach(move |event| {
                 match event {
                     MediaControlEvent::Play => { player_clone.play() },
                     MediaControlEvent::Pause => { player_clone.pause(); },
@@ -155,12 +155,14 @@ impl App {
                     MediaControlEvent::SetVolume(vol) => player_clone.volume(vol as f32),
                     _ => {}
                 }
-            });
+            }) {
+                eprintln!("Failed to attach media controls: {:?}", e);
+            }
         }
 
         Self {
             cache,
-            songs,
+            songs: songs.clone(),
             player,
 
             media_controls,
@@ -171,7 +173,8 @@ impl App {
             theme: ThemeManager::new(config.theme.as_theme()),
 
             activity: ActivityType::Home,
-            //home_activity: HomeActivity::new(ctx.clone()),
+            home_activity: HomeActivity::new(ctx.clone()),
+            playlist_activity: PlaylistActivity::new(ctx.clone(), songs),
 
             current_song_uuid: None,
             current_playback_state: None,
@@ -229,7 +232,7 @@ impl App {
     }
 }
 
-fn init_souvlaki(cc: &eframe::CreationContext<'_>) -> Option<MediaControls> {
+fn init_souvlaki() -> Option<MediaControls> {
     let hwnd_ptr: Option<*mut std::ffi::c_void> = None;
 
     #[cfg(target_os = "windows")]
@@ -330,6 +333,7 @@ impl eframe::App for App {
                 // nav buttons
                 nav_button(ui, ActivityType::Home);
                 nav_button(ui, ActivityType::Search);
+                nav_button(ui, ActivityType::Playlists);
 
                 // bottom area
                 ui.with_layout(
@@ -402,20 +406,50 @@ impl eframe::App for App {
                 );
             });
 
-        if let Some(state) = self.player.get_playback_state() && let LoadingState::Loaded(song) = self.songs.get(&state.song(), |song| song.clone()) {
-            if self.current_song_uuid != Some(state.song()) {
-                self.current_song_uuid = Some(state.song());
-                
-                let cover_art_url = song.cover_art.as_ref()
-                    .map(|ca| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90", ca.cloudflare_id))
-                    .unwrap_or_else(|| "".to_string());
-                
-                self.update_os_metadata(
-                    &song.title,
-                    &format!("{} (feat. {})", song.original_artists.join(" & "), song.cover_artists.join(" & ")),
-                    state.duration().as_secs(),
-                    &cover_art_url
-                );
+        if let Some(state) = self.player.get_playback_state() {
+            let mut song = match self.songs.get(&state.song(), |song| song.clone()) {
+                LoadingState::Loaded(s) => Some(s),
+                _ => None,
+            };
+            
+            // Fallback to URL-based metadata if database lookup failed
+            if song.is_none() {
+                if let Ok(meta) = self.player.current_url_metadata.lock() {
+                    if let Some(meta) = &*meta {
+                        // Map SongDTO to a mock Song for UI consistency, or just handle it separately in the UI
+                        // For now let's just make a dummy Song
+                        song = Some(crate::api::Song {
+                            id: state.song(),
+                            title: meta.title.clone(),
+                            absolute_path: None,
+                            opus: None,
+                            cover_artists: Arc::from([]),
+                            original_artists: Arc::from([]),
+                            cover_art: None, // Need to handle cover art URL here!
+                        });
+                    }
+                }
+            }
+            
+            if let Some(s) = &song {
+                if self.current_song_uuid != Some(state.song()) {
+                    self.current_song_uuid = Some(state.song());
+                    
+                    let cover_art_url = if let Some(meta) = self.player.current_url_metadata.lock().unwrap().as_ref() {
+                        meta.cover_art.as_ref().map(|url| url.to_string()).unwrap_or_else(|| "".to_string())
+                    } else {
+                        s.cover_art.as_ref()
+                            .map(|ca| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90", ca.cloudflare_id))
+                            .unwrap_or_else(|| "".to_string())
+                    };
+                    
+                    self.update_os_metadata(
+                        &s.title,
+                        &format!("{} (feat. {})", s.original_artists.join(" & "), s.cover_artists.join(" & ")),
+                        state.duration().as_secs(),
+                        &cover_art_url
+                    );
+                }
             }
 
             let now = Instant::now();
@@ -491,18 +525,32 @@ impl eframe::App for App {
                     ui.columns_const(|columns: &mut [Ui; 3]| {
                         columns[0].horizontal(|ui| {
                             ui.add_space(7.5);
-                            if let Some(cover_art) = &song.cover_art {
-                                ui.add(egui::Image::new(
-                                    format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90", cover_art.cloudflare_id),
-                                    //self.artwork[song.cover_art_uuid.unwrap_or_else(|| "68441d52-a231-4c0d-a221-92e1b52ace2e".parse().unwrap())].cloudflare_url.as_str().to_string() +
-                                    //"w=70,h=70,fit=cover,quality=90"
-                                ).fit_to_exact_size(Vec2::new(70.0, 70.0)).corner_radius(8.0));
+                            let mut art_url = None;
+                            if let Some(s) = &song {
+                                if let Some(cover_art) = &s.cover_art {
+                                    art_url = Some(format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90", cover_art.cloudflare_id));
+                                }
+                            }
+                            if art_url.is_none() {
+                                if let Ok(meta) = self.player.current_url_metadata.lock() {
+                                    if let Some(meta) = &*meta {
+                                        art_url = meta.cover_art.as_ref().map(|url| url.to_string());
+                                    }
+                                }
+                            }
+                            
+                            if let Some(url) = art_url {
+                                ui.add(egui::Image::new(url)
+                                    .fit_to_exact_size(Vec2::new(70.0, 70.0)).corner_radius(8.0));
                             }
 
                             ui.with_layout(Layout::top_down(Align::LEFT), |ui| {
                                 ui.add_space(5.0);
-                                ui.add(egui::Label::new(RichText::new(format!("{}", song.title)).size(24.0)).wrap_mode(TextWrapMode::Truncate));
-                                ui.add(egui::Label::new(RichText::new(format!("{} (feat. {})", song.original_artists.join(" & "), song.cover_artists.join(" & "))).color(self.theme.text_muted).size(12.0)).wrap_mode(TextWrapMode::Truncate));
+                                let title = song.as_ref().map(|s| s.title.to_string()).unwrap_or_else(|| "Unknown Song".to_string());
+                                ui.add(egui::Label::new(RichText::new(title).size(24.0)).wrap_mode(TextWrapMode::Truncate));
+                                if let Some(s) = &song {
+                                    ui.add(egui::Label::new(RichText::new(format!("{} (feat. {})", s.original_artists.join(" & "), s.cover_artists.join(" & "))).color(self.theme.text_muted).size(12.0)).wrap_mode(TextWrapMode::Truncate));
+                                }
                                 let position = state.position().as_secs();
                                 let duration = state.duration().as_secs();
                                 ui.add(egui::Label::new(RichText::new(format!("{}:{:02} / {}:{:02}", position / 60, position % 60, duration / 60, duration % 60)).color(self.theme.text_muted).size(10.0)).wrap_mode(TextWrapMode::Truncate))
@@ -559,10 +607,20 @@ impl eframe::App for App {
 
                             ui.add_space(10.0);
 
-                            btn(&self.theme, ui, include_image!("../assets/loop.png"), self.config.looping, |x| {
-                                self.config.looping = x;
-                                self.player.looping(x);
+                            btn(&self.theme, ui, match self.config.loop_mode {
+                                LoopMode::One => include_image!("../assets/loop-one.svg"),
+                                _ => include_image!("../assets/loop.svg"),
+                            }, self.config.loop_mode != LoopMode::None, |_| {
+                                let next_mode = match self.config.loop_mode {
+                                    LoopMode::None => LoopMode::All,
+                                    LoopMode::One => LoopMode::None,
+                                    LoopMode::All => LoopMode::One,
+                                };
+                                crate::debug_log!("Loop mode toggled: {:?} -> {:?}", self.config.loop_mode, next_mode);
+                                self.config.loop_mode = next_mode;
+                                self.player.looping(next_mode);
                             });
+
 
                             ui.add_space(10.0);
 
@@ -659,6 +717,55 @@ impl eframe::App for App {
                                     });
                                 });
                             }
+                        } else if self.activity == ActivityType::Playlists {
+                            egui::ScrollArea::vertical().show(ui, |ui| {
+                                ui.label("Public Playlists:");
+                                match &*self.playlist_activity.playlists.blocking_lock() {
+                                    LoadingState::Loaded(playlists) => {
+                                        for playlist in playlists {
+                                            if ui.button(format!("{} by {}", playlist.name, playlist.creator)).clicked() {
+                                                self.playlist_activity.select_playlist(playlist.id);
+                                            }
+                                        }
+                                    },
+                                    LoadingState::Loading => {
+                                        ui.label("Loading...");
+                                    },
+                                    LoadingState::Failed(err) => {
+                                        ui.label(format!("Error loading playlists: {}", err));
+                                    }
+                                }
+                                
+                                if let Some(selected) = &*self.playlist_activity.selected_playlist.blocking_lock() {
+                                    ui.separator();
+                                    match selected {
+                                        LoadingState::Loaded(detail) => {
+                                            ui.label(format!("Playlist: {}", detail.name));
+                                            if ui.button("Play Playlist").clicked() {
+                                                let songs = &detail.songs;
+                                                crate::debug_log!("Playlist '{}' has {} songs.", detail.name, songs.len());
+                                                // Restore playlist for Player logic
+                                                let pl: Vec<Uuid> = songs.iter().map(|_| Uuid::new_v4()).collect();
+                                                self.player.playlist(Some(pl.clone().into()));
+                                                self.player.url_playlist(Some(songs.clone().into()));
+                                                
+                                                if let Some(first_song) = songs.first() {
+                                                    self.player.url_playback(Some(pl[0]), first_song.clone(), Player::play);
+                                                }
+                                            }
+                                            for song in &detail.songs {
+                                                ui.label(song.title.to_string());
+                                            }
+                                        },
+                                        LoadingState::Loading => {
+                                            ui.label("Loading playlist details...");
+                                        },
+                                        LoadingState::Failed(err) => {
+                                            ui.label(format!("Error loading playlist details: {}", err));
+                                        }
+                                    }
+                                }
+                            });
                         }
                     });
                 });
