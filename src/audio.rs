@@ -73,6 +73,7 @@ enum PlaybackCommand {
     SongReady(Uuid, std::fs::File),
     Seek(Duration),
     Shutdown,
+    NextSong, // NEW: Added NextSong command
 }
 
 #[derive(Debug)]
@@ -151,9 +152,8 @@ impl Player {
                         let state = state.clone();
                         drop(lock);
 
-                        if if ordered_playlist.is_some() {
+                        if let Some(playlist) = ordered_playlist.as_ref().map(|p| p.clone()) {
                             let (len, idx) = {
-                                let playlist = ordered_playlist.as_ref().unwrap();
                                 let mut idx = 0;
                                 for i in 0..playlist.len() {
                                     if state.song == playlist[i] {
@@ -161,7 +161,6 @@ impl Player {
                                         break;
                                     }
                                 }
-
                                 (playlist.len(), idx)
                             };
 
@@ -172,26 +171,29 @@ impl Player {
                             }
 
                             if idx >= len {
+                                // Song ended, check loop/shuffle
                                 if looping {
                                     if shuffle { reorder(&mut ordered_playlist, shuffle, false); }
                                     let playlist = ordered_playlist.as_ref().unwrap();
                                     player.song(Some(playlist[idx % playlist.len()]), Player::play);
-                                    false
+                                    return false
                                 } else {
                                     player.player_state.lock().unwrap().playlist = None;
                                     ordered_playlist = None;
-                                    true
+                                    return true
                                 }
                             } else {
-                                player.song(Some(ordered_playlist.as_ref().unwrap()[idx]), Player::play);
-                                false
+                                // Normal transition
+                                player.song(Some(playlist[idx]), Player::play);
+                                return false
                             }
                         } else {
+                            // No playlist set yet
                             if looping {
                                 player.song(Some(state.song), Player::play);
-                                false
+                                return false
                             } else {
-                                true
+                                return true
                             }
                         } {
                             *player.state.lock().unwrap() = None;
@@ -250,6 +252,30 @@ impl Player {
 
                                     state.seek(position);
                                     ctx.request_repaint();
+                                }
+                            },
+                            PlaybackCommand::NextSong => {
+                                let lock = player.state.lock().unwrap();
+                                if let Some(playlist) = player.player_state.lock().unwrap().playlist.clone() {
+                                    if let Some(state) = lock.as_ref() {
+                                        let current_index = playlist.iter().position(|&uuid| uuid == state.song());
+
+                                        if let Some(idx) = current_index {
+                                            let (len, _) = (playlist.len(), idx + 1);
+
+                                            if let Some(next_idx) = (idx + 1).checked_add(1).filter(|&i| i < len) {
+                                                let next_uuid = playlist[next_idx];
+
+                                                // Reset state and signal new song request
+                                                let mut lock = player.state.lock().unwrap();
+                                                *lock = None;
+
+                                                // This sends a request to the background thread to load and play the next song
+                                                player.song(Some(next_uuid), Player::play);
+                                                ctx.request_repaint();
+                                            }
+                                        }
+                                    }
                                 }
                             },
                             PlaybackCommand::Shutdown => break true,
@@ -330,7 +356,7 @@ impl Player {
                         Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break false,
                         Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => break true,
                     }
-                } { break }
+                } { break false }
 
                 thread::sleep(Duration::from_millis(10));
             }
@@ -369,6 +395,69 @@ impl Player {
     }
     pub fn song(&self, song: Option<Uuid>, commands_after_load: impl FnOnce(&Player) + Send + 'static) {
         self.sender.try_send(PlaybackCommand::Song(song, Box::new(commands_after_load))).unwrap();
+    }
+
+    pub fn skip(&self) {
+        if let Some(state) = self.state.lock().unwrap().as_ref() {
+            // Skip forward 15 seconds
+            let new_position = Duration::from_secs(15);
+            self.seek(new_position);
+        }
+    }
+
+    pub fn previous(&self) {
+        // Lock player_state to access the playlist reference
+        let player_state = self.player_state.lock().unwrap();
+        let playlist_option = player_state.playlist.as_ref().map(|p| p.clone());
+
+        // Lock state to get current song UUID
+        let player_state_guard = self.state.lock().unwrap();
+        let current_uuid_option = player_state_guard.as_ref().map(|s| s.song());
+        drop(player_state_guard);
+
+        if let (Some(playlist), Some(current_uuid)) = (playlist_option, current_uuid_option) {
+            // Find the index of the currently playing song
+            let current_index = playlist.iter().position(|&uuid| uuid == current_uuid);
+
+            if let Some(index) = current_index {
+                // Check if there is a song available before the current one
+                if index > 0 {
+                    let prev_index = index - 1;
+                    let prev_uuid = playlist[prev_index];
+
+                    // Signal the player to load and play the previous song UUID.
+                    self.song(Some(prev_uuid), Player::play);
+                }
+            }
+        }
+        // If no playlist is set or the current song is the first in the list, do nothing.
+    }
+
+    pub fn next_song(&self) {
+        let playlist = self.player_state.lock().unwrap().playlist.clone();
+        let state = *self.state.lock().unwrap();
+
+        if let (Some(playlist), Some(state_ref)) = (playlist, state) {
+            let current_index = playlist.iter().position(|&uuid| uuid == state_ref.song()).map(|i| i);
+
+            if let Some(idx) = current_index {
+                let (len, _) = (playlist.len(), idx + 1);
+
+                if let Some(next_idx) = (idx + 1).checked_add(1).filter(|&i| i < len) {
+                    let next_uuid = playlist[next_idx];
+
+                    // Reset state and signal new song request
+                    {
+                        let mut lock = self.state.lock().unwrap();
+                        *lock = None;
+                    }
+
+                    // This sends a request to the background thread to load and play the next song,
+                    // forcing the state machine to re-evaluate the playlist using the internal logic.
+                    self.song(Some(next_uuid), Player::play);
+                }
+            }
+        }
     }
 
     fn internal(&mut self) {

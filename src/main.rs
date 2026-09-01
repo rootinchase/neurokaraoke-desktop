@@ -405,6 +405,11 @@ impl eframe::App for App {
                                 }
                             }
 
+                            btn(&self.theme, ui, include_image!("../assets/backward.png"), false, |x| {
+                                self.player.previous();
+                            });
+                            ui.add_space(10.0);
+
                             btn(&self.theme, ui, include_image!("../assets/shuffle.png"), self.config.shuffle, |x| {
                                 self.config.shuffle = x;
                                 self.player.shuffle(x);
@@ -435,6 +440,12 @@ impl eframe::App for App {
                             btn(&self.theme, ui, include_image!("../assets/loop.png"), self.config.looping, |x| {
                                 self.config.looping = x;
                                 self.player.looping(x);
+                            });
+
+                            ui.add_space(10.0);
+
+                            btn(&self.theme, ui, include_image!("../assets/forward.png"), false, |x| {
+                                self.player.next_song();
                             });
                         });
 
