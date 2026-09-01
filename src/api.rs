@@ -162,20 +162,49 @@ impl<T> LoadingState<T> {
 pub struct LazySongDatabase {
     pub client: Client,
     pub map: Arc<DashMap<Uuid, LoadingState<Song>>>,
+    pub guest_id: Arc<str>,
 }
 
 impl LazySongDatabase {
     const SONGS_API_URL: &str = "https://api.neurokaraoke.com/api/songs";
 
-    pub fn new(client: Client, map: Arc<DashMap<Uuid, LoadingState<Song>>>) -> Self {
+    pub fn new(client: Client, map: Arc<DashMap<Uuid, LoadingState<Song>>>, guest_id: Arc<str>) -> Self {
         Self {
             client,
             map,
+            guest_id,
         }
     }
 
     pub async fn get_public_playlists(&self) -> anyhow::Result<Vec<Playlist>> {
-        let response = self.client.get("https://api.neurokaraoke.com/api/playlist/public").send().await?;
+        let response = self.client
+            .get("https://api.neurokaraoke.com/api/playlist/public")
+            .header("x-guest-id", self.guest_id.to_string())
+            .send()
+            .await?;
+        
+        if !response.status().is_success() {
+             return Err(anyhow!("Failed to fetch: {}", response.status()));
+        }
+
+        let json: Value = response.json().await?;
+        
+        // The API returns an Array directly, not an object containing "items"
+        let playlists: Vec<Playlist> = serde_json::from_value(json)?;
+        Ok(playlists)
+    }
+
+    pub async fn get_official_setlists(&self) -> anyhow::Result<Vec<Playlist>> {
+        let response = self.client
+            .get("https://api.neurokaraoke.com/api/playlists?isSetlist=True")
+            .header("x-guest-id", self.guest_id.to_string())
+            .send()
+            .await?;
+        
+        if !response.status().is_success() {
+             return Err(anyhow!("Failed to fetch: {}", response.status()));
+        }
+        
         let json: Value = response.json().await?;
         
         // The API returns an Array directly, not an object containing "items"
@@ -184,7 +213,16 @@ impl LazySongDatabase {
     }
 
     pub async fn get_playlist_details(&self, id: Uuid) -> anyhow::Result<PlaylistDetail> {
-        let response = self.client.get(format!("https://api.neurokaraoke.com/public/playlist/{}", id)).send().await?;
+        let response = self.client
+            .get(format!("https://api.neurokaraoke.com/public/playlist/{}", id))
+            .header("x-guest-id", self.guest_id.to_string())
+            .send()
+            .await?;
+        
+        if !response.status().is_success() {
+             return Err(anyhow!("Failed to fetch: {}", response.status()));
+        }
+        
         let json: Value = response.json().await?;
         
         // Log for debugging

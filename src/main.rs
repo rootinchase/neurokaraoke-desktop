@@ -8,7 +8,7 @@ mod cache;
 mod config;
 
 use std::collections::HashMap;
-use crate::activity::{ActivityType, home::HomeActivity, playlist::PlaylistActivity};
+use crate::activity::{ActivityType, home::HomeActivity, playlist::PlaylistActivity, setlist::SetlistActivity};
 use crate::api::{LazySongDatabase, LoadingState, Song};
 use crate::audio::{Player, PlaybackState, LoopMode};
 use crate::cache::Cache;
@@ -61,6 +61,7 @@ pub struct App {
     activity: ActivityType,
     home_activity: HomeActivity,
     playlist_activity: PlaylistActivity,
+    setlist_activity: SetlistActivity,
 
     current_song_uuid: Option<Uuid>,
     current_playback_state: Option<PlaybackState>,
@@ -109,7 +110,8 @@ impl App {
 
         let cache = Cache::load_or_default();
         let client = Client::new();
-        let songs = LazySongDatabase::new(client.clone(), Arc::new(Cache::load_or_default_custom::<HashMap<Uuid, Song>>("songs.ron").into_iter().map(|(uuid, song)| (uuid, LoadingState::Loaded(song))).collect()));
+        let guest_id: Arc<str> = Uuid::new_v4().to_string().into();
+        let songs = LazySongDatabase::new(client.clone(), Arc::new(Cache::load_or_default_custom::<HashMap<Uuid, Song>>("songs.ron").into_iter().map(|(uuid, song)| (uuid, LoadingState::Loaded(song))).collect()), guest_id);
 
         let player = Player::new(rt.clone(), ctx.clone(), songs.clone(), cache.clone());
         player.volume(config.volume);
@@ -174,7 +176,8 @@ impl App {
 
             activity: ActivityType::Home,
             home_activity: HomeActivity::new(ctx.clone()),
-            playlist_activity: PlaylistActivity::new(ctx.clone(), songs),
+            playlist_activity: PlaylistActivity::new(ctx.clone(), songs.clone()),
+            setlist_activity: SetlistActivity::new(ctx.clone(), songs),
 
             current_song_uuid: None,
             current_playback_state: None,
@@ -334,6 +337,7 @@ impl eframe::App for App {
                 nav_button(ui, ActivityType::Home);
                 nav_button(ui, ActivityType::Search);
                 nav_button(ui, ActivityType::Playlists);
+                nav_button(ui, ActivityType::Setlists);
 
                 // bottom area
                 ui.with_layout(
@@ -762,6 +766,55 @@ impl eframe::App for App {
                                         },
                                         LoadingState::Failed(err) => {
                                             ui.label(format!("Error loading playlist details: {}", err));
+                                        }
+                                    }
+                                }
+                            });
+                        } else if self.activity == ActivityType::Setlists {
+                            egui::ScrollArea::vertical().show(ui, |ui| {
+                                ui.label("Official Setlists:");
+                                match &*self.setlist_activity.setlists.blocking_lock() {
+                                    LoadingState::Loaded(setlists) => {
+                                        for setlist in setlists {
+                                            if ui.button(format!("{} by {}", setlist.name, setlist.creator)).clicked() {
+                                                self.setlist_activity.select_setlist(setlist.id);
+                                            }
+                                        }
+                                    },
+                                    LoadingState::Loading => {
+                                        ui.label("Loading...");
+                                    },
+                                    LoadingState::Failed(err) => {
+                                        ui.label(format!("Error loading setlists: {}", err));
+                                    }
+                                }
+                                
+                                if let Some(selected) = &*self.setlist_activity.selected_setlist.blocking_lock() {
+                                    ui.separator();
+                                    match selected {
+                                        LoadingState::Loaded(detail) => {
+                                            ui.label(format!("Setlist: {}", detail.name));
+                                            if ui.button("Play Setlist").clicked() {
+                                                let songs = &detail.songs;
+                                                crate::debug_log!("Setlist '{}' has {} songs.", detail.name, songs.len());
+                                                // Restore playlist for Player logic
+                                                let pl: Vec<Uuid> = songs.iter().map(|_| Uuid::new_v4()).collect();
+                                                self.player.playlist(Some(pl.clone().into()));
+                                                self.player.url_playlist(Some(songs.clone().into()));
+                                                
+                                                if let Some(first_song) = songs.first() {
+                                                    self.player.url_playback(Some(pl[0]), first_song.clone(), Player::play);
+                                                }
+                                            }
+                                            for song in &detail.songs {
+                                                ui.label(song.title.to_string());
+                                            }
+                                        },
+                                        LoadingState::Loading => {
+                                            ui.label("Loading setlist details...");
+                                        },
+                                        LoadingState::Failed(err) => {
+                                            ui.label(format!("Error loading setlist details: {}", err));
                                         }
                                     }
                                 }
