@@ -165,33 +165,6 @@ impl Cache {
         }
     }
 
-    pub async fn get_or_else<F: Future<Output = Result<B, E>>, B: AsRef<[u8]>, E: std::error::Error + Send + Sync + 'static>(&self, key: &(Uuid, AssetType), f: impl FnOnce() -> F) -> anyhow::Result<tokio::fs::File> {
-        match self.get(key).await {
-            Some(f) => Ok(f),
-            None => {
-                let id = self.next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                let path = cache_dir().join(format!("assets/{:016x}", id));
-                let mut file = tokio::fs::File::create(&path).await?;
-                let buf = f().await?;
-                let buf_ref = buf.as_ref();
-                let size = buf_ref.len();
-                file.write_all(buf_ref).await?;
-                drop(buf);
-                file.flush().await?;
-                drop(file);
-                self.entries.insert(*key, CacheEntry {
-                    id,
-                    last_touched: SystemTime::now()
-                        .duration_since(SystemTime::UNIX_EPOCH)
-                        .expect("Time went backwards (why is your clock before 12AM UTC January 1st 1970?)")
-                        .as_secs(),
-                    size: size as u64,
-                });
-                Ok(tokio::fs::File::open(&path).await?)
-            }
-        }
-    }
-
     pub async fn get_or_download_audio(
         &self,
         client: &Client,
@@ -220,7 +193,7 @@ impl Cache {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let path = cache_dir().join(format!("assets/{:016x}", id));
 
-        // 4. Flush raw binary payload to assets index
+        // 4. Flush raw binary payload to asset index
         let mut file = tokio::fs::File::create(&path).await?;
         file.write_all(&bytes).await?;
         file.flush().await?;
@@ -237,6 +210,54 @@ impl Cache {
         });
 
         Ok(tokio::fs::File::open(&path).await?)
+    }
+
+    pub async fn get_or_download_image(
+        &self,
+        client: &Client,
+        cloudflare_id: Uuid,
+        url: String,
+    ) -> anyhow::Result<PathBuf> {
+        let key = (cloudflare_id, AssetType::Image);
+
+        // 1. Check if already tracked in the cache index
+        if let Some(entry) = self.entries.get(&key) {
+            let path = cache_dir().join(format!("assets/{:016x}", entry.id));
+            if tokio::fs::metadata(&path).await.is_ok() {
+                return Ok(path);
+            }
+        }
+
+        crate::debug_log!("🌍 [Cache API] IMAGE CACHE MISS: Downloading artwork: {}", cloudflare_id);
+
+        // 2. Cache miss: download the byte payload
+        let response = client.get(url).send().await?;
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!("Image request failed with status: {}", response.status()));
+        }
+        let bytes = response.bytes().await?;
+        let size = bytes.len() as u64;
+
+        // 3. Reserve a clean file slot
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let path = cache_dir().join(format!("assets/{:016x}", id));
+
+        // 4. Flush image binary data to the asset index
+        let mut file = tokio::fs::File::create(&path).await?;
+        file.write_all(&bytes).await?;
+        file.flush().await?;
+
+        // 5. Track inside the DashMap structure for background cleanup compatibility
+        self.entries.insert(key, CacheEntry {
+            id,
+            last_touched: SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            size,
+        });
+
+        Ok(path)
     }
 
     pub fn is_online(&self) -> bool {

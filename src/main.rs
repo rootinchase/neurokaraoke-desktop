@@ -8,7 +8,7 @@ mod cache;
 mod config;
 
 use std::collections::HashMap;
-use crate::activity::{ActivityType, home::HomeActivity, playlist::PlaylistActivity, setlist::SetlistActivity};
+use crate::activity::{ActivityType, playlist::PlaylistActivity, setlist::SetlistActivity};
 use crate::api::{LazySongDatabase, LoadingState, Song};
 use crate::audio::{Player, PlaybackState, LoopMode};
 use crate::cache::Cache;
@@ -59,7 +59,6 @@ pub struct App {
 
     // activity stuff
     activity: ActivityType,
-    home_activity: HomeActivity,
     playlist_activity: PlaylistActivity,
     setlist_activity: SetlistActivity,
 
@@ -70,6 +69,11 @@ pub struct App {
     rt: Arc<tokio::runtime::Runtime>,
     client: Client,
     pub config: Config,
+
+    // Image caching
+    cached_art_paths: Arc<dashmap::DashMap<Arc<str>, String>>,
+    active_art_downloads: Arc<dashmap::DashSet<Arc<str>>>,
+
 }
 
 
@@ -166,6 +170,9 @@ impl App {
             }
         }
 
+        let cached_art_paths = Arc::new(dashmap::DashMap::new());
+        let active_art_downloads = Arc::new(dashmap::DashSet::new());
+
         Self {
             cache,
             songs: songs.clone(),
@@ -179,7 +186,6 @@ impl App {
             theme: ThemeManager::new(config.theme.as_theme()),
 
             activity: ActivityType::Home,
-            home_activity: HomeActivity::new(ctx.clone()),
             playlist_activity: PlaylistActivity::new(ctx.clone(), songs.clone()),
             setlist_activity: SetlistActivity::new(ctx.clone(), songs),
 
@@ -190,10 +196,67 @@ impl App {
             rt,
             client,
             config,
+
+            // Image Caching
+            cached_art_paths,
+            active_art_downloads,
         }
     }
 
+    fn resolve_artwork_uri(&self, ctx: &egui::Context, cloudflare_id: Arc<str>) -> Option<String> {
+        // We will return the matching file path string as our verified key
+        if let Some(path_str) = self.cached_art_paths.get(&cloudflare_id) {
+            return Some(path_str.clone());
+        }
 
+        // 2. Synchronously check if it exists in Cache mapping on startup
+        if let Ok(parsed_uuid) = Uuid::parse_str(&cloudflare_id) {
+            let key = (parsed_uuid, cache::AssetType::Image);
+            if let Some(entry) = self.cache.entries.get(&key) {
+                let path = cache::cache_dir().join(format!("assets/{:016x}", entry.id));
+                if path.exists() {
+                    let path_str = path.to_string_lossy().into_owned();
+                    self.cached_art_paths.insert(cloudflare_id.clone(), path_str.clone());
+                    return Some(path_str);
+                }
+            }
+        }
+
+        // 3. Cache Miss: Spawn background fetch if not already loading
+        if self.active_art_downloads.insert(cloudflare_id.clone()) {
+            let cache = self.cache.clone();
+            let client = self.client.clone();
+            let cached_paths = self.cached_art_paths.clone();
+            let active_downloads = self.active_art_downloads.clone();
+            let ctx_clone = ctx.clone();
+            let id_worker = cloudflare_id.clone();
+
+            debug_log!("Downloading image: https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90",cloudflare_id );
+            let url = format!(
+                "https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90",
+                cloudflare_id
+            );
+
+            self.rt.spawn(async move {
+                if let Ok(target_uuid) = Uuid::parse_str(&id_worker) {
+                    match cache.get_or_download_image(&client, target_uuid, url).await {
+                        Ok(path) => {
+                            let path_str = path.to_string_lossy().into_owned();
+                            cached_paths.insert(id_worker.clone(), path_str.clone());
+                            debug_log!("🖼️ [Image Cache] Successfully cached image path: {}", path_str);
+                        }
+                        Err(e) => {
+                            debug_log!("❌ [Image Cache] Failed to cache image {}: {}", id_worker, e);
+                        }
+                    }
+                }
+                active_downloads.remove(&id_worker);
+                ctx_clone.request_repaint();
+            });
+        }
+
+        None
+    }
 
     pub fn update_os_metadata(&mut self, title: &str, artist: &str, duration_secs: u64, cover_url: &str ) {
         if let Some(controls) = &mut self.media_controls {
@@ -274,7 +337,7 @@ fn init_souvlaki() -> Option<MediaControls> {
 }
 
 
-    fn render_song_table(ui: &mut Ui, songs: &[crate::api::SongDTO]) {
+    fn render_song_table(ui: &mut Ui, songs: &[api::SongDTO]) {
         use egui_extras::{TableBuilder, Column};
 
         TableBuilder::new(ui)
@@ -385,7 +448,7 @@ impl eframe::App for App {
 
                 // bottom area
                 ui.with_layout(
-                    egui::Layout::bottom_up(egui::Align::LEFT),
+                    Layout::bottom_up(Align::LEFT),
                     |ui| {
                         ui.add_space(10.0);
 
@@ -465,7 +528,7 @@ impl eframe::App for App {
                 if let Ok(meta) = self.player.current_url_metadata.lock() {
                     if let Some(meta) = &*meta {
                         // Map SongDTO to a mock Song for UI consistency, or just handle it separately in the UI
-                        song = Some(crate::api::Song {
+                        song = Some(Song {
                             id: state.song(),
                             title: meta.title.clone(),
                             absolute_path: meta.audio_url.clone().map(|s| s.to_string().into()),
@@ -572,23 +635,45 @@ impl eframe::App for App {
                     ui.columns_const(|columns: &mut [Ui; 3]| {
                         columns[0].horizontal(|ui| {
                             ui.add_space(7.5);
-                            let mut art_url = None;
+
+                            let mut current_img_uuid: Option<Arc<str>> = None;
                             if let Some(s) = &song {
                                 if let Some(cover_art) = &s.cover_art {
-                                    art_url = Some(format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90", cover_art.cloudflare_id));
+                                    current_img_uuid = Some(cover_art.cloudflare_id.clone());
                                 }
                             }
-                            if art_url.is_none() {
+                            if current_img_uuid.is_none() {
                                 if let Ok(meta) = self.player.current_url_metadata.lock() {
                                     if let Some(meta) = &*meta {
-                                        art_url = meta.cover_art.as_ref().map(|art| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90", art.cloudflare_id));
+                                        if let Some(art) = &meta.cover_art {
+                                            current_img_uuid = Some(art.cloudflare_id.clone());
+                                        }
                                     }
                                 }
                             }
-                            
-                            if let Some(url) = art_url {
-                                ui.add(egui::Image::new(url)
-                                    .fit_to_exact_size(Vec2::new(70.0, 70.0)).corner_radius(8.0));
+
+                            let mut cached_path_str = None;
+                            if let Some(img_id) = current_img_uuid {
+                                cached_path_str = self.resolve_artwork_uri(ui.ctx(), img_id);
+                            }
+
+                            if let Some(path_str) = cached_path_str {
+                                // Read the raw format-agnostic image bytes from your cache path
+                                if let Ok(image_bytes) = std::fs::read(&path_str) {
+                                    // FIX: Build image source mapping bytes with correct type signature wrapper
+                                    let image_source = ImageSource::Bytes {
+                                        uri: std::borrow::Cow::Owned(format!("bytes://{}", path_str)),
+                                        bytes: image_bytes.into(),
+                                    };
+
+                                    ui.add(egui::Image::new(image_source)
+                                        .fit_to_exact_size(Vec2::new(70.0, 70.0))
+                                        .corner_radius(8.0));
+                                }
+                            } else {
+                                // Fallback skeleton placeholder frame while background download is in progress
+                                let (rect, _) = ui.allocate_exact_size(Vec2::new(70.0, 70.0), Sense::hover());
+                                ui.painter().rect_filled(rect, 8.0, self.theme.background_elevated);
                             }
 
                             ui.with_layout(Layout::top_down(Align::LEFT), |ui| {
@@ -610,7 +695,7 @@ impl eframe::App for App {
 
                             ui.add_space((available - total_width).max(0.0) * 0.5);
 
-                            ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
+                            ui.spacing_mut().item_spacing = Vec2::ZERO;
 
                             fn btn(theme: &ThemeManager, ui: &mut Ui, source: ImageSource, active: bool, set_active: impl FnOnce(bool)) {
                                 let resp = ui.add(egui::Image::new(source).fit_to_exact_size(Vec2::new(24.0, 24.0)).tint(if active { theme.accent_light } else { theme.text })).interact(Sense::click());
@@ -663,7 +748,7 @@ impl eframe::App for App {
                                     LoopMode::One => LoopMode::All,
                                     LoopMode::All => LoopMode::None,
                                 };
-                                crate::debug_log!("Loop mode toggled: {:?} -> {:?}", self.config.loop_mode, next_mode);
+                                debug_log!("Loop mode toggled: {:?} -> {:?}", self.config.loop_mode, next_mode);
                                 self.config.loop_mode = next_mode;
                                 self.player.looping(next_mode);
                             });
@@ -790,7 +875,7 @@ impl eframe::App for App {
                                             ui.label(format!("Playlist: {}", detail.name));
                                             if ui.button("Play Playlist").clicked() {
                                                 let songs = &detail.songs;
-                                                crate::debug_log!("Playlist '{}' has {} songs.", detail.name, songs.len());
+                                                debug_log!("Playlist '{}' has {} songs.", detail.name, songs.len());
                                                 // Restore playlist for Player logic
                                                 let pl: Vec<Uuid> = songs.iter().map(|_| Uuid::new_v4()).collect();
                                                 self.player.clear_playlist();
@@ -838,7 +923,7 @@ impl eframe::App for App {
                                             ui.label(format!("Setlist: {}", detail.name));
                                             if ui.button("Play Setlist").clicked() {
                                                 let songs = &detail.songs;
-                                                crate::debug_log!("Setlist '{}' has {} songs.", detail.name, songs.len());
+                                                debug_log!("Setlist '{}' has {} songs.", detail.name, songs.len());
                                                 // Restore playlist for Player logic
                                                 let pl: Vec<Uuid> = songs.iter().map(|_| Uuid::new_v4()).collect();
                                                 self.player.clear_playlist();

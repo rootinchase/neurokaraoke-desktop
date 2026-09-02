@@ -490,7 +490,7 @@ impl Player {
                                 // FIX: Safely replace raw spaces with percent-encoded equivalents (%20)
                                 // to prevent reqwest from rejecting paths with spaces
                                 let url = url.replace(' ', "%20");
-                                
+
                                 let handle = player.clone();
                                 let client_worker = client.clone();
 

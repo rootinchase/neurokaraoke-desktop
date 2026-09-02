@@ -4,14 +4,17 @@
 
 ## Features:
 - Playlists (kinda)
+- Playing Public Playlists
+- Playing setlists
 - Song playback (opus and standard supported, will try to use opus)
 - Song search (kinda)
 - Shuffle, loop, and volume controls
 - Themes
+- Song and artwork caching
 - ...and more coming soon!
 
 ## Upcoming Features:
 - Authentication & Accounts
 
 ## Contributing:
-just leave a pr/issue and i will check it out
+Please leave a pr/issue and I will check it out

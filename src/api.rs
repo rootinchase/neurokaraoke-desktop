@@ -80,12 +80,12 @@ mod internal {
             let r1: Result<PossiblyWithId, _> = serde_json::from_value(j1);
             assert!(r1.is_ok(), "Failed to deserialize string: {:?}", r1.err());
             
-            // Object with name (should match Id)
+            // Object with name (should match ID)
             let j2 = json!({"name": "Artist 1"});
             let r2: Result<PossiblyWithId, _> = serde_json::from_value(j2);
             assert!(r2.is_ok(), "Failed to deserialize name-only object: {:?}", r2.err());
             
-            // Object with id and name (should match Id)
+            // Object with id and name (should match ID)
             let j3 = json!({"id": "550e8400-e29b-41d4-a716-446655440000", "name": "Artist 1"});
             let r3: Result<PossiblyWithId, _> = serde_json::from_value(j3);
             assert!(r3.is_ok(), "Failed to deserialize full object: {:?}", r3.err());
@@ -295,7 +295,7 @@ impl LazySongDatabase {
         let detail: PlaylistDetail = serde_json::from_value(json)?;
         
         // Log the deserialized detail
-        //crate::debug_log !("Deserialized PlaylistDetail: {:?}", detail);
+        crate::debug_log !("Deserialized PlaylistDetail: {:?}", detail);
         
         Ok(detail)
     }
