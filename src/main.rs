@@ -659,9 +659,9 @@ impl eframe::App for App {
                                 _ => include_image!("../assets/loop.svg"),
                             }, self.config.loop_mode != LoopMode::None, |_| {
                                 let next_mode = match self.config.loop_mode {
-                                    LoopMode::None => LoopMode::All,
-                                    LoopMode::One => LoopMode::None,
-                                    LoopMode::All => LoopMode::One,
+                                    LoopMode::None => LoopMode::One,
+                                    LoopMode::One => LoopMode::All,
+                                    LoopMode::All => LoopMode::None,
                                 };
                                 crate::debug_log!("Loop mode toggled: {:?} -> {:?}", self.config.loop_mode, next_mode);
                                 self.config.loop_mode = next_mode;
