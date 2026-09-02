@@ -16,12 +16,12 @@ mod internal {
     use uuid::Uuid;
 
     // WHY????? I DON'T KNOW??????
-    #[derive(Deserialize)]
+    #[derive(Deserialize, Debug)]
     #[serde(untagged)]
     pub enum PossiblyWithId {
         NoId(Arc<str>),
         Id {
-            id: Uuid,
+            id: Option<Uuid>,
             name: Arc<str>,
         }
     }
@@ -38,8 +38,63 @@ mod internal {
     #[derive(Deserialize)]
     #[serde(untagged)]
     enum MaybeArtists {
-        Artists(Vec<PossiblyWithId>),
+        // The API might send a single string or an array
+        Single(Arc<str>),
+        List(Vec<PossiblyWithId>),
         Optional(Option<Vec<PossiblyWithId>>),
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::MaybeArtists;
+        use super::PossiblyWithId;
+        use serde_json::json;
+
+        #[test]
+        fn test_maybe_artists_deserialization() {
+            // Case 1: Simple list of artists (now List variant)
+            let j1 = json!([{"name": "Artist 1"}]);
+            let r1: Result<MaybeArtists, _> = serde_json::from_value(j1);
+            assert!(r1.is_ok(), "Failed to deserialize list: {:?}", r1.err());
+
+            // Case 2: Null
+            let j2 = json!(null);
+            let r2: Result<MaybeArtists, _> = serde_json::from_value(j2);
+            assert!(r2.is_ok(), "Failed to deserialize null: {:?}", r2.err());
+
+            // Case 3: Empty list
+            let j3 = json!([]);
+            let r3: Result<MaybeArtists, _> = serde_json::from_value(j3);
+            assert!(r3.is_ok(), "Failed to deserialize empty list: {:?}", r3.err());
+
+            // Case 4: Single String
+            let j4 = json!("Artist 1");
+            let r4: Result<MaybeArtists, _> = serde_json::from_value(j4);
+            assert!(r4.is_ok(), "Failed to deserialize single string: {:?}", r4.err());
+        }
+        
+        #[test]
+        fn test_possibly_with_id_deserialization() {
+            // String (should match NoId)
+            let j1 = json!("Artist 1");
+            let r1: Result<PossiblyWithId, _> = serde_json::from_value(j1);
+            assert!(r1.is_ok(), "Failed to deserialize string: {:?}", r1.err());
+            
+            // Object with name (should match Id)
+            let j2 = json!({"name": "Artist 1"});
+            let r2: Result<PossiblyWithId, _> = serde_json::from_value(j2);
+            assert!(r2.is_ok(), "Failed to deserialize name-only object: {:?}", r2.err());
+            
+            // Object with id and name (should match Id)
+            let j3 = json!({"id": "550e8400-e29b-41d4-a716-446655440000", "name": "Artist 1"});
+            let r3: Result<PossiblyWithId, _> = serde_json::from_value(j3);
+            assert!(r3.is_ok(), "Failed to deserialize full object: {:?}", r3.err());
+            
+            // Empty object (should fail?)
+            let j4 = json!({});
+            let r4: Result<PossiblyWithId, _> = serde_json::from_value(j4);
+            assert!(r4.is_err(), "Should have failed to deserialize empty object: {:?}", r4);
+        }
     }
 
     pub fn deserialize_artists<'de, D>(d: D) -> Result<Arc<[Arc<str>]>, D::Error>
@@ -47,7 +102,8 @@ mod internal {
         D: Deserializer<'de>,
     {
         let artists = match MaybeArtists::deserialize(d)? {
-            MaybeArtists::Artists(artists) => artists,
+            MaybeArtists::Single(name) => vec![PossiblyWithId::NoId(name)],
+            MaybeArtists::List(artists) => artists,
             MaybeArtists::Optional(artists) => artists.unwrap_or_default(),
         };
 
@@ -79,6 +135,7 @@ pub struct Playlist {
 #[allow(dead_code)]
 pub struct PlaylistDetail {
     pub name: Arc<str>,
+    #[serde(alias = "songListDTOs")]
     pub songs: Vec<SongDTO>,
 }
 
@@ -88,8 +145,19 @@ pub struct PlaylistDetail {
 #[allow(dead_code)]
 pub struct SongDTO {
     pub title: Arc<str>,
-    pub audio_url: Arc<str>,
-    pub cover_art: Option<Arc<str>>, // URL for cover art
+    #[serde(alias = "cnPath")]
+    pub audio_url: Option<Arc<str>>,
+    pub cover_art: Option<Artwork>,
+    #[serde(default, deserialize_with = "deserialize_artists")]
+    pub original_artists: Arc<[Arc<str>]>,
+    #[serde(default, deserialize_with = "deserialize_artists")]
+    pub cover_artists: Arc<[Arc<str>]>,
+    #[serde(rename = "playCount", default)]
+    pub play_count: Option<u64>,
+    #[serde(rename = "streamDate")]
+    pub stream_date: Option<Arc<str>>,
+    #[serde(rename = "duration", default)]
+    pub duration: Option<u64>,
 }
 
 #[serde_as]
@@ -117,14 +185,13 @@ pub struct Artwork {
     pub id: Uuid,
     #[serde(default)]
     #[serde_as(as = "DefaultOnNull")]
+    pub file_name: Arc<str>,
+    #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
     pub description: Arc<str>,
-    #[serde(default)]
-    #[serde_as(as = "DefaultOnNull")]
     pub cloudflare_id: Arc<str>,
+    pub absolute_path: Arc<str>,
     pub artist: Option<Artist>,
-    #[serde(default)]
-    #[serde_as(as = "DefaultOnNull")]
-    pub upvotes: u64
 }
 
 #[serde_as]
@@ -214,7 +281,7 @@ impl LazySongDatabase {
 
     pub async fn get_playlist_details(&self, id: Uuid) -> anyhow::Result<PlaylistDetail> {
         let response = self.client
-            .get(format!("https://api.neurokaraoke.com/public/playlist/{}", id))
+            .get(format!("https://api.neurokaraoke.com/api/playlist/{}", id))
             .header("x-guest-id", self.guest_id.to_string())
             .send()
             .await?;
@@ -225,10 +292,11 @@ impl LazySongDatabase {
         
         let json: Value = response.json().await?;
         
-        // Log for debugging
-        // eprintln!("Raw Playlist Detail response: {:?}", json);
-        
         let detail: PlaylistDetail = serde_json::from_value(json)?;
+        
+        // Log the deserialized detail
+        //crate::debug_log !("Deserialized PlaylistDetail: {:?}", detail);
+        
         Ok(detail)
     }
 

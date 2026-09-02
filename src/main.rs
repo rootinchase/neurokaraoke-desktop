@@ -74,8 +74,9 @@ pub struct App {
 
 
 impl App {
-    fn new(creation_context: &eframe::CreationContext<'_>, ctx: &egui::Context, rt: Arc<tokio::runtime::Runtime>) -> Self {
+    fn new(ctx: &egui::Context, rt: Arc<tokio::runtime::Runtime>) -> Self {
         egui_extras::install_image_loaders(ctx);
+
         // ... (skipping font loading, same as before) ...
         let mut fonts = egui::FontDefinitions::default();
 
@@ -111,7 +112,9 @@ impl App {
         let cache = Cache::load_or_default();
         let client = Client::new();
         let guest_id: Arc<str> = Uuid::new_v4().to_string().into();
-        let songs = LazySongDatabase::new(client.clone(), Arc::new(Cache::load_or_default_custom::<HashMap<Uuid, Song>>("songs.ron").into_iter().map(|(uuid, song)| (uuid, LoadingState::Loaded(song))).collect()), guest_id);
+        let songs = LazySongDatabase::new(client.clone(),
+              Arc::new(Cache::load_or_default_custom::<HashMap<Uuid, Song>>("songs.ron").into_iter().map(|(uuid, song)|
+              (uuid, LoadingState::Loaded(song))).collect()), guest_id);
 
         let player = Player::new(rt.clone(), ctx.clone(), songs.clone(), cache.clone());
         player.volume(config.volume);
@@ -132,7 +135,8 @@ impl App {
                 if last_update.lock().await.map(|i| Instant::now() - i >= d).unwrap_or(true) && c.is_online() {
                     last_update.lock().await.replace(Instant::now());
                     s.load_all(|_| ()).await.unwrap();
-                    tokio::fs::write(cache::cache_dir().join("songs.ron"), ron::ser::to_string_pretty(&s, Default::default()).unwrap())
+                    tokio::fs::write(cache::cache_dir().join("songs.ron"),
+                        ron::ser::to_string_pretty(&s, Default::default()).unwrap())
                         .await
                         .unwrap();
                 }
@@ -230,7 +234,7 @@ impl App {
         eframe::run_native(
             "Karaoke App",
             options,
-            Box::new(|cc| Ok(Box::new(Self::new( cc, &cc.egui_ctx, rt)))),
+            Box::new(|cc| Ok(Box::new(Self::new( &cc.egui_ctx, rt)))),
         )
     }
 }
@@ -269,6 +273,46 @@ fn init_souvlaki() -> Option<MediaControls> {
     }
 }
 
+
+    fn render_song_table(ui: &mut Ui, songs: &[crate::api::SongDTO]) {
+        use egui_extras::{TableBuilder, Column};
+
+        TableBuilder::new(ui)
+            .column(Column::remainder())
+            .column(Column::exact(60.0))
+            .column(Column::exact(100.0))
+            .column(Column::exact(60.0))
+            .header(20.0, |mut header| {
+                header.col(|ui| { ui.label("Song"); });
+                header.col(|ui| { ui.label("Plays"); });
+                header.col(|ui| { ui.label("Date"); });
+                header.col(|ui| { ui.label("Duration"); });
+            })
+            .body(|body| {
+                body.rows(20.0, songs.len(), | mut row| {
+                    let row_index = row.index();
+                    let song = &songs[row_index];
+                    row.col(|ui| {
+                        let text = format!("{} - {} ({})", 
+                            song.original_artists.join(" & "), 
+                            song.title, 
+                            song.cover_artists.join(" & "));
+                        ui.label(text);
+                    });
+                    row.col(|ui| { ui.label(song.play_count.map(|c| c.to_string()).unwrap_or_else(|| "-".to_string())); });
+                    row.col(|ui| { ui.label(song.stream_date.as_deref().unwrap_or("-")); });
+                    row.col(|ui| { 
+                        if let Some(duration) = song.duration {
+                            let mins = duration / 60;
+                            let secs = duration % 60;
+                            ui.label(format!("{}:{:02}", mins, secs));
+                        } else {
+                            ui.label("-");
+                        }
+                    });
+                });
+            });
+    }
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
@@ -393,7 +437,7 @@ impl eframe::App for App {
                                     .texture_options(egui::TextureOptions::LINEAR)
                                 );
 
-                                ui.add(egui::Label::new(RichText::new("TestUsername").size(16.0)).selectable(false));
+                                ui.add(egui::Label::new(RichText::new( "TestUsername" ).size(16.0)).selectable(false));
                             });
                         }).response.interact(Sense::click());
 
@@ -421,15 +465,14 @@ impl eframe::App for App {
                 if let Ok(meta) = self.player.current_url_metadata.lock() {
                     if let Some(meta) = &*meta {
                         // Map SongDTO to a mock Song for UI consistency, or just handle it separately in the UI
-                        // For now let's just make a dummy Song
                         song = Some(crate::api::Song {
                             id: state.song(),
                             title: meta.title.clone(),
-                            absolute_path: None,
+                            absolute_path: meta.audio_url.clone().map(|s| s.to_string().into()),
                             opus: None,
-                            cover_artists: Arc::from([]),
-                            original_artists: Arc::from([]),
-                            cover_art: None, // Need to handle cover art URL here!
+                            cover_artists: meta.cover_artists.clone(),
+                            original_artists: meta.original_artists.clone(),
+                            cover_art: meta.cover_art.clone(),
                         });
                     }
                 }
@@ -440,7 +483,7 @@ impl eframe::App for App {
                     self.current_song_uuid = Some(state.song());
                     
                     let cover_art_url = if let Some(meta) = self.player.current_url_metadata.lock().unwrap().as_ref() {
-                        meta.cover_art.as_ref().map(|url| url.to_string()).unwrap_or_else(|| "".to_string())
+                        meta.cover_art.as_ref().map(|art| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90", art.cloudflare_id)).unwrap_or_else(|| "".to_string())
                     } else {
                         s.cover_art.as_ref()
                             .map(|ca| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90", ca.cloudflare_id))
@@ -538,7 +581,7 @@ impl eframe::App for App {
                             if art_url.is_none() {
                                 if let Ok(meta) = self.player.current_url_metadata.lock() {
                                     if let Some(meta) = &*meta {
-                                        art_url = meta.cover_art.as_ref().map(|url| url.to_string());
+                                        art_url = meta.cover_art.as_ref().map(|art| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90", art.cloudflare_id));
                                     }
                                 }
                             }
@@ -579,7 +622,7 @@ impl eframe::App for App {
                                 }
                             }
 
-                            btn(&self.theme, ui, include_image!("../assets/backward.png"), false, |x| {
+                            btn(&self.theme, ui, include_image!("../assets/backward.png"), false, |_x| {
                                 self.player.previous();
                             });
                             ui.add_space(10.0);
@@ -628,7 +671,7 @@ impl eframe::App for App {
 
                             ui.add_space(10.0);
 
-                            btn(&self.theme, ui, include_image!("../assets/forward.png"), false, |x| {
+                            btn(&self.theme, ui, include_image!("../assets/forward.png"), false, |_x| {
                                 self.player.next_song();
                             });
                         });
@@ -750,6 +793,7 @@ impl eframe::App for App {
                                                 crate::debug_log!("Playlist '{}' has {} songs.", detail.name, songs.len());
                                                 // Restore playlist for Player logic
                                                 let pl: Vec<Uuid> = songs.iter().map(|_| Uuid::new_v4()).collect();
+                                                self.player.clear_playlist();
                                                 self.player.playlist(Some(pl.clone().into()));
                                                 self.player.url_playlist(Some(songs.clone().into()));
                                                 
@@ -757,9 +801,7 @@ impl eframe::App for App {
                                                     self.player.url_playback(Some(pl[0]), first_song.clone(), Player::play);
                                                 }
                                             }
-                                            for song in &detail.songs {
-                                                ui.label(song.title.to_string());
-                                            }
+                                            render_song_table(ui, &detail.songs);
                                         },
                                         LoadingState::Loading => {
                                             ui.label("Loading playlist details...");
@@ -799,6 +841,7 @@ impl eframe::App for App {
                                                 crate::debug_log!("Setlist '{}' has {} songs.", detail.name, songs.len());
                                                 // Restore playlist for Player logic
                                                 let pl: Vec<Uuid> = songs.iter().map(|_| Uuid::new_v4()).collect();
+                                                self.player.clear_playlist();
                                                 self.player.playlist(Some(pl.clone().into()));
                                                 self.player.url_playlist(Some(songs.clone().into()));
                                                 
@@ -806,9 +849,7 @@ impl eframe::App for App {
                                                     self.player.url_playback(Some(pl[0]), first_song.clone(), Player::play);
                                                 }
                                             }
-                                            for song in &detail.songs {
-                                                ui.label(song.title.to_string());
-                                            }
+                                            render_song_table(ui, &detail.songs);
                                         },
                                         LoadingState::Loading => {
                                             ui.label("Loading setlist details...");

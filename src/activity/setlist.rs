@@ -1,5 +1,5 @@
 use crate::api::{Playlist, PlaylistDetail, LazySongDatabase, LoadingState};
-use eframe::egui::{Context, Ui, Label, RichText};
+use eframe::egui::{Context};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
