@@ -318,6 +318,8 @@ impl Player {
                             player.player_state.lock().unwrap().playlist = playlist;
                             reorder(&mut ordered_playlist, shuffle, true);
                         }
+
+
                         PlaybackCommand::UrlPlaylist(playlist) => {
                             player.player_state.lock().unwrap().url_playlist = playlist;
                         }
@@ -333,6 +335,8 @@ impl Player {
                                 ctx.request_repaint();
                             }
                         },
+
+
                         PlaybackCommand::NextSong => {
                             let mut next_song_to_play = None;
 
@@ -386,7 +390,10 @@ impl Player {
                                 crate::debug_log!("NextSong: Reached end of playlist");
                             }
                         },
+
+
                         PlaybackCommand::Shutdown => break,
+
 
                         PlaybackCommand::Song(uuid, cb) => {
                             let mut lock = player.state.lock().unwrap();
@@ -445,13 +452,12 @@ impl Player {
                         PlaybackCommand::UrlPlayback(uuid, song_dto, cb) => {
                             let mut lock = player.state.lock().unwrap();
 
-                            // Stop playback instantly so OS media keys don't get stuck in a weird loop
                             mixer.pause();
                             mixer.clear();
                             mixer.set_volume(0.0);
 
                             let target_uuid = uuid.unwrap_or_else(Uuid::new_v4);
-                            crate::debug_log!("📥 [Audio API] Initiating network download request for song: '{}' (UUID: {})", song_dto.title, target_uuid);
+                            crate::debug_log!("📥 [Audio API] Initiating pipeline resolution for song: '{}' (UUID: {})", song_dto.title, target_uuid);
 
                             *lock = Some(PlaybackState::new(Duration::from_secs(0), target_uuid, true));
                             drop(lock);
@@ -463,22 +469,60 @@ impl Player {
                                 let url = if audio_url.starts_with("http://") || audio_url.starts_with("https://") {
                                     audio_url.to_string()
                                 } else {
-                                    format!("https://storage.neurokaraoke.com/{}", audio_url)
+                                    let clean_path = audio_url.trim_start_matches('/');
+                                    format!("https://storage.neurokaraoke.com/{}", clean_path)
                                 };
-                                crate::debug_log!("UrlPlayback: Fetching URL: {}", url);
-                                let req = client.get(url);
-                                let handle = player.clone();
-                                rt.spawn(async move {
-                                    let temp_path = std::env::temp_dir().join(format!("audio_{}", Uuid::new_v4()));
 
-                                    match req.send().await {
+                                // Fix absolute path base mismatches if the API returned neurokaraoke.com directly
+                                let url = if url.contains("https://neurokaraoke.com/") {
+                                    url.replace("https://neurokaraoke.com/", "https://storage.neurokaraoke.com/")
+                                } else {
+                                    url
+                                };
+
+                                // FIX: Safely replace raw spaces with percent-encoded equivalents (%20)
+                                // to prevent reqwest from rejecting paths with spaces
+                                let url = url.replace(' ', "%20");
+
+
+                                let handle = player.clone();
+
+                                // FIX: Clone the loop-scoped client handle here to resolve your compilation error
+                                let client_worker = client.clone();
+
+                                rt.spawn(async move {
+                                    let cache_dir = crate::cache::cache_dir().join("assets");
+                                    let target_filename = format!("{}.mp3", target_uuid.simple());
+                                    let target_path = cache_dir.join(&target_filename);
+
+                                    // Cache check short-circuit
+                                    if tokio::fs::metadata(&target_path).await.is_ok() {
+                                        if let Ok(file) = std::fs::File::open(&target_path) {
+                                            crate::debug_log!("⚡ [Audio API] CACHE HIT: Playing local copy for: {:?}", target_path);
+                                            handle.sender.try_send(PlaybackCommand::SongReady(uuid, file, Some(cb))).ok();
+                                            return;
+                                        }
+                                    }
+
+                                    crate::debug_log!("🌍 [Audio API] CACHE MISS: Downloading from remote endpoint: {}", url);
+                                    let _ = tokio::fs::create_dir_all(&cache_dir).await;
+
+                                    // FIX: Use client_worker inside the spawned asynchronous task environment
+                                    match client_worker.get(url).send().await {
                                         Ok(response) => {
                                             if response.status().is_success() {
                                                 if let Ok(bytes) = response.bytes().await {
-                                                    tokio::fs::write(&temp_path, &bytes).await.unwrap();
-                                                    let file = std::fs::File::open(&temp_path).unwrap();
-                                                    handle.sender.try_send(PlaybackCommand::SongReady(uuid, file, Some(cb))).ok();
-                                                    crate::debug_log!("UrlPlayback: Successfully fetched and wrote to temp file");
+                                                    if let Ok(mut tokio_file) = tokio::fs::File::create(&target_path).await {
+                                                        use tokio::io::AsyncWriteExt;
+                                                        if tokio_file.write_all(&bytes).await.is_ok() && tokio_file.flush().await.is_ok() {
+                                                            drop(tokio_file);
+
+                                                            if let Ok(file) = std::fs::File::open(&target_path) {
+                                                                handle.sender.try_send(PlaybackCommand::SongReady(uuid, file, Some(cb))).ok();
+                                                                crate::debug_log!("UrlPlayback: Successfully fetched and cached file to asset dir: {:?}", target_path);
+                                                            }
+                                                        }
+                                                    }
                                                 } else {
                                                     crate::debug_log!("UrlPlayback: Failed to get response bytes");
                                                 }
@@ -497,14 +541,12 @@ impl Player {
                             ctx.request_repaint();
                         },
 
-
                         PlaybackCommand::SongReady(uuid, file, cb) => {
                             let len = match file.metadata() {
                                 Ok(meta) => meta.len(),
                                 Err(_) => continue,
                             };
 
-                            // 1. Validate UUID state to prevent network race conditions
                             let current_song_id = player.state.lock().unwrap().as_ref().map(|s| s.song());
                             if let (Some(incoming), Some(current)) = (uuid, current_song_id) {
                                 if incoming != current {
@@ -516,23 +558,19 @@ impl Player {
                             if let Ok(decoder) = DecoderBuilder::new().with_data(BufReader::new(file)).with_byte_len(len).build() {
                                 let mut lock = player.state.lock().unwrap();
 
-                                // 2. HARD RESET FIX: Destroy old mixer context to purge memory buffers
                                 mixer.pause();
                                 mixer.clear();
-                                drop(mixer); // Drop the active player entirely
+                                drop(mixer);
 
-                                // Re-establish a clean audio stream container
                                 mixer = rodio::Player::connect_new(&handle.mixer());
 
-                                // 3. Sync volume and append new decoder data
                                 let current_vol = player.player_state.lock().unwrap().volume;
                                 mixer.set_volume(current_vol);
 
                                 let duration = decoder.total_duration().unwrap_or_else(Duration::default);
                                 let target_uuid = uuid.unwrap_or_else(Uuid::new_v4);
 
-                                crate::debug_log!(
-                                    "🟢 [Audio API] SUCCESS: Playing fresh mixer instance. UUID: {}, Duration: {}s",
+                                crate::debug_log!( "🟢 [Audio API] SUCCESS: Playing fresh mixer instance. UUID: {}, Duration: {}s",
                                     target_uuid,
                                     duration.as_secs()
                                 );
@@ -540,14 +578,16 @@ impl Player {
                                 *lock = Some(PlaybackState::new(duration, target_uuid, true));
                                 mixer.append(decoder);
 
-                                // 4. Force-start playback immediately so it doesn't require a second click
                                 mixer.play();
 
                                 if let Some(cb) = cb {
                                     cb(&player);
                                 }
 
+                                // FIX: Force target UI frame paint sequence calculation loops instantly here
                                 ctx.request_repaint();
+                            } else {
+                                crate::debug_log!("❌ [Audio API] Rodio failed to parse the downloaded file format headers.");
                             }
                         },
                     },
