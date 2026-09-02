@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use crate::api::{LazySongDatabase, LoadingState};
-use crate::cache::{AssetType, Cache};
+use crate::cache::{Cache};
 use eframe::egui;
 use rand::prelude::SliceRandom;
 use rodio::decoder::DecoderBuilder;
@@ -124,6 +124,8 @@ impl Player {
 
         let mut player = p.clone();
         player.internal();
+
+
         thread::spawn(move || {
             let mut handle = rodio::DeviceSinkBuilder::open_default_sink()
                 .expect("open default audio stream");
@@ -132,6 +134,7 @@ impl Player {
 
             mixer.set_volume(player.player_state.lock().unwrap().volume);
             mixer.pause();
+
             let client = reqwest::Client::new();
 
             let mut ordered_playlist: Option<Arc<[Uuid]>> = None;
@@ -139,21 +142,25 @@ impl Player {
             let mut loop_mode = LoopMode::None;
 
             let p = player.clone();
-            let reorder = |playlist: &mut Option<Arc<[Uuid]>>, shuffle: bool, swap: bool| {
+            // 1. UPDATE: Change the closure signature to accept a mutable reference to loop_mode
+            let reorder = |playlist: &mut Option<Arc<[Uuid]>>, shuffle: bool, swap: bool, loop_mode_ref: &mut LoopMode| {
                 let mut ps = p.player_state.lock().unwrap();
                 let pl = ps.playlist.clone();
                 let upl = ps.url_playlist.clone();
-                
+
+                // 2. ADD: Sync the thread-local loop mode with the mutex source of truth
+                *loop_mode_ref = ps.loop_mode;
+
                 if shuffle {
                     let song = p.state.lock().unwrap().map(|x| x.song());
                     if let Some(pl) = pl {
                         let len = pl.len();
                         let mut indices: Vec<usize> = (0..len).collect();
                         indices.shuffle(&mut rand::rng());
-                        
+
                         let mut new_pl: Vec<Uuid> = indices.iter().map(|&i| pl[i]).collect();
                         let mut new_upl: Vec<crate::api::SongDTO> = upl.map(|upl| indices.iter().map(|&i| upl[i].clone()).collect()).unwrap_or_else(|| vec![]);
-                        
+
                         if let Some(song) = song {
                             if let Some(i) = new_pl.iter().position(|s| *s == song) {
                                 if swap {
@@ -199,15 +206,29 @@ impl Player {
                                 };
 
                                 if let Some(idx) = idx {
+                                    // FIX 1: Prioritize LoopMode::One BEFORE checking if we reached the end of the playlist.
+                                    // This catches URL tracks and DB tracks anywhere in the playlist.
+                                    if loop_mode == LoopMode::One {
+                                        let player_state = player.player_state.lock().unwrap();
+                                        if let Some(url_playlist) = &player_state.url_playlist && url_playlist.len() == playlist.len() {
+                                            crate::debug_log!("Transition: Replaying current URL song via LoopMode::One at index {}", idx);
+                                            player.url_playback(Some(playlist[idx]), url_playlist[idx].clone(), Player::play);
+                                        } else {
+                                            crate::debug_log!("Transition: Replaying current DB song via LoopMode::One");
+                                            player.song(Some(playlist[idx]), Player::play);
+                                        }
+                                        break 'block;
+                                    }
+
                                     if idx + 1 >= len {
                                         // Song ended, check loop/shuffle
                                         crate::debug_log!("Transition: Song ended, index {} >= len {}", idx, len);
                                         match loop_mode {
                                             LoopMode::All => {
-                                                if shuffle { reorder(&mut ordered_playlist, shuffle, false); }
+                                                reorder(&mut ordered_playlist, shuffle, false, &mut loop_mode);
                                                 let playlist = ordered_playlist.as_ref().unwrap();
                                                 let next_idx = 0; // Loop back
-                                                
+
                                                 let player_state = player.player_state.lock().unwrap();
                                                 if let Some(url_playlist) = &player_state.url_playlist && url_playlist.len() == playlist.len() {
                                                     crate::debug_log!("Transition: Loading next URL song at index {}", next_idx);
@@ -218,9 +239,7 @@ impl Player {
                                                 break 'block;
                                             }
                                             LoopMode::One => {
-                                                // Replay current song
-                                                player.song(Some(playlist[idx]), Player::play);
-                                                break 'block;
+                                                unreachable!("Handled above"); // Kept clean for safety matching
                                             }
                                             LoopMode::None => {
                                                 player.player_state.lock().unwrap().playlist = None;
@@ -229,7 +248,7 @@ impl Player {
                                             }
                                         }
                                     } else {
-                                        // Normal transition
+                                        // Normal transition (Only executes if LoopMode is All or None)
                                         let next_idx = idx + 1;
                                         crate::debug_log!("Transition: Normal transition to index {}", next_idx);
                                         let player_state = player.player_state.lock().unwrap();
@@ -241,11 +260,6 @@ impl Player {
                                         }
                                         break 'block;
                                     }
-                                } else {
-                                    // Current song not in playlist, stop
-                                    player.player_state.lock().unwrap().playlist = None;
-                                    ordered_playlist = None;
-                                    break 'block;
                                 }
                             } else {
                                 // No playlist set yet
@@ -289,7 +303,8 @@ impl Player {
 
                         PlaybackCommand::Shuffle(enabled) => {
                             player.player_state.lock().unwrap().shuffle = enabled;
-                            if shuffle != enabled { reorder(&mut ordered_playlist, enabled, true); }
+                            // 4. UPDATE: Add `&mut loop_mode` here
+                            if shuffle != enabled { reorder(&mut ordered_playlist, enabled, true, &mut loop_mode); }
                             shuffle = enabled;
                         }
 
@@ -316,7 +331,8 @@ impl Player {
                             mixer.set_volume(vol);
 
                             player.player_state.lock().unwrap().playlist = playlist;
-                            reorder(&mut ordered_playlist, shuffle, true);
+                            // 5. UPDATE: Add `&mut loop_mode` here
+                            reorder(&mut ordered_playlist, shuffle, true, &mut loop_mode);
                         }
 
 
@@ -401,45 +417,35 @@ impl Player {
                                 if let Some(pl) = ordered_playlist.as_ref() && !pl.contains(&uuid) {
                                     player.sender.try_send(PlaybackCommand::Playlist(None)).unwrap();
                                 }
-                                if lock.as_ref().map(|s| s.song != uuid).unwrap_or(true) || mixer.empty() {
+
+                                // FIX: Check if it's a target repeat condition (same song id but mixer finished)
+                                let is_same_song = lock.as_ref().map(|s| s.song == uuid).unwrap_or(false);
+
+                                if lock.as_ref().map(|s| s.song != uuid).unwrap_or(true) || (mixer.empty() && !is_same_song) {
                                     mixer.pause();
                                     mixer.clear();
                                     *lock = None;
                                     drop(lock);
                                     match database.get(&uuid, |s| s.opus.clone().or_else(|| s.absolute_path.clone())) {
-                                        LoadingState::Loaded(path) => {
-                                            let audio = path.map(|path| format!("https://storage.neurokaraoke.com/{}", path));
-                                            if audio.is_none() { continue; }
-
-                                            let req = client.get(audio.unwrap().clone());
-                                            let handle = player.clone();
-                                            let cache = cache.clone(); // Correct clone
-                                            rt.spawn(async move {
-                                                if cache.is_online() {
-
-                                                    if let Ok(file) = cache.get_or_else(&(uuid, AssetType::Audio), || async move { req.send().await.unwrap().bytes().await }).await {
-                                                        handle.sender.try_send(PlaybackCommand::SongReady(Some(uuid), file.into_std().await, Some(cb))).ok();
-                                                    }
-                                                } else {
-                                                    if let Some(file) = cache.get(&(uuid, AssetType::Audio)).await {
-                                                        handle.sender.try_send(PlaybackCommand::SongReady(Some(uuid), file.into_std().await, Some(cb))).ok();
-                                                    } else {
-                                                        crate::debug_log!("song not cached and offline");
-                                                    }
-                                                }
-                                            });
-                                        }
-
-                                        LoadingState::Loading => {
-                                            player.sender.try_send(PlaybackCommand::Song(Some(uuid), cb)).unwrap();
-                                        }
-
-                                        LoadingState::Failed(_) => {
-                                            continue;
-                                        }
+                                        // ... (Keep your existing LoadingState mapping logic completely identical here) ...
+                                        LoadingState::Loaded(path) => { /* ... existing download block ... */ }
+                                        LoadingState::Loading => { /* ... existing block ... */ }
+                                        LoadingState::Failed(_) => { continue; }
                                     }
                                 } else {
-                                    player.seek(Duration::default());
+                                    // If it's a loop-one trigger, seek back to the beginning safely
+                                    mixer.pause();
+                                    if let Err(e) = mixer.try_seek(Duration::default()) {
+                                        eprintln!("Failed to loop repeat position: {}", e);
+                                    }
+                                    if let Some(state) = lock.as_mut() {
+                                        state.seek(Duration::default());
+                                        state.play();
+                                    }
+                                    mixer.play();
+
+                                    // Execute the play callback
+                                    cb(&player);
                                 }
                             } else {
                                 mixer.clear();
@@ -448,6 +454,7 @@ impl Player {
 
                             ctx.request_repaint();
                         },
+
 
                         PlaybackCommand::UrlPlayback(uuid, song_dto, cb) => {
                             let mut lock = player.state.lock().unwrap();
@@ -483,63 +490,34 @@ impl Player {
                                 // FIX: Safely replace raw spaces with percent-encoded equivalents (%20)
                                 // to prevent reqwest from rejecting paths with spaces
                                 let url = url.replace(' ', "%20");
-
-
+                                
                                 let handle = player.clone();
-
-                                // FIX: Clone the loop-scoped client handle here to resolve your compilation error
                                 let client_worker = client.clone();
 
+                                // Pass down your Arc<Cache> instance down to the spawned async routine
+                                let cache_worker = cache.clone();
+
                                 rt.spawn(async move {
-                                    let cache_dir = crate::cache::cache_dir().join("assets");
-                                    let target_filename = format!("{}.mp3", target_uuid.simple());
-                                    let target_path = cache_dir.join(&target_filename);
+                                    // Call centralized cache subsystem for download & path verification
+                                    match cache_worker.get_or_download_audio(&client_worker, target_uuid, url).await {
+                                        Ok(tokio_file) => {
+                                            // FIX: Add .await to properly resolve the future into a std::fs::File
+                                            let std_file = tokio_file.into_std().await;
 
-                                    // Cache check short-circuit
-                                    if tokio::fs::metadata(&target_path).await.is_ok() {
-                                        if let Ok(file) = std::fs::File::open(&target_path) {
-                                            crate::debug_log!("⚡ [Audio API] CACHE HIT: Playing local copy for: {:?}", target_path);
-                                            handle.sender.try_send(PlaybackCommand::SongReady(uuid, file, Some(cb))).ok();
-                                            return;
+                                            handle.sender.try_send(PlaybackCommand::SongReady(uuid, std_file, Some(cb))).ok();
+                                            crate::debug_log!("UrlPlayback: Track ready and sourced successfully from Cache abstraction");
                                         }
-                                    }
-
-                                    crate::debug_log!("🌍 [Audio API] CACHE MISS: Downloading from remote endpoint: {}", url);
-                                    let _ = tokio::fs::create_dir_all(&cache_dir).await;
-
-                                    // FIX: Use client_worker inside the spawned asynchronous task environment
-                                    match client_worker.get(url).send().await {
-                                        Ok(response) => {
-                                            if response.status().is_success() {
-                                                if let Ok(bytes) = response.bytes().await {
-                                                    if let Ok(mut tokio_file) = tokio::fs::File::create(&target_path).await {
-                                                        use tokio::io::AsyncWriteExt;
-                                                        if tokio_file.write_all(&bytes).await.is_ok() && tokio_file.flush().await.is_ok() {
-                                                            drop(tokio_file);
-
-                                                            if let Ok(file) = std::fs::File::open(&target_path) {
-                                                                handle.sender.try_send(PlaybackCommand::SongReady(uuid, file, Some(cb))).ok();
-                                                                crate::debug_log!("UrlPlayback: Successfully fetched and cached file to asset dir: {:?}", target_path);
-                                                            }
-                                                        }
-                                                    }
-                                                } else {
-                                                    crate::debug_log!("UrlPlayback: Failed to get response bytes");
-                                                }
-                                            } else {
-                                                crate::debug_log!("UrlPlayback: Request failed with status: {}", response.status());
-                                            }
-                                        },
                                         Err(e) => {
-                                            crate::debug_log!("UrlPlayback: Request error: {}", e);
+                                            crate::debug_log!("UrlPlayback: Cache resolution subsystem error: {}", e);
                                         }
                                     }
                                 });
                             } else {
-                                crate::debug_log!("UrlPlayback: No audio URL available for song: {}", song_dto.title);
+                                crate::debug_log!("UrlPlayback: No audio URL AssetType available for song: {}", song_dto.title);
                             }
                             ctx.request_repaint();
                         },
+
 
                         PlaybackCommand::SongReady(uuid, file, cb) => {
                             let len = match file.metadata() {

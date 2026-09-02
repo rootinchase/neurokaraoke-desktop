@@ -192,6 +192,53 @@ impl Cache {
         }
     }
 
+    pub async fn get_or_download_audio(
+        &self,
+        client: &Client,
+        song_uuid: Uuid,
+        url: String,
+    ) -> anyhow::Result<tokio::fs::File> {
+        let key = (song_uuid, AssetType::Audio);
+
+        // 1. Try to fetch from existing cache entries
+        if let Some(file) = self.get(&key).await {
+            crate::debug_log!("⚡ [Cache API] CACHE HIT: Playing local copy for UUID: {}", song_uuid);
+            return Ok(file);
+        }
+
+        crate::debug_log!("🌍 [Cache API] CACHE MISS: Downloading from remote endpoint: {}", url);
+
+        // 2. Cache miss: download the byte payload safely
+        let response = client.get(url).send().await?;
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!("Request failed with status: {}", response.status()));
+        }
+        let bytes = response.bytes().await?;
+        let size = bytes.len() as u64;
+
+        // 3. Reserve a clean file increment slot
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let path = cache_dir().join(format!("assets/{:016x}", id));
+
+        // 4. Flush raw binary payload to assets index
+        let mut file = tokio::fs::File::create(&path).await?;
+        file.write_all(&bytes).await?;
+        file.flush().await?;
+        drop(file);
+
+        // 5. Track inside DashMap structure matching your background sweeps
+        self.entries.insert(key, CacheEntry {
+            id,
+            last_touched: SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            size,
+        });
+
+        Ok(tokio::fs::File::open(&path).await?)
+    }
+
     pub fn is_online(&self) -> bool {
         self.online.load(Ordering::Acquire)
     }
