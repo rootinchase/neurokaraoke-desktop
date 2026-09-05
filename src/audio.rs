@@ -428,7 +428,7 @@ impl Player {
                                     drop(lock);
                                     match database.get(&uuid, |s| s.opus.clone().or_else(|| s.absolute_path.clone())) {
                                         // ... (Keep your existing LoadingState mapping logic completely identical here) ...
-                                        LoadingState::Loaded(path) => { /* ... existing download block ... */ }
+                                        LoadingState::Loaded(_path) => { /* ... existing download block ... */ }
                                         LoadingState::Loading => { /* ... existing block ... */ }
                                         LoadingState::Failed(_) => { continue; }
                                     }

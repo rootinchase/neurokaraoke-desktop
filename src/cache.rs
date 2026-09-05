@@ -29,12 +29,14 @@ pub enum AssetType {
     Image,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CacheEntry {
     pub id: u64,
     /// if 0, this item never expires
     pub last_touched: u64,
     pub size: u64,
+    #[serde(default)]
+    pub extension: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -207,10 +209,12 @@ impl Cache {
                 .unwrap_or_default()
                 .as_secs(),
             size,
+            extension: None,
         });
 
         Ok(tokio::fs::File::open(&path).await?)
     }
+
 
     pub async fn get_or_download_image(
         &self,
@@ -222,25 +226,46 @@ impl Cache {
 
         // 1. Check if already tracked in the cache index
         if let Some(entry) = self.entries.get(&key) {
-            let path = cache_dir().join(format!("assets/{:016x}", entry.id));
+            let path = if let Some(ref ext) = entry.extension {
+                cache_dir().join(format!("assets/{:016x}.{}", entry.id, ext))
+            } else {
+                cache_dir().join(format!("assets/{:016x}", entry.id))
+            };
             if tokio::fs::metadata(&path).await.is_ok() {
                 return Ok(path);
             }
         }
 
-        crate::debug_log!("🌍 [Cache API] IMAGE CACHE MISS: Downloading artwork: {}", cloudflare_id);
-
         // 2. Cache miss: download the byte payload
-        let response = client.get(url).send().await?;
-        if !response.status().is_success() {
-            return Err(anyhow::anyhow!("Image request failed with status: {}", response.status()));
+        let response = client.get(&url).send().await?;
+        let status = response.status();
+        let content_type = response.headers().get("content-type").and_then(|v| v.to_str().ok());
+        
+        let extension = match content_type {
+            Some("image/jpeg") => Some("jpeg".to_string()),
+            Some("image/png") => Some("png".to_string()),
+            Some("image/webp") => Some("webp".to_string()),
+            _ => None,
+        };
+
+        crate::debug_log!("📥 [Cache Core HTTP] INBOUND STATUS FROM SERVER: {}, Content-Type: {:?}", status, content_type);
+
+        if !status.is_success() {
+            return Err(anyhow::anyhow!("Image request failed with status: {}", status));
         }
+
         let bytes = response.bytes().await?;
         let size = bytes.len() as u64;
 
+        crate::debug_log!("💾 [Cache Core HTTP] FLUSHING ASSET DATA. Size: {} bytes, Extension: {:?}", size, extension);
+
         // 3. Reserve a clean file slot
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let path = cache_dir().join(format!("assets/{:016x}", id));
+        let path = if let Some(ref ext) = extension {
+            cache_dir().join(format!("assets/{:016x}.{}", id, ext))
+        } else {
+            cache_dir().join(format!("assets/{:016x}", id))
+        };
 
         // 4. Flush image binary data to the asset index
         let mut file = tokio::fs::File::create(&path).await?;
@@ -255,6 +280,7 @@ impl Cache {
                 .unwrap_or_default()
                 .as_secs(),
             size,
+            extension,
         });
 
         Ok(path)

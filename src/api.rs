@@ -9,6 +9,7 @@ use std::string::ToString;
 use std::sync::Arc;
 use serde::ser::SerializeMap;
 use uuid::Uuid;
+use crate::config::{SharedConfig};
 
 mod internal {
     use serde::{Deserialize, Deserializer};
@@ -118,7 +119,6 @@ mod internal {
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
 pub struct Playlist {
     pub id: Uuid,
     #[serde(default)]
@@ -132,7 +132,6 @@ pub struct Playlist {
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
 pub struct PlaylistDetail {
     pub name: Arc<str>,
     #[serde(alias = "songListDTOs")]
@@ -212,6 +211,192 @@ pub struct Song {
     pub cover_art: Option<Artwork>,
 }
 
+/// Active authentication context containing the issued session token.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthContext {
+    /// JWT bearer token issued by NeuroKaraoke (not raw third-party tokens).
+    pub token: Arc<str>,
+    /// Metadata of the authenticated account context.
+    pub user: UserClaims,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserClaims {
+    pub id: Uuid,
+
+    #[serde(alias = "userName")]
+    pub username: Arc<str>,
+
+    #[serde(default)] // Prevents decoding failure if missing entirely on some payloads
+    pub email: Option<Arc<str>>,
+}
+
+// --- Request Payloads ---
+
+/*
+#[derive(Debug, Serialize)]
+pub struct LoginRequest {
+    pub username: Arc<str>,
+    pub password: Arc<str>,
+}
+ */
+
+/*
+#[derive(Debug, Serialize)]
+pub struct RegisterRequest {
+    pub username: Arc<str>,
+    pub password: Arc<str>,
+    pub email: Option<Arc<str>>,
+}
+ */
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscordTokenRequest {
+    /// The access token obtained from Discord's OAuth2 authorization flow.
+    pub access_token: Arc<str>,
+}
+
+/*
+#[derive(Debug, Serialize)]
+pub struct RedeemCodeRequest {
+    pub code: Arc<str>,
+}
+ */
+
+// --- Response Payloads ---
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthResponse {
+    pub token: Arc<str>,
+}
+
+/// The inner structure inside the decrypted JWT string payload.
+/// Maps the Microsoft XML Soap claims formats used by ASP.NET Core back to your egui workspace layouts.
+#[derive(Debug, Deserialize)]
+pub(crate) struct JwtPayload {
+    #[serde(rename = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")]
+    pub id: String,
+    #[serde(rename = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name")]
+
+    pub username: String,
+}
+
+/*
+#[derive(Clone)]
+pub struct AuthService {
+    client: Client,
+    auth_host: Arc<str>, // https://idk.neurokaraoke.com
+    api_host: Arc<str>,  // https://api.neurokaraoke.com
+}
+
+ */
+
+/*
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QrSession {
+    pub session_id: Uuid,
+    pub qr_code_data: Arc<str>,
+    pub is_linked: bool,
+    pub token: Option<Arc<str>>,
+}
+ */
+
+#[serde_with::serde_as]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileHeader {
+    #[serde(alias = "userID")]
+    pub user_id: uuid::Uuid,
+    #[serde(alias = "displayName")]
+    pub display_name: String,
+    #[serde(alias = "avatarUrl")]
+    pub avatar_url: Option<Arc<str>>,
+    pub level: i32,
+    #[serde(alias = "levelTitle")]
+    pub level_title: Option<String>,
+    #[serde(alias = "totalXP")]
+    pub total_xp: i32,
+    #[serde(alias = "totalBadges")]
+    pub total_badges: i32,
+    #[serde(alias = "unlockedBadges")]
+    pub unlocked_badges: i32,
+    #[serde(alias = "collectionProgress")]
+    pub collection_progress: Option<f64>,
+    #[serde(alias = "xpToNextLevel")]
+    pub xp_to_next_level: i32,
+    #[serde(alias = "levelProgress")]
+    pub level_progress: Option<f64>,
+    #[serde(alias = "neuroCoin")]
+    pub neuro_coin: i32,
+    #[serde(alias = "evilCoin")]
+    pub evil_coin: i32,
+    #[serde(alias = "twinsCoin")]
+    pub twins_coin: i32,
+    #[serde(alias = "cardArtUrl")]
+    pub card_art_url: Option<String>,
+    #[serde(alias = "frameTheme")]
+    pub frame_theme: i32,
+    #[serde(alias = "displayItemIds")]
+    pub display_item_ids: Vec<String>,
+    #[serde(alias = "rankScore")]
+    pub rank_score: i32,
+    #[serde(alias = "rankTier")]
+    pub rank_tier: i32,
+    #[serde(alias = "unlockedTiers")]
+    pub unlocked_tiers: Vec<i32>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BadgeMedia {
+    pub id: String,
+    #[serde(alias = "fileName")]
+    pub file_name: String,
+    #[serde(alias = "contentType")]
+    pub content_type: String,
+    pub description: Option<String>,
+    #[serde(alias = "isAnimated")]
+    pub is_animated: bool,
+    pub credit: Option<String>,
+    #[serde(alias = "cloudflareId")]
+    pub cloudflare_id: String,
+    #[serde(alias = "absolutePath")]
+    pub absolute_path: Option<Arc<str>>,
+    pub upvotes: i32,
+    #[serde(alias = "isSensitive")]
+    pub is_sensitive: Option<bool>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Badge {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub rarity: i32,
+    pub category: Option<String>,
+    pub unlocked: bool,
+    pub requirement: Option<String>,
+    pub media: Option<BadgeMedia>,
+    #[serde(alias = "unlockedAt")]
+    pub unlocked_at: Option<String>,
+    #[serde(alias = "currentProgress")]
+    pub current_progress: i32,
+    #[serde(alias = "conditionValue")]
+    pub condition_value: i32,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct ProfileResponse {
+    pub profile: ProfileHeader,
+    pub badges: Vec<Badge>,
+}
+
+
 pub enum LoadingState<T> {
     Failed(Arc<anyhow::Error>),
     Loading,
@@ -230,73 +415,84 @@ pub struct LazySongDatabase {
     pub client: Client,
     pub map: Arc<DashMap<Uuid, LoadingState<Song>>>,
     pub guest_id: Arc<str>,
+    /// Shared runtime configuration to read the token state dynamically
+    pub shared_config: SharedConfig,
 }
 
 impl LazySongDatabase {
     const SONGS_API_URL: &str = "https://api.neurokaraoke.com/api/songs";
 
-    pub fn new(client: Client, map: Arc<DashMap<Uuid, LoadingState<Song>>>, guest_id: Arc<str>) -> Self {
+    pub fn new(
+        client: Client,
+        map: Arc<DashMap<Uuid, LoadingState<Song>>>,
+        guest_id: Arc<str>,
+        shared_config: SharedConfig, // <-- Add config parameter here
+    ) -> Self {
         Self {
             client,
             map,
             guest_id,
+            shared_config,
         }
     }
 
+    async fn apply_auth(&self, mut req_builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        // 1. Safely acquire a thread-safe read guard snapshot from the lock-free config mirror
+        let token_lock = self.shared_config.auth_token.read().unwrap();
+
+        // 2. Unpack the cloned value to minimize hold time on the guard
+        if let Some(token) = token_lock.as_ref() {
+            // User is signed in: append the verified JWT token directly
+            req_builder = req_builder.bearer_auth(token);
+        } else {
+            // User is anonymous: fall back to the guest identifier header
+            req_builder = req_builder.header("x-guest-id", self.guest_id.to_string());
+        }
+
+        req_builder
+    }
+
     pub async fn get_public_playlists(&self) -> anyhow::Result<Vec<Playlist>> {
-        let response = self.client
-            .get("https://api.neurokaraoke.com/api/playlist/public")
-            .header("x-guest-id", self.guest_id.to_string())
-            .send()
-            .await?;
-        
+        let mut request = self.client.get("https://api.neurokaraoke.com/api/playlist/public");
+        request = self.apply_auth(request).await; // <-- Inject headers
+
+        let response = request.send().await?;
         if !response.status().is_success() {
-             return Err(anyhow!("Failed to fetch: {}", response.status()));
+            return Err(anyhow!("Failed to fetch: {}", response.status()));
         }
 
         let json: Value = response.json().await?;
-        
-        // The API returns an Array directly, not an object containing "items"
         let playlists: Vec<Playlist> = serde_json::from_value(json)?;
         Ok(playlists)
     }
 
     pub async fn get_official_setlists(&self) -> anyhow::Result<Vec<Playlist>> {
-        let response = self.client
-            .get("https://api.neurokaraoke.com/api/playlists?isSetlist=True")
-            .header("x-guest-id", self.guest_id.to_string())
-            .send()
-            .await?;
-        
+        let mut request = self.client.get("https://api.neurokaraoke.com/api/playlists?isSetlist=True");
+        request = self.apply_auth(request).await; // <-- Inject headers
+
+        let response = request.send().await?;
         if !response.status().is_success() {
-             return Err(anyhow!("Failed to fetch: {}", response.status()));
+            return Err(anyhow!("Failed to fetch: {}", response.status()));
         }
-        
+
         let json: Value = response.json().await?;
-        
-        // The API returns an Array directly, not an object containing "items"
         let playlists: Vec<Playlist> = serde_json::from_value(json)?;
         Ok(playlists)
     }
 
     pub async fn get_playlist_details(&self, id: Uuid) -> anyhow::Result<PlaylistDetail> {
-        let response = self.client
-            .get(format!("https://api.neurokaraoke.com/api/playlist/{}", id))
-            .header("x-guest-id", self.guest_id.to_string())
-            .send()
-            .await?;
-        
+        let mut request = self.client.get(format!("https://api.neurokaraoke.com/api/playlist/{}", id));
+        request = self.apply_auth(request).await; // <-- Inject headers
+
+        let response = request.send().await?;
         if !response.status().is_success() {
-             return Err(anyhow!("Failed to fetch: {}", response.status()));
+            return Err(anyhow!("Failed to fetch: {}", response.status()));
         }
-        
+
         let json: Value = response.json().await?;
-        
         let detail: PlaylistDetail = serde_json::from_value(json)?;
-        
-        // Log the deserialized detail
         crate::debug_log !("Deserialized PlaylistDetail: {:?}", detail);
-        
+
         Ok(detail)
     }
 
@@ -312,8 +508,14 @@ impl LazySongDatabase {
             let id = *id;
             let client = self.client.clone();
             let map = self.map.clone();
+            let db_self = self.clone(); // Clone database handle to share within the task context
+
             tokio::spawn(async move {
-                map.insert(id, match async { Ok(serde_json::from_slice(client.get(format!("{}/{}", Self::SONGS_API_URL, id.to_string())).send().await?.bytes().await?.as_ref())?) }.await.map_err(Arc::new) {
+                let url = format!("{}/{}", Self::SONGS_API_URL, id.to_string());
+                let mut req = client.get(url);
+                req = db_self.apply_auth(req).await; // <-- Inject token directly into the thread loop
+
+                map.insert(id, match async { Ok(serde_json::from_slice(req.send().await?.bytes().await?.as_ref())?) }.await.map_err(Arc::new) {
                     Ok(song) => LoadingState::Loaded(song),
                     Err(err) => LoadingState::Failed(err),
                 });

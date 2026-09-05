@@ -1,10 +1,14 @@
+// Inside src/config.rs
+
 use std::path::PathBuf;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::atomic::{AtomicBool, AtomicU32};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use tokio::sync::Mutex;
 use crate::theme::SelectableTheme;
 use crate::util::AsArcMutex;
+use crate::api::AuthContext;
 
 static CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -21,7 +25,6 @@ pub fn config_file() -> PathBuf { config_dir().join("config.ron") }
 
 mod defaults {
     pub fn volume() -> f32 { 0.5 }
-
     pub fn cache_expiration_secs() -> u64 { 24 * 60 * 60 }
     pub fn cache_sweep_interval_secs() -> u64 { 60 }
     pub fn cache_size_limit_mb() -> u64 { 1024 }
@@ -71,6 +74,34 @@ pub struct Config {
 
     #[serde(default = "defaults::framerate_when_not_focused")]
     pub framerate_when_not_focused: f32,
+
+    /// Stores active user authentication. If None, app runs anonymously.
+    #[serde(default)]
+    pub auth: Option<AuthContext>,
+}
+
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            volume: defaults::volume(),
+            shuffle: false,
+            loop_mode: crate::audio::LoopMode::None,
+            theme: Default::default(),
+            cache: Default::default(),
+            framerate_when_not_focused: defaults::framerate_when_not_focused(),
+            auth: None, // Defaults to logged-out state
+        }
+    }
+}
+
+/// Thread-safe lock-free mirror used across concurrent background processes.
+#[derive(Clone)]
+pub struct SharedConfig {
+    pub volume: Arc<AtomicU32>, // Scaled bits integer representation
+    pub shuffle: Arc<AtomicBool>,
+    pub loop_mode: Arc<AtomicU32>, // 0: None, 1: One, 2: All
+    pub auth_token: Arc<RwLock<Option<Arc<str>>>>,
 }
 
 impl Config {
@@ -82,20 +113,18 @@ impl Config {
         std::fs::write(config_file(), ron::ser::to_string_pretty(self, Default::default())?.as_bytes())?;
         Ok(())
     }
-}
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            volume: defaults::volume(),
-            shuffle: false,
-            loop_mode: crate::audio::LoopMode::None,
-
-            theme: Default::default(),
-
-            cache: Default::default(),
-
-            framerate_when_not_focused: defaults::framerate_when_not_focused(),
+    pub fn to_shared(&self) -> SharedConfig {
+        let mode_u32 = match self.loop_mode {
+            crate::audio::LoopMode::None => 0,
+            crate::audio::LoopMode::One => 1,
+            crate::audio::LoopMode::All => 2,
+        };
+        SharedConfig {
+            volume: Arc::new(AtomicU32::new(self.volume.to_bits())),
+            shuffle: Arc::new(AtomicBool::new(self.shuffle)),
+            loop_mode: Arc::new(AtomicU32::new(mode_u32)),
+            auth_token: Arc::new(RwLock::new(self.auth.as_ref().map(|a| a.token.clone()))),
         }
     }
 }

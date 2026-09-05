@@ -1,18 +1,17 @@
 mod theme;
-#[allow(dead_code)]
-mod activity; // not finished yet, hence we allow dead code so we don't get warned a bunch
+mod activity;
 mod audio;
 mod api;
 mod util;
 mod cache;
 mod config;
+mod auth;
 
-use std::collections::HashMap;
-use crate::activity::{ActivityType, playlist::PlaylistActivity, setlist::SetlistActivity};
+use crate::activity::{ActivityType, playlist::PlaylistActivity, setlist::SetlistActivity, profile};
 use crate::api::{LazySongDatabase, LoadingState, Song};
 use crate::audio::{Player, PlaybackState, LoopMode};
 use crate::cache::Cache;
-use crate::config::Config;
+use crate::config::{Config, SharedConfig};
 use crate::theme::{SelectableTheme, ThemeManager};
 use eframe::egui::{include_image, lerp, Align, Color32, CornerRadius, CursorIcon, ImageSource, Layout, PopupKind, Pos2, RectAlign, Rgba, RichText, Sense, Stroke, TextWrapMode, Ui, Vec2};
 use eframe::{egui, Frame};
@@ -20,6 +19,7 @@ use mimalloc::MiMalloc;
 use reqwest::Client;
 use std::sync::Arc;
 use std::time::Duration;
+use dashmap::DashMap;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 use uuid::Uuid;
@@ -61,19 +61,25 @@ pub struct App {
     activity: ActivityType,
     playlist_activity: PlaylistActivity,
     setlist_activity: SetlistActivity,
-
+    profile_activity: profile::ProfileActivity,
     current_song_uuid: Option<Uuid>,
     current_playback_state: Option<PlaybackState>,
     last_os_playback_update: Instant,
 
+
     rt: Arc<tokio::runtime::Runtime>,
     client: Client,
-    pub config: Config,
 
     // Image caching
-    cached_art_paths: Arc<dashmap::DashMap<Arc<str>, String>>,
+    cached_art_paths: Arc<DashMap<Arc<str>, String>>,
     active_art_downloads: Arc<dashmap::DashSet<Arc<str>>>,
 
+
+    pub config: Config,
+    pub shared_config: SharedConfig,
+
+    profile_data: Option<api::ProfileHeader>,
+    cached_avatar_path: Option<String>,
 }
 
 
@@ -109,22 +115,67 @@ impl App {
         ctx.set_fonts(fonts);
 
         #[cfg(debug_assertions)]
-        ctx.global_style_mut(|s| s.debug.warn_if_rect_changes_id = false); // workaround for https://github.com/emilk/egui/issues/8092
+        ctx.global_style_mut(|s| s.debug.warn_if_rect_changes_id = false); // workaround for https://github.com
 
         let config = Config::read().unwrap_or_default();
+        let shared_config = config.to_shared();
 
         let cache = Cache::load_or_default();
         let client = Client::new();
+
+        // ─── THE FIX: INSTANTIATE THE PROFILE ACTIVITY INSTANCE EARLY ───
+        let profile_activity = profile::ProfileActivity::new(ctx.clone(), cache.clone());
+
+        let current_auth = { config.auth.clone() };
+        if let Some(auth_ctx) = &current_auth {
+            let stored_token = auth_ctx.token.clone();
+
+            // Now profile_activity exists in this scope and can be securely cloned!
+            let startup_tx = profile_activity.get_sender_handle();
+            let client_clone = client.clone();
+            let ctx_clone = ctx.clone();
+
+            rt.spawn(async move {
+                // FIX: Directly fetch profile, removing redundant verification call
+                let profile_url = "https://api.neurokaraoke.com/api/badge/profile";
+                match client_clone.get(profile_url).bearer_auth(&stored_token).send().await {
+                    Ok(prof_res) => {
+                        if prof_res.status().is_success() {
+                            if let Ok(raw_prof_text) = prof_res.text().await {
+                                if let Ok(profile_response) = serde_json::from_str::<api::ProfileResponse>(&raw_prof_text) {
+                                    debug_log!("🟢 Startup profile synchronization complete!");
+                                    let _ = startup_tx.send(profile::ProfileMessage::ProfileHeaderLoaded(profile_response.profile)).await;
+                                } else {
+                                    debug_log!("❌ Failed to deserialize ProfileResponse");
+                                }
+                            }
+                        } else {
+                            debug_log!("🔴 Profile fetch failed with status: {}", prof_res.status());
+                        }
+                    }
+                    Err(e) => debug_log!("❌ Startup profile fetch collapsed: {}", e),
+                }
+                ctx_clone.request_repaint();
+            });
+        }
+
+
         let guest_id: Arc<str> = Uuid::new_v4().to_string().into();
-        let songs = LazySongDatabase::new(client.clone(),
-              Arc::new(Cache::load_or_default_custom::<HashMap<Uuid, Song>>("songs.ron").into_iter().map(|(uuid, song)|
-              (uuid, LoadingState::Loaded(song))).collect()), guest_id);
+
+        let songs = LazySongDatabase::new(
+            client.clone(),
+            Arc::new(DashMap::new()),
+            guest_id,
+            shared_config.clone(),
+        );
+
 
         let player = Player::new(rt.clone(), ctx.clone(), songs.clone(), cache.clone());
         player.volume(config.volume);
         player.shuffle(config.shuffle);
         player.looping(config.loop_mode);
 
+        // 2. USE THE UNPACKED INITIAL PROPERTIES TO SETUP THREAD WORKERS
         let s = songs.clone();
         let c = cache.clone();
         let cc = config.cache.clone();
@@ -140,7 +191,7 @@ impl App {
                     last_update.lock().await.replace(Instant::now());
                     s.load_all(|_| ()).await.unwrap();
                     tokio::fs::write(cache::cache_dir().join("songs.ron"),
-                        ron::ser::to_string_pretty(&s, Default::default()).unwrap())
+                                     ron::ser::to_string_pretty(&s, Default::default()).unwrap())
                         .await
                         .unwrap();
                 }
@@ -170,36 +221,39 @@ impl App {
             }
         }
 
-        let cached_art_paths = Arc::new(dashmap::DashMap::new());
+        let cached_art_paths = Arc::new(DashMap::new());
         let active_art_downloads = Arc::new(dashmap::DashSet::new());
 
         Self {
             cache,
             songs: songs.clone(),
             player,
-
             media_controls,
             search: "".to_string(),
             dragging_seeker: false,
             dragging_volume: false,
+
 
             theme: ThemeManager::new(config.theme.as_theme()),
 
             activity: ActivityType::Home,
             playlist_activity: PlaylistActivity::new(ctx.clone(), songs.clone()),
             setlist_activity: SetlistActivity::new(ctx.clone(), songs),
+            profile_activity,
 
             current_song_uuid: None,
             current_playback_state: None,
             last_os_playback_update: Instant::now(),
-
             rt,
             client,
             config,
+            shared_config,
 
-            // Image Caching
             cached_art_paths,
             active_art_downloads,
+
+            profile_data: None,
+            cached_avatar_path: None,
         }
     }
 
@@ -213,7 +267,11 @@ impl App {
         if let Ok(parsed_uuid) = Uuid::parse_str(&cloudflare_id) {
             let key = (parsed_uuid, cache::AssetType::Image);
             if let Some(entry) = self.cache.entries.get(&key) {
-                let path = cache::cache_dir().join(format!("assets/{:016x}", entry.id));
+                let path = if let Some(ref ext) = entry.extension {
+                    cache::cache_dir().join(format!("assets/{:016x}.{}", entry.id, ext))
+                } else {
+                    cache::cache_dir().join(format!("assets/{:016x}", entry.id))
+                };
                 if path.exists() {
                     let path_str = path.to_string_lossy().into_owned();
                     self.cached_art_paths.insert(cloudflare_id.clone(), path_str.clone());
@@ -231,11 +289,13 @@ impl App {
             let ctx_clone = ctx.clone();
             let id_worker = cloudflare_id.clone();
 
-            debug_log!("Downloading image: https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90",cloudflare_id );
+
             let url = format!(
                 "https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90",
                 cloudflare_id
             );
+
+            debug_log!("Downloading image: {}",url );
 
             self.rt.spawn(async move {
                 if let Ok(target_uuid) = Uuid::parse_str(&id_worker) {
@@ -379,6 +439,70 @@ fn init_souvlaki() -> Option<MediaControls> {
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
+
+        if let Some(msg) = self.profile_activity.poll_messages() {
+            match msg {
+                profile::ProfileMessage::LoginSuccess(context) => {
+                    debug_log!("🔐 [Auth Sync] Login success captured. Updating app runtime structures...");
+
+                    // 1. Update the live configuration container directly
+                    self.config.auth = Some(context.clone());
+                    let _ = self.config.write();
+
+                    // 2. Synchronize your lock-free thread mirror for background loaders
+                    if let Ok(mut token_guard) = self.shared_config.auth_token.write() {
+                        *token_guard = Some(context.token.clone());
+                    }
+
+                    // 3. Trigger raw context collection debugging
+                    let client_clone = self.client.clone();
+                    let ctx_clone = ui.ctx().clone();
+                    let stored_token = context.token.clone();
+                    let tx_channel = self.profile_activity.get_sender_handle();
+
+                    self.rt.spawn(async move {
+                        // FIX: Directly fetch profile, removing redundant UserClaims check
+                        let profile_url = "https://api.neurokaraoke.com/api/badge/profile";
+                        match client_clone.get(profile_url).bearer_auth(&stored_token).send().await {
+                            Ok(prof_res) => {
+                                if prof_res.status().is_success() {
+                                    if let Ok(raw_prof_text) = prof_res.text().await {
+                                        if let Ok(profile_response) = serde_json::from_str::<api::ProfileResponse>(&raw_prof_text) {
+                                            debug_log!("🟢 Profile synchronization complete!");
+                                            let _ = tx_channel.send(profile::ProfileMessage::ProfileHeaderLoaded(profile_response.profile)).await;
+                                        } else {
+                                            debug_log!("❌ Failed to deserialize ProfileResponse");
+                                        }
+                                    }
+                                } else {
+                                    debug_log!("🔴 Profile fetch failed with status: {}", prof_res.status());
+                                }
+                            }
+                            Err(e) => debug_log!("❌ Profile fetch collapsed: {}", e),
+                        }
+                        ctx_clone.request_repaint();
+                    });
+                }
+
+
+                profile::ProfileMessage::ProfileHeaderLoaded(header_data) => {
+                    self.profile_data = Some(header_data);
+                }
+                profile::ProfileMessage::Logout => {
+                    self.config.auth = None;
+                    let _ = self.config.write();
+
+                    if let Ok(mut token_guard) = self.shared_config.auth_token.write() {
+                        *token_guard = None;
+                    }
+                    self.profile_data = None;
+                    self.cached_avatar_path = None;
+                }
+                profile::ProfileMessage::AvatarLoaded(_) => {}
+            }
+            ui.ctx().request_repaint();
+        }
+
         if self.theme.animate(ui.input(|i| i.stable_dt)) {
             ui.set_visuals(self.theme.visuals());
             ui.request_repaint();
@@ -440,11 +564,13 @@ impl eframe::App for App {
                     }
                 };
 
+
                 // nav buttons
                 nav_button(ui, ActivityType::Home);
                 nav_button(ui, ActivityType::Search);
                 nav_button(ui, ActivityType::Playlists);
                 nav_button(ui, ActivityType::Setlists);
+
 
                 // bottom area
                 ui.with_layout(
@@ -454,7 +580,7 @@ impl eframe::App for App {
 
                         // theme switcher
                         ui.horizontal(|ui| {
-                            let current = self.config.theme;
+                            let current = { self.config.theme };
                             let mut button = |ui: &mut Ui, select_theme: SelectableTheme| {
                                 let mut button = egui::Button::new(select_theme.as_str())
                                     .fill(if current == select_theme { self.theme.primary } else { self.theme.background_elevated });
@@ -491,16 +617,51 @@ impl eframe::App for App {
 
                         ui.add_space(16.0);
 
-                        // profile
+                        // Profile Icon
                         let resp = ui.scope(|ui| {
                             ui.horizontal(|ui| {
-                                ui.add(egui::Image::new(include_image!("../assets/icon.png")) // TODO: use real pfp instead of icon
-                                    .fit_to_exact_size(Vec2::new(32.0, 32.0))
-                                    .corner_radius(16.0)
-                                    .texture_options(egui::TextureOptions::LINEAR)
-                                );
+                            ui.add_space(4.0);
 
-                                ui.add(egui::Label::new(RichText::new( "TestUsername" ).size(16.0)).selectable(false));
+                            // ─── THE FIX: Read dynamically from profile data, or directly from active auth session records ───
+                                let current_avatar_url = self.profile_data.as_ref()
+                                    .and_then(|p| p.avatar_url.clone());
+
+                                if let Some(avatar_url) = current_avatar_url {
+                                    match &self.profile_activity.state.avatar_state {
+                                        crate::activity::profile::AvatarState::Ready { bytes } => {
+                                            // Ensure a unique URI with a valid extension for format inference
+                                            let uri = format!("bytes://avatar_{}.jpeg", avatar_url);
+
+                                            ui.add(egui::Image::from_bytes(
+                                                uri,
+                                                bytes.clone()
+                                            )
+                                                .fit_to_exact_size(Vec2::new(32.0, 32.0))
+                                                .corner_radius(16.0)
+                                                .texture_options(egui::TextureOptions::LINEAR));
+                                        },
+                                        crate::activity::profile::AvatarState::Downloading => {
+                                            let (rect, _) = ui.allocate_exact_size(Vec2::new(32.0, 32.0), Sense::hover());
+                                            ui.painter().rect_filled(rect, 16.0, self.theme.background_elevated);
+                                        },
+                                        crate::activity::profile::AvatarState::None => {
+                                            self.profile_activity.resolve_avatar_uri(ui.ctx(), &self.rt, &self.client, &avatar_url);
+                                            let (rect, _) = ui.allocate_exact_size(Vec2::new(32.0, 32.0), Sense::hover());
+                                            ui.painter().rect_filled(rect, 16.0, self.theme.background_elevated);
+                                        }
+                                    }
+                                } else {
+                                    ui.add(egui::Image::new(include_image!("../assets/icon.png"))
+                                        .fit_to_exact_size(Vec2::new(32.0, 32.0))
+                                        .corner_radius(16.0));
+                                }
+
+                                if let Some(auth) = &self.config.auth {
+                                    let username_str = &auth.user.username;
+                                    ui.add(egui::Label::new(RichText::new(username_str.to_string()).size(16.0)).selectable(false));
+                                } else {
+                                    ui.add(egui::Label::new(RichText::new("Guest Account").italics().color(self.theme.text_muted).size(14.0)).selectable(false));
+                                }
                             });
                         }).response.interact(Sense::click());
 
@@ -571,6 +732,7 @@ impl eframe::App for App {
             }
             self.current_playback_state = Some(state);
 
+            // Bottom player controls
             egui::Panel::bottom("player")
                 .resizable(false)
                 .frame(
@@ -915,6 +1077,8 @@ impl eframe::App for App {
                                         ui.label(format!("Error loading setlists: {}", err));
                                     }
                                 }
+
+
                                 
                                 if let Some(selected) = &*self.setlist_activity.selected_setlist.blocking_lock() {
                                     ui.separator();
@@ -945,6 +1109,18 @@ impl eframe::App for App {
                                     }
                                 }
                             });
+                        } else if self.activity == ActivityType::Profile {
+                            // Instantiate the auth_service handle you declared on startup
+                            // passing your client down to background sweeps cleanly
+                            let auth_service = auth::AuthService::new(self.client.clone());
+
+                            self.profile_activity.render(
+                                ui,
+                                &self.theme,
+                                &self.config.auth,
+                                &auth_service,
+                                &self.rt,
+                            );
                         }
                     });
                 });

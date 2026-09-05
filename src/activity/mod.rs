@@ -1,6 +1,7 @@
 pub mod home;
 pub mod playlist;
 pub mod setlist;
+pub mod profile;
 
 use eframe::egui::{include_image, ImageSource};
 
@@ -26,7 +27,7 @@ impl ActivityType {
             Self::Search => Some(include_image!("../../assets/search.png")),
             Self::Playlists => Some(include_image!("../../assets/search.png")),
             Self::Setlists => Some(include_image!("../../assets/search.png")),
-            _ => None,
+            Self::Profile => Some(include_image!("../../assets/icon.png")),
         }
     }
 }
