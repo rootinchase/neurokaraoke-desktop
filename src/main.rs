@@ -60,8 +60,10 @@ pub struct App {
     // activity stuff
     activity: ActivityType,
     playlist_activity: PlaylistActivity,
+    my_playlist_activity: PlaylistActivity,
     setlist_activity: SetlistActivity,
     profile_activity: profile::ProfileActivity,
+
     current_song_uuid: Option<Uuid>,
     current_playback_state: Option<PlaybackState>,
     last_os_playback_update: Instant,
@@ -237,7 +239,8 @@ impl App {
             theme: ThemeManager::new(config.theme.as_theme()),
 
             activity: ActivityType::Home,
-            playlist_activity: PlaylistActivity::new(ctx.clone(), songs.clone()),
+            playlist_activity: PlaylistActivity::new(ctx.clone(), songs.clone(), false),
+            my_playlist_activity: PlaylistActivity::new(ctx.clone(), songs.clone(), true),
             setlist_activity: SetlistActivity::new(ctx.clone(), songs),
             profile_activity,
 
@@ -257,14 +260,18 @@ impl App {
         }
     }
 
-    fn resolve_artwork_uri(&self, ctx: &egui::Context, cloudflare_id: Arc<str>) -> Option<String> {
+    fn resolve_artwork_uri(&self, ctx: &egui::Context, cloudflare_id: Option<Arc<str>>, absolute_path: Arc<str>) -> Option<String> {
+        let key = cloudflare_id.clone().map(|id| id.to_string()).unwrap_or_else(|| absolute_path.to_string());
+        
+        let key_str: Arc<str> = key.clone().into();
+        
         // We will return the matching file path string as our verified key
-        if let Some(path_str) = self.cached_art_paths.get(&cloudflare_id) {
-            return Some(path_str.clone());
+        if let Some(path_str) = self.cached_art_paths.get::<Arc<str>>(&key_str) {
+            return Some(path_str.value().clone());
         }
 
         // 2. Synchronously check if it exists in Cache mapping on startup
-        if let Ok(parsed_uuid) = Uuid::parse_str(&cloudflare_id) {
+        if let Ok(parsed_uuid) = Uuid::parse_str(&key) {
             let key = (parsed_uuid, cache::AssetType::Image);
             if let Some(entry) = self.cache.entries.get(&key) {
                 let path = if let Some(ref ext) = entry.extension {
@@ -274,35 +281,53 @@ impl App {
                 };
                 if path.exists() {
                     let path_str = path.to_string_lossy().into_owned();
-                    self.cached_art_paths.insert(cloudflare_id.clone(), path_str.clone());
+                    let key_str: Arc<str> = format!("{:?}", key).into();
+                    self.cached_art_paths.insert(key_str, path_str.clone());
                     return Some(path_str);
                 }
             }
         }
 
         // 3. Cache Miss: Spawn background fetch if not already loading
-        if self.active_art_downloads.insert(cloudflare_id.clone()) {
+        if self.active_art_downloads.insert(key.clone().into()) {
             let cache = self.cache.clone();
             let client = self.client.clone();
             let cached_paths = self.cached_art_paths.clone();
             let active_downloads = self.active_art_downloads.clone();
             let ctx_clone = ctx.clone();
-            let id_worker = cloudflare_id.clone();
+            let id_worker = key.clone();
+            
+            // Use cloudflare_id if available, otherwise construct URL from absolute_path if it's a relative path on the image server
+            let image_base = "https://images.neurokaraoke.com";
+            let url = if let Some(id) = cloudflare_id {
+                format!("{}/WxURxyML82UkE7gY-PiBKw/{}/w=512,h=512,fit=cover,quality=90", image_base, id)
+            } else {
+                format!("{}/{}/{}", image_base, absolute_path.trim_start_matches('/'), "/width=512,height=512,fit=crop,gravity=auto")
+            };
 
-
-            let url = format!(
-                "https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90",
-                cloudflare_id
-            );
-
-            debug_log!("Downloading image: {}",url );
+            debug_log!("Downloading image: {}", url);
 
             self.rt.spawn(async move {
+                // If it's a UUID, we can use the existing cache mechanism. 
+                // If it's a URL path, we might need a more generic download-to-cache.
                 if let Ok(target_uuid) = Uuid::parse_str(&id_worker) {
                     match cache.get_or_download_image(&client, target_uuid, url).await {
                         Ok(path) => {
                             let path_str = path.to_string_lossy().into_owned();
-                            cached_paths.insert(id_worker.clone(), path_str.clone());
+                            cached_paths.insert(id_worker.clone().into(), path_str.clone());
+                            debug_log!("🖼️ [Image Cache] Successfully cached image path: {}", path_str);
+                        }
+                        Err(e) => {
+                            debug_log!("❌ [Image Cache] Failed to cache image {}: {}", id_worker, e);
+                        }
+                    }
+                } else {
+                    // Fallback for non-UUID image paths: just download directly to a hashed name
+                    let target_uuid = Uuid::new_v4(); // Simple unique ID for the download task
+                    match cache.get_or_download_image(&client, target_uuid, url).await {
+                        Ok(path) => {
+                            let path_str = path.to_string_lossy().into_owned();
+                            cached_paths.insert(id_worker.clone().into(), path_str.clone());
                             debug_log!("🖼️ [Image Cache] Successfully cached image path: {}", path_str);
                         }
                         Err(e) => {
@@ -310,7 +335,7 @@ impl App {
                         }
                     }
                 }
-                active_downloads.remove(&id_worker);
+                active_downloads.remove::<Arc<str>>(&id_worker.into());
                 ctx_clone.request_repaint();
             });
         }
@@ -569,6 +594,7 @@ impl eframe::App for App {
                 nav_button(ui, ActivityType::Home);
                 nav_button(ui, ActivityType::Search);
                 nav_button(ui, ActivityType::Playlists);
+                nav_button(ui, ActivityType::MyPlaylists);
                 nav_button(ui, ActivityType::Setlists);
 
 
@@ -707,13 +733,13 @@ impl eframe::App for App {
                     self.current_song_uuid = Some(state.song());
                     
                     let cover_art_url = if let Some(meta) = self.player.current_url_metadata.lock().unwrap().as_ref() {
-                        meta.cover_art.as_ref().map(|art| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90", art.cloudflare_id)).unwrap_or_else(|| "".to_string())
+                        meta.cover_art.as_ref().and_then(|art| art.cloudflare_id.as_ref()).map(|id| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90", id)).unwrap_or_else(|| "".to_string())
                     } else {
                         s.cover_art.as_ref()
-                            .map(|ca| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90", ca.cloudflare_id))
+                            .and_then(|ca| ca.cloudflare_id.as_ref())
+                            .map(|id| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90", id))
                             .unwrap_or_else(|| "".to_string())
                     };
-                    
                     self.update_os_metadata(
                         &s.title,
                         &format!("{} (feat. {})", s.original_artists.join(" & "), s.cover_artists.join(" & ")),
@@ -799,24 +825,27 @@ impl eframe::App for App {
                             ui.add_space(7.5);
 
                             let mut current_img_uuid: Option<Arc<str>> = None;
+                            let mut current_abs_path: Option<Arc<str>> = None;
                             if let Some(s) = &song {
                                 if let Some(cover_art) = &s.cover_art {
-                                    current_img_uuid = Some(cover_art.cloudflare_id.clone());
+                                    current_img_uuid = cover_art.cloudflare_id.clone();
+                                    current_abs_path = Some(cover_art.absolute_path.clone());
                                 }
                             }
                             if current_img_uuid.is_none() {
                                 if let Ok(meta) = self.player.current_url_metadata.lock() {
                                     if let Some(meta) = &*meta {
                                         if let Some(art) = &meta.cover_art {
-                                            current_img_uuid = Some(art.cloudflare_id.clone());
+                                            current_img_uuid = art.cloudflare_id.clone();
+                                            current_abs_path = Some(art.absolute_path.clone());
                                         }
                                     }
                                 }
                             }
 
                             let mut cached_path_str = None;
-                            if let Some(img_id) = current_img_uuid {
-                                cached_path_str = self.resolve_artwork_uri(ui.ctx(), img_id);
+                            if let Some(abs_path) = current_abs_path {
+                                cached_path_str = self.resolve_artwork_uri(ui.ctx(), current_img_uuid, abs_path);
                             }
 
                             if let Some(path_str) = cached_path_str {
@@ -1029,7 +1058,7 @@ impl eframe::App for App {
                                         ui.label(format!("Error loading playlists: {}", err));
                                     }
                                 }
-                                
+
                                 if let Some(selected) = &*self.playlist_activity.selected_playlist.blocking_lock() {
                                     ui.separator();
                                     match selected {
@@ -1043,7 +1072,7 @@ impl eframe::App for App {
                                                 self.player.clear_playlist();
                                                 self.player.playlist(Some(pl.clone().into()));
                                                 self.player.url_playlist(Some(songs.clone().into()));
-                                                
+
                                                 if let Some(first_song) = songs.first() {
                                                     self.player.url_playback(Some(pl[0]), first_song.clone(), Player::play);
                                                 }
@@ -1059,7 +1088,56 @@ impl eframe::App for App {
                                     }
                                 }
                             });
-                        } else if self.activity == ActivityType::Setlists {
+                        } else if self.activity == ActivityType::MyPlaylists {
+                            egui::ScrollArea::vertical().show(ui, |ui| {
+                                ui.label("My Playlists:");
+                                match &*self.my_playlist_activity.playlists.blocking_lock() {
+                                    LoadingState::Loaded(playlists) => {
+                                        for playlist in playlists {
+                                            if ui.button(format!("{} by {}", playlist.name, playlist.creator)).clicked() {
+                                                self.my_playlist_activity.select_playlist(playlist.id);
+                                            }
+                                        }
+                                    },
+                                    LoadingState::Loading => {
+                                        ui.label("Loading...");
+                                    },
+                                    LoadingState::Failed(err) => {
+                                        ui.label(format!("Error loading playlists: {}", err));
+                                    }
+                                }
+
+                                if let Some(selected) = &*self.my_playlist_activity.selected_playlist.blocking_lock() {
+                                    ui.separator();
+                                    match selected {
+                                        LoadingState::Loaded(detail) => {
+                                            ui.label(format!("Playlist: {}", detail.name));
+                                            if ui.button("Play Playlist").clicked() {
+                                                let songs = &detail.songs;
+                                                debug_log!("Playlist '{}' has {} songs.", detail.name, songs.len());
+                                                // Restore playlist for Player logic
+                                                let pl: Vec<Uuid> = songs.iter().map(|_| Uuid::new_v4()).collect();
+                                                self.player.clear_playlist();
+                                                self.player.playlist(Some(pl.clone().into()));
+                                                self.player.url_playlist(Some(songs.clone().into()));
+
+                                                if let Some(first_song) = songs.first() {
+                                                    self.player.url_playback(Some(pl[0]), first_song.clone(), Player::play);
+                                                }
+                                            }
+                                            render_song_table(ui, &detail.songs);
+                                        },
+                                        LoadingState::Loading => {
+                                            ui.label("Loading playlist details...");
+                                        },
+                                        LoadingState::Failed(err) => {
+                                            ui.label(format!("Error loading playlist details: {}", err));
+                                        }
+                                    }
+                                }
+                            });
+                        }
+ else if self.activity == ActivityType::Setlists {
                             egui::ScrollArea::vertical().show(ui, |ui| {
                                 ui.label("Official Setlists:");
                                 match &*self.setlist_activity.setlists.blocking_lock() {

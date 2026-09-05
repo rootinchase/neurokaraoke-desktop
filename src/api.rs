@@ -188,7 +188,11 @@ pub struct Artwork {
     #[serde(default)]
     #[serde_as(as = "DefaultOnNull")]
     pub description: Arc<str>,
-    pub cloudflare_id: Arc<str>,
+    #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
+    pub cloudflare_id: Option<Arc<str>>,
+    #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
     pub absolute_path: Arc<str>,
     pub artist: Option<Artist>,
 }
@@ -454,6 +458,20 @@ impl LazySongDatabase {
 
     pub async fn get_public_playlists(&self) -> anyhow::Result<Vec<Playlist>> {
         let mut request = self.client.get("https://api.neurokaraoke.com/api/playlist/public");
+        request = self.apply_auth(request).await; // <-- Inject headers
+
+        let response = request.send().await?;
+        if !response.status().is_success() {
+            return Err(anyhow!("Failed to fetch: {}", response.status()));
+        }
+
+        let json: Value = response.json().await?;
+        let playlists: Vec<Playlist> = serde_json::from_value(json)?;
+        Ok(playlists)
+    }
+
+    pub async fn get_user_playlists(&self) -> anyhow::Result<Vec<Playlist>> {
+        let mut request = self.client.get("https://api.neurokaraoke.com/api/user/playlists");
         request = self.apply_auth(request).await; // <-- Inject headers
 
         let response = request.send().await?;

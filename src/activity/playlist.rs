@@ -12,8 +12,9 @@ pub struct PlaylistActivity {
 }
 
 impl PlaylistActivity {
-    pub fn new(ctx: Context, songs: LazySongDatabase) -> Self {
-        let cache_path = crate::cache::cache_dir().join("playlists.ron");
+    pub fn new(ctx: Context, songs: LazySongDatabase, is_personal: bool) -> Self {
+        let cache_file = if is_personal { "my_playlists.ron" } else { "playlists.ron" };
+        let cache_path = crate::cache::cache_dir().join(cache_file);
         let cached_playlists = std::fs::read(&cache_path)
             .ok()
             .and_then(|data| ron::de::from_bytes(&data).ok());
@@ -27,7 +28,13 @@ impl PlaylistActivity {
         let p = playlists.clone();
         let songs_clone = songs.clone();
         tokio::spawn(async move {
-            match songs_clone.get_public_playlists().await {
+            let result = if is_personal {
+                songs_clone.get_user_playlists().await
+            } else {
+                songs_clone.get_public_playlists().await
+            };
+            
+            match result {
                 Ok(data) => {
                     *p.lock().await = LoadingState::Loaded(data.clone());
                     let _ = tokio::fs::write(cache_path, ron::ser::to_string_pretty(&data, Default::default()).unwrap()).await;
@@ -66,6 +73,26 @@ impl PlaylistActivity {
                     *selected.lock().await = Some(LoadingState::Failed(Arc::new(err)));
                 }
             }
+        });
+    }
+
+    pub fn fetch_user_playlists(&self) {
+        let p = self.playlists.clone();
+        let songs = self.songs.clone();
+        let ctx = self.ctx.clone();
+        
+        *p.blocking_lock() = LoadingState::Loading;
+        
+        tokio::spawn(async move {
+            match songs.get_user_playlists().await {
+                Ok(data) => {
+                    *p.lock().await = LoadingState::Loaded(data);
+                }
+                Err(err) => {
+                    *p.lock().await = LoadingState::Failed(Arc::new(err));
+                }
+            }
+            ctx.request_repaint();
         });
     }
 }

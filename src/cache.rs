@@ -188,8 +188,8 @@ impl Cache {
         if !response.status().is_success() {
             return Err(anyhow::anyhow!("Request failed with status: {}", response.status()));
         }
-        let bytes = response.bytes().await?;
-        let size = bytes.len() as u64;
+        let body_bytes = response.bytes().await?;
+        let size = body_bytes.len() as u64;
 
         // 3. Reserve a clean file increment slot
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
@@ -197,7 +197,7 @@ impl Cache {
 
         // 4. Flush raw binary payload to asset index
         let mut file = tokio::fs::File::create(&path).await?;
-        file.write_all(&bytes).await?;
+        file.write_all(&body_bytes).await?;
         file.flush().await?;
         drop(file);
 
@@ -236,26 +236,26 @@ impl Cache {
             }
         }
 
-        // 2. Cache miss: download the byte payload
         let response = client.get(&url).send().await?;
         let status = response.status();
-        let content_type = response.headers().get("content-type").and_then(|v| v.to_str().ok());
+        let content_type = response.headers().get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string()); // Capture as owned String
         
-        let extension = match content_type {
-            Some("image/jpeg") => Some("jpeg".to_string()),
+        let body_bytes = response.bytes().await?;
+        
+        if content_type.as_deref().map_or(true, |ct| !ct.starts_with("image/")) {
+             let body_text = String::from_utf8_lossy(&body_bytes);
+             crate::debug_log!("🔴 [Cache Core HTTP] UNEXPECTED CONTENT-TYPE. Status: {}, Content-Type: {:?}, Body: {}", status, content_type, body_text);
+        }
+
+        let extension = match content_type.as_deref() {
+            Some("image/jpeg") | Some("image/jpg") => Some("jpeg".to_string()),
             Some("image/png") => Some("png".to_string()),
             Some("image/webp") => Some("webp".to_string()),
             _ => None,
         };
-
-        crate::debug_log!("📥 [Cache Core HTTP] INBOUND STATUS FROM SERVER: {}, Content-Type: {:?}", status, content_type);
-
-        if !status.is_success() {
-            return Err(anyhow::anyhow!("Image request failed with status: {}", status));
-        }
-
-        let bytes = response.bytes().await?;
-        let size = bytes.len() as u64;
+        let size = body_bytes.len() as u64;
 
         crate::debug_log!("💾 [Cache Core HTTP] FLUSHING ASSET DATA. Size: {} bytes, Extension: {:?}", size, extension);
 
@@ -269,7 +269,7 @@ impl Cache {
 
         // 4. Flush image binary data to the asset index
         let mut file = tokio::fs::File::create(&path).await?;
-        file.write_all(&bytes).await?;
+        file.write_all(&body_bytes).await?;
         file.flush().await?;
 
         // 5. Track inside the DashMap structure for background cleanup compatibility
