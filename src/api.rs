@@ -10,8 +10,10 @@ use std::sync::Arc;
 use serde::ser::SerializeMap;
 use uuid::Uuid;
 use crate::config::{SharedConfig};
+use crate::debug_log;
 
-mod internal {
+pub mod internal {
+    use super::*;
     use serde::{Deserialize, Deserializer};
     use std::sync::Arc;
     use uuid::Uuid;
@@ -73,28 +75,43 @@ mod internal {
             let r4: Result<MaybeArtists, _> = serde_json::from_value(j4);
             assert!(r4.is_ok(), "Failed to deserialize single string: {:?}", r4.err());
         }
-        
+
         #[test]
         fn test_possibly_with_id_deserialization() {
             // String (should match NoId)
             let j1 = json!("Artist 1");
             let r1: Result<PossiblyWithId, _> = serde_json::from_value(j1);
             assert!(r1.is_ok(), "Failed to deserialize string: {:?}", r1.err());
-            
+
             // Object with name (should match ID)
             let j2 = json!({"name": "Artist 1"});
             let r2: Result<PossiblyWithId, _> = serde_json::from_value(j2);
             assert!(r2.is_ok(), "Failed to deserialize name-only object: {:?}", r2.err());
-            
+
             // Object with id and name (should match ID)
             let j3 = json!({"id": "550e8400-e29b-41d4-a716-446655440000", "name": "Artist 1"});
             let r3: Result<PossiblyWithId, _> = serde_json::from_value(j3);
             assert!(r3.is_ok(), "Failed to deserialize full object: {:?}", r3.err());
-            
+
             // Empty object (should fail?)
             let j4 = json!({});
             let r4: Result<PossiblyWithId, _> = serde_json::from_value(j4);
             assert!(r4.is_err(), "Should have failed to deserialize empty object: {:?}", r4);
+        }
+    }
+
+    pub fn deserialize_song<'de, D>(d: D) -> Result<Option<SongDTO>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct SongWrapper {
+            song: SongDTO,
+        }
+
+        match Option::<SongWrapper>::deserialize(d)? {
+            Some(wrapper) => Ok(Some(wrapper.song)),
+            None => Ok(None),
         }
     }
 
@@ -138,14 +155,27 @@ pub struct PlaylistDetail {
     pub songs: Vec<SongDTO>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FavoriteEntry {
+    pub id: Uuid,
+    pub song: Option<SongDTO>,
+}
+
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
 pub struct SongDTO {
+    pub id: Uuid,
     pub title: Arc<str>,
+    #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
+    pub opus: Option<Arc<str>>,
     #[serde(alias = "cnPath")]
     pub audio_url: Option<Arc<str>>,
+    #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
+    pub oss: Option<Arc<str>>,
     pub cover_art: Option<Artwork>,
     #[serde(default, deserialize_with = "deserialize_artists")]
     pub original_artists: Arc<[Arc<str>]>,
@@ -309,12 +339,12 @@ pub struct QrSession {
 }
  */
 
-#[serde_with::serde_as]
+#[serde_as]
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileHeader {
     #[serde(alias = "userID")]
-    pub user_id: uuid::Uuid,
+    pub user_id: Uuid,
     #[serde(alias = "displayName")]
     pub display_name: String,
     #[serde(alias = "avatarUrl")]
@@ -423,6 +453,14 @@ pub struct LazySongDatabase {
     pub shared_config: SharedConfig,
 }
 
+
+impl SongDTO {
+    pub fn is_valid(&self) -> bool {
+        !self.title.is_empty()
+    }
+}
+
+
 impl LazySongDatabase {
     const SONGS_API_URL: &str = "https://api.neurokaraoke.com/api/songs";
 
@@ -430,7 +468,7 @@ impl LazySongDatabase {
         client: Client,
         map: Arc<DashMap<Uuid, LoadingState<Song>>>,
         guest_id: Arc<str>,
-        shared_config: SharedConfig, // <-- Add config parameter here
+        shared_config: SharedConfig,
     ) -> Self {
         Self {
             client,
@@ -441,10 +479,8 @@ impl LazySongDatabase {
     }
 
     async fn apply_auth(&self, mut req_builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        // 1. Safely acquire a thread-safe read guard snapshot from the lock-free config mirror
         let token_lock = self.shared_config.auth_token.read().unwrap();
 
-        // 2. Unpack the cloned value to minimize hold time on the guard
         if let Some(token) = token_lock.as_ref() {
             // User is signed in: append the verified JWT token directly
             req_builder = req_builder.bearer_auth(token);
@@ -498,6 +534,56 @@ impl LazySongDatabase {
         Ok(playlists)
     }
 
+    pub async fn get_favorite_songs(&self) -> anyhow::Result<Vec<SongDTO>> {
+        let mut request = self.client.get("https://api.neurokaraoke.com/api/favorites/type?type=0");
+        request = self.apply_auth(request).await;
+
+        let response = request.send().await?;
+        if !response.status().is_success() {
+            return Err(anyhow!("Failed to fetch: {}", response.status()));
+        }
+
+        let json: Value = response.json().await?;
+
+        // Flexible parsing: Handle different possible root keys or bare array
+        let items = if let Some(arr) = json.as_array() {
+            arr.clone()
+        } else if let Some(obj) = json.as_object() {
+            obj.get("songs")
+                .or_else(|| obj.get("items"))
+                .or_else(|| obj.get("favorites"))
+                .or_else(|| obj.get("data"))
+                .and_then(|v| v.as_array())
+                .cloned()
+                .ok_or_else(|| anyhow!("Could not find list of favorites in response: {:?}", json))?
+        } else {
+            return Err(anyhow!("Invalid response structure: {:?}", json));
+        };
+
+        // Parse items. Some might be wrapped in a "song" object
+        let mut songs: Vec<SongDTO> = Vec::new();
+        for v in items {
+            match serde_json::from_value::<FavoriteEntry>(v.clone()) {
+                Ok(fav_entry) => {
+                    if let Some(song) = fav_entry.song {
+                        if song.is_valid() {
+                            songs.push(song);
+                        } else {
+                            debug_log!("Warning: skipping entry with invalid song metadata: {:?}", song.id);
+                        }
+                    } else {
+                        debug_log!("Warning: entry has no song field");
+                    }
+                }
+                Err(e) => {
+                    debug_log!("Error deserializing favorite entry: {:?}, item: {:?}", e, v);
+                }
+            }
+        }
+
+        Ok(songs)
+    }
+
     pub async fn get_playlist_details(&self, id: Uuid) -> anyhow::Result<PlaylistDetail> {
         let mut request = self.client.get(format!("https://api.neurokaraoke.com/api/playlist/{}", id));
         request = self.apply_auth(request).await; // <-- Inject headers
@@ -509,7 +595,7 @@ impl LazySongDatabase {
 
         let json: Value = response.json().await?;
         let detail: PlaylistDetail = serde_json::from_value(json)?;
-        crate::debug_log !("Deserialized PlaylistDetail: {:?}", detail);
+        debug_log !("Deserialized PlaylistDetail: {:?}", detail);
 
         Ok(detail)
     }

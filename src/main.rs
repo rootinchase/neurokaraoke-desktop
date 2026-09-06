@@ -7,13 +7,22 @@ mod cache;
 mod config;
 mod auth;
 
-use crate::activity::{ActivityType, playlist::PlaylistActivity, setlist::SetlistActivity, profile};
+use crate::activity::{ActivityType,
+                      playlist::PlaylistActivity,
+                      setlist::SetlistActivity,
+                      favorites::FavoritesActivity,
+                      profile};
+// RustRover is stupid and wants to get rid of this crate... that's needed by egui_extras
+use image as _;
 use crate::api::{LazySongDatabase, LoadingState, Song};
 use crate::audio::{Player, PlaybackState, LoopMode};
 use crate::cache::Cache;
 use crate::config::{Config, SharedConfig};
 use crate::theme::{SelectableTheme, ThemeManager};
-use eframe::egui::{include_image, lerp, Align, Color32, CornerRadius, CursorIcon, ImageSource, Layout, PopupKind, Pos2, RectAlign, Rgba, RichText, Sense, Stroke, TextWrapMode, Ui, Vec2};
+
+use eframe::egui::{include_image, lerp, Align, Color32, CornerRadius, CursorIcon, ImageSource,
+                   Layout, PopupKind, Pos2, RectAlign, Rgba, RichText, Sense, Stroke, TextWrapMode,
+                   Ui, Vec2};
 use eframe::{egui, Frame};
 use mimalloc::MiMalloc;
 use reqwest::Client;
@@ -62,6 +71,7 @@ pub struct App {
     playlist_activity: PlaylistActivity,
     my_playlist_activity: PlaylistActivity,
     setlist_activity: SetlistActivity,
+    favorites_activity: FavoritesActivity,
     profile_activity: profile::ProfileActivity,
 
     current_song_uuid: Option<Uuid>,
@@ -242,6 +252,7 @@ impl App {
             playlist_activity: PlaylistActivity::new(ctx.clone(), songs.clone(), false),
             my_playlist_activity: PlaylistActivity::new(ctx.clone(), songs.clone(), true),
             setlist_activity: SetlistActivity::new(ctx.clone(), songs),
+            favorites_activity: FavoritesActivity::new(ctx.clone()),
             profile_activity,
 
             current_song_uuid: None,
@@ -406,8 +417,14 @@ fn init_souvlaki() -> Option<MediaControls> {
         }
     }
 
+    let dbus_name = if cfg!(debug_assertions) {
+        "neurokaraoke.dev"
+    } else {
+        "neurokaraoke.desktop"
+    };
+
     let config = PlatformConfig {
-        dbus_name: "neurokaraoke.desktop",
+        dbus_name,
         display_name: "NeuroKaraoke Player",
         hwnd: hwnd_ptr,
     };
@@ -415,7 +432,7 @@ fn init_souvlaki() -> Option<MediaControls> {
     match MediaControls::new(config) {
         Ok(controls) => Some(controls),
         Err(e) => {
-            eprintln!("Failed to initialize Souvlaki media sublayer: {:?}", e);
+            eprintln!("Failed to initialize Souvlaki media sublayer: {:?}. Disabling media controls.", e);
             None
         }
     }
@@ -595,6 +612,7 @@ impl eframe::App for App {
                 nav_button(ui, ActivityType::Search);
                 nav_button(ui, ActivityType::Playlists);
                 nav_button(ui, ActivityType::MyPlaylists);
+                nav_button(ui, ActivityType::Favorites);
                 nav_button(ui, ActivityType::Setlists);
 
 
@@ -654,7 +672,7 @@ impl eframe::App for App {
 
                                 if let Some(avatar_url) = current_avatar_url {
                                     match &self.profile_activity.state.avatar_state {
-                                        crate::activity::profile::AvatarState::Ready { bytes } => {
+                                        profile::AvatarState::Ready { bytes } => {
                                             // Ensure a unique URI with a valid extension for format inference
                                             let uri = format!("bytes://avatar_{}.jpeg", avatar_url);
 
@@ -666,11 +684,11 @@ impl eframe::App for App {
                                                 .corner_radius(16.0)
                                                 .texture_options(egui::TextureOptions::LINEAR));
                                         },
-                                        crate::activity::profile::AvatarState::Downloading => {
+                                        profile::AvatarState::Downloading => {
                                             let (rect, _) = ui.allocate_exact_size(Vec2::new(32.0, 32.0), Sense::hover());
                                             ui.painter().rect_filled(rect, 16.0, self.theme.background_elevated);
                                         },
-                                        crate::activity::profile::AvatarState::None => {
+                                        profile::AvatarState::None => {
                                             self.profile_activity.resolve_avatar_uri(ui.ctx(), &self.rt, &self.client, &avatar_url);
                                             let (rect, _) = ui.allocate_exact_size(Vec2::new(32.0, 32.0), Sense::hover());
                                             ui.painter().rect_filled(rect, 16.0, self.theme.background_elevated);
@@ -1136,8 +1154,38 @@ impl eframe::App for App {
                                     }
                                 }
                             });
-                        }
- else if self.activity == ActivityType::Setlists {
+                        } else if self.activity == ActivityType::Favorites {
+                            egui::ScrollArea::vertical().show(ui, |ui| {
+                                ui.label("My Favorites:");
+
+                                let should_fetch = {
+                                    let favorites = self.favorites_activity.songs.blocking_lock();
+                                    matches!(*favorites, LoadingState::Loading)
+                                };
+
+                                if should_fetch {
+                                    self.favorites_activity.fetch_favorites(&self.songs);
+                                }
+
+                                let favorites = self.favorites_activity.songs.blocking_lock();
+                                match &*favorites {
+                                    LoadingState::Loaded(songs) => {
+                                        if ui.button("Play favorites").clicked() {
+                                            debug_log!("Playing favorites");
+                                            self.favorites_activity.play_favorites(&self.player);
+                                            ui.ctx().request_repaint();
+                                        }
+                                        render_song_table(ui, songs);
+                                    },
+                                    LoadingState::Loading => {
+                                        ui.label("Loading favorites...");
+                                    },
+                                    LoadingState::Failed(err) => {
+                                        ui.label(format!("Error loading favorites: {}", err));
+                                    }
+                                }
+                            });
+                        } else if self.activity == ActivityType::Setlists {
                             egui::ScrollArea::vertical().show(ui, |ui| {
                                 ui.label("Official Setlists:");
                                 match &*self.setlist_activity.setlists.blocking_lock() {

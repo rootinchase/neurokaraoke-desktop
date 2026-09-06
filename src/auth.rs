@@ -82,7 +82,7 @@ impl AuthService {
             // 2. Decode the inner user claims from the token string
             let user_claims = extract_claims_from_jwt(&data.token)?;
 
-            crate::debug_log!("Successfully parsed claims for user: {}", user_claims.username);
+            debug_log!("Successfully parsed claims for user: {}", user_claims.username);
 
             Ok(api::AuthContext {
                 token: data.token,
@@ -185,7 +185,7 @@ impl AuthService {
      */
 }
 
-fn extract_claims_from_jwt(token: &str) -> anyhow::Result<api::UserClaims> {
+fn extract_claims_from_jwt(token: &str) -> Result<api::UserClaims> {
     let segments: Vec<&str> = token.split('.').collect();
     if segments.len() != 3 {
         return Err(anyhow::anyhow!("Malformed JWT token format string."));
@@ -196,7 +196,7 @@ fn extract_claims_from_jwt(token: &str) -> anyhow::Result<api::UserClaims> {
         .map_err(|e| anyhow::anyhow!("Failed to decode JWT Base64 segment: {}", e))?;
 
     // ─── UPDATE THIS TYPE HOOK TO PATH REF ───
-    let raw_payload: crate::api::JwtPayload = serde_json::from_slice(&decoded_bytes)
+    let raw_payload: api::JwtPayload = serde_json::from_slice(&decoded_bytes)
         .map_err(|e| anyhow::anyhow!("Failed to map JWT fields: {}", e))?;
 
     // Attempt to parse out the identity string. If the server passes a non-standard numeric string,

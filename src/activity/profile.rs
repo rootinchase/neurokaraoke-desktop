@@ -169,7 +169,7 @@ impl ProfileActivity {
                         .corner_radius(8.0);
 
                     if ui.add(login_btn).clicked() {
-                        crate::debug_log!("Initiating local OAuth loop thread...");
+                        debug_log!("Initiating local OAuth loop thread...");
 
                         let rt_handle = rt.clone();
                         let auth_service_worker = auth_service.clone();
@@ -179,11 +179,11 @@ impl ProfileActivity {
                         rt_handle.spawn(async move {
                             match capture_discord_token(&NEURO_KARAOKE_DISCORD).await {
                                 Ok(discord_access_token) => {
-                                    crate::debug_log!("Successfully captured raw access token. Exchanging for Neuro internal JWT...");
+                                    debug_log!("Successfully captured raw access token. Exchanging for Neuro internal JWT...");
 
                                     match auth_service_worker.login_via_discord(&discord_access_token).await {
                                         Ok(auth_context) => {
-                                            crate::debug_log!("Successfully logged in! Welcome, {}", auth_context.user.username);
+                                            debug_log!("Successfully logged in! Welcome, {}", auth_context.user.username);
                                             let _ = tx_worker.send(ProfileMessage::LoginSuccess(auth_context)).await;
                                         }
                                         Err(err) => {

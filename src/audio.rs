@@ -224,22 +224,12 @@ impl Player {
                                         // Song ended, check loop/shuffle
                                         crate::debug_log!("Transition: Song ended, index {} >= len {}", idx, len);
                                         match loop_mode {
+                                            // Loop mode all is not handled here
                                             LoopMode::All => {
-                                                reorder(&mut ordered_playlist, shuffle, false, &mut loop_mode);
-                                                let playlist = ordered_playlist.as_ref().unwrap();
-                                                let next_idx = 0; // Loop back
-
-                                                let player_state = player.player_state.lock().unwrap();
-                                                if let Some(url_playlist) = &player_state.url_playlist && url_playlist.len() == playlist.len() {
-                                                    crate::debug_log!("Transition: Loading next URL song at index {}", next_idx);
-                                                    player.url_playback(Some(playlist[next_idx]), url_playlist[next_idx].clone(), Player::play);
-                                                } else {
-                                                    player.song(Some(playlist[next_idx]), Player::play);
-                                                }
-                                                break 'block;
+                                                unreachable!("Handled below");
                                             }
                                             LoopMode::One => {
-                                                unreachable!("Handled above"); // Kept clean for safety matching
+                                                unreachable!("Handled above");
                                             }
                                             LoopMode::None => {
                                                 player.player_state.lock().unwrap().playlist = None;
@@ -253,7 +243,7 @@ impl Player {
                                         crate::debug_log!("Transition: Normal transition to index {}", next_idx);
                                         let player_state = player.player_state.lock().unwrap();
                                         if let Some(url_playlist) = &player_state.url_playlist && url_playlist.len() == playlist.len() {
-                                            crate::debug_log!("Transition: Loading next URL song at index {}", next_idx);
+                                            crate::debug_log!("2 Transition: Loading next URL song at index {}", next_idx);
                                             player.url_playback(Some(playlist[next_idx]), url_playlist[next_idx].clone(), Player::play);
                                         } else {
                                             player.song(Some(playlist[next_idx]), Player::play);
