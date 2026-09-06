@@ -5,7 +5,6 @@ use tokio::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use uuid::Uuid;
 use crate::{debug_log, Player};
-use tokio::runtime::Runtime;
 
 pub struct FavoritesActivity {
     pub ctx: Context,

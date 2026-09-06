@@ -96,7 +96,8 @@ pub struct App {
 
 
 impl App {
-    fn new(ctx: &egui::Context, rt: Arc<tokio::runtime::Runtime>) -> Self {
+    fn new(creation_ctx: &eframe::CreationContext, rt: Arc<tokio::runtime::Runtime>) -> Self {
+        let ctx = &creation_ctx.egui_ctx;
         egui_extras::install_image_loaders(ctx);
 
         // ... (skipping font loading, same as before) ...
@@ -393,21 +394,28 @@ impl App {
         eframe::run_native(
             "Karaoke App",
             options,
-            Box::new(|cc| Ok(Box::new(Self::new( &cc.egui_ctx, rt)))),
+            Box::new(|cc| Ok(Box::new(Self::new(cc, rt)))),
         )
     }
 }
 
 fn init_souvlaki() -> Option<MediaControls> {
-    let hwnd_ptr: Option<*mut std::ffi::c_void> = None;
+    let mut hwnd_ptr: Option<*mut std::ffi::c_void> = None;
 
     #[cfg(target_os = "windows")]
     {
-        // Extract raw pointer from eframe's 0.6 handle to pass down to souvlaki's structure
-        if let Ok(window_handle) = cc.integration_info.window_handle {
-            if let Ok(RawWindowHandle::Win32(handle)) = window_handle.as_raw() {
-                // Convert the NonZeroIsize HWND into a raw c_void pointer
-                hwnd_ptr = Some(handle.hwnd.get() as *mut std::ffi::c_void);
+        unsafe extern "system" {
+            fn GetActiveWindow() -> *mut std::ffi::c_void;
+            fn GetForegroundWindow() -> *mut std::ffi::c_void;
+        }
+
+        let hwnd = unsafe { GetActiveWindow() };
+        if !hwnd.is_null() {
+            hwnd_ptr = Some(hwnd);
+        } else {
+            let hwnd = unsafe { GetForegroundWindow() };
+            if !hwnd.is_null() {
+                hwnd_ptr = Some(hwnd);
             }
         }
 
@@ -439,7 +447,7 @@ fn init_souvlaki() -> Option<MediaControls> {
 }
 
 
-    fn render_song_table(ui: &mut Ui, songs: &[api::SongDTO]) {
+fn render_song_table(ui: &mut Ui, songs: &[api::SongDTO]) {
         use egui_extras::{TableBuilder, Column};
 
         TableBuilder::new(ui)
@@ -539,6 +547,10 @@ impl eframe::App for App {
                     }
                     self.profile_data = None;
                     self.cached_avatar_path = None;
+
+                    if self.activity == ActivityType::MyPlaylists || self.activity == ActivityType::Favorites {
+                        self.activity = ActivityType::Home;
+                    }
                 }
                 profile::ProfileMessage::AvatarLoaded(_) => {}
             }
@@ -611,8 +623,10 @@ impl eframe::App for App {
                 nav_button(ui, ActivityType::Home);
                 nav_button(ui, ActivityType::Search);
                 nav_button(ui, ActivityType::Playlists);
-                nav_button(ui, ActivityType::MyPlaylists);
-                nav_button(ui, ActivityType::Favorites);
+                if self.config.auth.is_some() {
+                    nav_button(ui, ActivityType::MyPlaylists);
+                    nav_button(ui, ActivityType::Favorites);
+                }
                 nav_button(ui, ActivityType::Setlists);
 
 
