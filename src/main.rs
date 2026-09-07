@@ -1222,15 +1222,50 @@ impl eframe::App for App {
                                 }
                             });
                         } else if self.activity == ActivityType::MyPlaylists {
-                            egui::ScrollArea::vertical().show(ui, |ui| {
+                            ui.vertical(|ui| {
                                 ui.label("My Playlists:");
-                                match &*self.my_playlist_activity.playlists.blocking_lock() {
+                                let playlists = self.my_playlist_activity.playlists.blocking_lock();
+
+                                match &*playlists {
                                     LoadingState::Loaded(playlists) => {
-                                        for playlist in playlists {
-                                            if ui.button(format!("{} by {}", playlist.name, playlist.creator)).clicked() {
-                                                self.my_playlist_activity.select_playlist(playlist.id);
-                                            }
-                                        }
+                                        use egui_extras::{TableBuilder, Column};
+
+                                        ui.push_id("my_playlists_table", |ui| {
+                                            TableBuilder::new(ui)
+                                                .column(Column::remainder())
+                                                .column(Column::exact(60.0))
+                                                .column(Column::exact(80.0))
+                                                .column(Column::exact(120.0))
+                                                .header(20.0, |mut header| {
+                                                    header.col(|ui| { ui.label("Name"); });
+                                                    header.col(|ui| { ui.label("Songs"); });
+                                                    header.col(|ui| { ui.label("Plays"); });
+                                                    header.col(|ui| { ui.label("Creator"); });
+                                                })
+                                                .body(|body| {
+                                                    body.rows(20.0, playlists.len(), |mut row| {
+                                                        let playlist = &playlists[row.index()];
+                                                        let mut clicked = false;
+
+                                                        row.col(|ui| {
+                                                            if ui.selectable_label(false, &*playlist.name).clicked() {
+                                                                clicked = true;
+                                                            }
+                                                        });
+
+                                                        if clicked {
+                                                            self.my_playlist_activity.select_playlist(playlist.id);
+                                                        }
+
+                                                        row.col(|ui| { ui.label(playlist.song_count.to_string()); });
+                                                        row.col(|ui| { ui.label(playlist.play_count.to_string()); });
+                                                        let creator = self.config.auth.as_ref()
+                                                            .map(|a| a.user.username.clone())
+                                                            .unwrap_or_else(|| playlist.creator.clone());
+                                                        row.col(|ui| { ui.label(&*creator); });
+                                                    });
+                                                });
+                                        });
                                     },
                                     LoadingState::Loading => {
                                         ui.label("Loading...");
@@ -1239,6 +1274,7 @@ impl eframe::App for App {
                                         ui.label(format!("Error loading playlists: {}", err));
                                     }
                                 }
+
 
                                 if let Some(selected) = &*self.my_playlist_activity.selected_playlist.blocking_lock() {
                                     ui.separator();
