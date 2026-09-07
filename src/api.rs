@@ -143,7 +143,15 @@ pub struct Playlist {
     pub name: Arc<str>,
     #[serde(default)]
     #[serde_as(as = "DefaultOnNull")]
+    #[serde(alias = "createdBy")]
     pub creator: Arc<str>,
+    #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
+    pub description: Arc<str>,
+    #[serde(default)]
+    pub song_count: u64,
+    #[serde(default)]
+    pub play_count: u64,
 }
 
 #[serde_as]
@@ -461,6 +469,12 @@ impl SongDTO {
 }
 
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FavoriteItem {
+    pub playlist: Option<Playlist>,
+}
+
 impl LazySongDatabase {
     const SONGS_API_URL: &str = "https://api.neurokaraoke.com/api/songs";
 
@@ -476,6 +490,26 @@ impl LazySongDatabase {
             guest_id,
             shared_config,
         }
+    }
+
+    pub async fn fetch_favorite_playlists(&self) -> anyhow::Result<Vec<Playlist>> {
+        let url = "https://api.neurokaraoke.com/api/favorites/type?type=3";
+        let request = self.client.get(url);
+        let request = self.apply_auth(request).await;
+        
+        let response = request.send().await?;
+        
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!("Failed to fetch favorite playlists: {}", response.status()));
+        }
+        
+        let items: Vec<FavoriteItem> = response.json().await?;
+        
+        let playlists = items.into_iter()
+            .filter_map(|item| item.playlist)
+            .collect();
+        
+        Ok(playlists)
     }
 
     async fn apply_auth(&self, mut req_builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
@@ -505,6 +539,7 @@ impl LazySongDatabase {
         let playlists: Vec<Playlist> = serde_json::from_value(json)?;
         Ok(playlists)
     }
+
 
     pub async fn get_user_playlists(&self) -> anyhow::Result<Vec<Playlist>> {
         let mut request = self.client.get("https://api.neurokaraoke.com/api/user/playlists");

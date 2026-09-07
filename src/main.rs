@@ -14,7 +14,7 @@ use crate::activity::{ActivityType,
                       profile};
 // RustRover is stupid and wants to get rid of this crate... that's needed by egui_extras
 use image as _;
-use crate::api::{LazySongDatabase, LoadingState, Song};
+use crate::api::{LazySongDatabase, LoadingState, Song, PlaylistDetail};
 use crate::audio::{Player, PlaybackState, LoopMode};
 use crate::cache::Cache;
 use crate::config::{Config, SharedConfig};
@@ -293,7 +293,7 @@ impl App {
             // Use cloudflare_id if available, otherwise construct URL from absolute_path if it's a relative path on the image server
             let image_base = "https://images.neurokaraoke.com";
             let url = if let Some(id) = cloudflare_id {
-                format!("{}/WxURxyML82UkE7gY-PiBKw/{}/w=512,h=512,fit=crop,gravity=auto", image_base, id)
+                format!("{}/WxURxyML82UkE7gY-PiBKw/{}/w=512,h=512,fit=crop,gravity=auto ", image_base, id)
             } else {
                 format!("{}/{}/{}", image_base, absolute_path.trim_start_matches('/'), "/width=512,height=512,fit=crop,gravity=auto")
             };
@@ -1238,32 +1238,110 @@ impl eframe::App for App {
                                 }
                             });
                         } else if self.activity == ActivityType::Favorites {
-                            egui::ScrollArea::vertical().show(ui, |ui| {
+                            let should_fetch = {
+                                let favorites = self.favorites_activity.playlists.blocking_lock();
+                                matches!(*favorites, LoadingState::Loading)
+                            };
+                            
+                            if should_fetch {
+                                self.favorites_activity.fetch_favorites(&self.songs);
+                            }
+
+                            ui.vertical(|ui| {
                                 ui.label("My Favorites:");
+                                let favorites = self.favorites_activity.playlists.blocking_lock();
+                                let favorite_songs = self.favorites_activity.songs.blocking_lock();
+                                
+                                match (&*favorites, &*favorite_songs) {
+                                    (LoadingState::Loaded(playlists), LoadingState::Loaded(songs)) => {
+                                        use egui_extras::{TableBuilder, Column};
 
-                                let should_fetch = {
-                                    let favorites = self.favorites_activity.songs.blocking_lock();
-                                    matches!(*favorites, LoadingState::Loading)
-                                };
+                                        ui.push_id("favorites_table", |ui| {
+                                            TableBuilder::new(ui)
+                                                .column(Column::remainder())
+                                                .column(Column::exact(60.0))
+                                                .column(Column::exact(80.0))
+                                                .column(Column::exact(120.0))
+                                                .header(20.0, |mut header| {
+                                                    header.col(|ui| { ui.label("Name"); });
+                                                    header.col(|ui| { ui.label("Songs"); });
+                                                    header.col(|ui| { ui.label("Plays"); });
+                                                    header.col(|ui| { ui.label("Creator"); });
+                                                })
+                                                .body(|body| {
+                                                    let total_rows = playlists.len() + 1;
+                                                    body.rows(20.0, total_rows, |mut row| {
+                                                        let (name, songs_count, plays, creator, playlist_data) = if row.index() == 0 {
+                                                            let creator = self.profile_activity.state.profile_data
+                                                                .as_ref()
+                                                                .map(|p| p.display_name.clone())
+                                                                .unwrap_or_else(|| "You".to_string());
+                                                            ("Favorite Songs".to_string(), songs.len().to_string(), "N/A".to_string(), creator, Some(songs.clone()))
+                                                        } else {
+                                                            let p = &playlists[row.index() - 1];
+                                                            (p.name.to_string(), p.song_count.to_string(), p.play_count.to_string(), p.creator.to_string(), None)
+                                                        };
 
-                                if should_fetch {
-                                    self.favorites_activity.fetch_favorites(&self.songs);
-                                }
+                                                        let mut clicked = false;
+                                                        row.col(|ui| {
+                                                            if ui.selectable_label(false, name).clicked() {
+                                                                clicked = true;
+                                                            }
+                                                        });
+                                                        
+                                                        if clicked {
+                                                            if let Some(s) = playlist_data {
+                                                                // Special case: select favorite songs
+                                                                *self.favorites_activity.selected_playlist.blocking_lock() = Some(LoadingState::Loaded(PlaylistDetail {
+                                                                    name: "Favorite Songs".into(),
+                                                                    songs: s,
+                                                                }));
+                                                            } else {
+                                                                let p = &playlists[row.index() - 1];
+                                                                self.favorites_activity.select_playlist(p.id, &self.songs);
+                                                            }
+                                                        }
 
-                                let favorites = self.favorites_activity.songs.blocking_lock();
-                                match &*favorites {
-                                    LoadingState::Loaded(songs) => {
-                                        if ui.button("Play favorites").clicked() {
-                                            debug_log!("Playing favorites");
-                                            self.favorites_activity.play_favorites(&self.player);
-                                            ui.ctx().request_repaint();
+                                                        row.col(|ui| { ui.label(songs_count); });
+                                                        row.col(|ui| { ui.label(plays); });
+                                                        row.col(|ui| { ui.label(creator); });
+                                                    });
+                                                });
+                                        });
+
+                                        if let Some(selected) = &*self.favorites_activity.selected_playlist.blocking_lock() {
+                                            ui.separator();
+                                            match selected {
+                                                LoadingState::Loaded(detail) => {
+                                                    ui.label(format!("Playlist: {}", detail.name));
+                                                    if ui.button("Play Playlist").clicked() {
+                                                        let songs = &detail.songs;
+                                                        debug_log!("Playlist '{}' has {} songs.", detail.name, songs.len());
+                                                        // Restore playlist for Player logic
+                                                        let pl: Vec<Uuid> = songs.iter().map(|_| Uuid::new_v4()).collect();
+                                                        self.player.clear_playlist();
+                                                        self.player.playlist(Some(pl.clone().into()));
+                                                        self.player.url_playlist(Some(songs.clone().into()));
+
+                                                        if let Some(first_song) = songs.first() {
+                                                            self.player.url_playback(Some(pl[0]), first_song.clone(), Player::play);
+                                                        }
+                                                    }
+                                                    render_song_table(ui, &detail.songs);
+                                                },
+                                                LoadingState::Loading => {
+                                                    ui.label("Loading playlist details...");
+                                                },
+                                                LoadingState::Failed(err) => {
+                                                    ui.label(format!("Error loading playlist details: {}", err));
+                                                }
+                                            }
                                         }
-                                        render_song_table(ui, songs);
                                     },
-                                    LoadingState::Loading => {
+                                    (LoadingState::Loading, _) | (_, LoadingState::Loading) => {
                                         ui.label("Loading favorites...");
                                     },
-                                    LoadingState::Failed(err) => {
+                                    (LoadingState::Failed(err), _) | (_, LoadingState::Failed(err)) => {
                                         ui.label(format!("Error loading favorites: {}", err));
                                     }
                                 }
