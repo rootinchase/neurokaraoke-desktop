@@ -571,6 +571,18 @@ impl LazySongDatabase {
         Ok(playlists)
     }
 
+    pub async fn report_play_count(&self, song_id: Uuid) -> anyhow::Result<()> {
+        let url = format!("https://api.neurokaraoke.com/api/songs/playCount/{}", song_id);
+        let request = self.client.put(url);
+        let request = self.apply_auth(request).await;
+
+        let response = request.send().await?;
+        if !response.status().is_success() {
+            return Err(anyhow!("Failed to report play count: {}", response.status()));
+        }
+        Ok(())
+    }
+
     pub async fn get_favorite_songs(&self) -> anyhow::Result<Vec<SongDTO>> {
         let mut request = self.client.get("https://api.neurokaraoke.com/api/favorites/type?type=0");
         request = self.apply_auth(request).await;

@@ -76,6 +76,7 @@ pub struct App {
     profile_activity: profile::ProfileActivity,
 
     current_song_uuid: Option<Uuid>,
+    last_song_playback_start: Option<Instant>,
     current_playback_state: Option<PlaybackState>,
     last_os_playback_update: Instant,
 
@@ -238,6 +239,7 @@ impl App {
             profile_activity,
 
             current_song_uuid: None,
+            last_song_playback_start: None,
             current_playback_state: None,
             last_os_playback_update: Instant::now(),
             rt,
@@ -796,6 +798,7 @@ impl eframe::App for App {
             if let Some(s) = &song {
                 if self.current_song_uuid != Some(state.song()) {
                     self.current_song_uuid = Some(state.song());
+                    self.last_song_playback_start = Some(Instant::now());
 
                     let cloudflare_id = {
                         let guard = self.player.current_url_metadata.lock().unwrap();
@@ -812,16 +815,28 @@ impl eframe::App for App {
                     let cover_art_url = cloudflare_id
                         .map(|id| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=512,h=512,fit=cover,quality=90", id))
                         .unwrap_or_else(|| "".to_string());
-                    
+
                     self.update_os_metadata(
                         &s.title,
                         &format!("{} (feat. {})", s.original_artists.join(" & "), s.cover_artists.join(" & ")),
                         state.duration().as_secs(),
                         &cover_art_url
                     );
+                } else if let Some(start) = self.last_song_playback_start {
+                    if start.elapsed() >= Duration::from_secs(30) {
+                        let uuid = state.song();
+                        let songs = self.songs.clone();
+                        self.rt.spawn(async move {
+                            if let Err(e) = songs.report_play_count(uuid).await {
+                                debug_log!("❌ [Playback Reporting] Failed: {}", e);
+                            } else {
+                                debug_log!("✅ [Playback Reporting] Successfully reported play count.");
+                            }
+                        });
+                        self.last_song_playback_start = None;
+                    }
                 }
             }
-
             let now = Instant::now();
             if self.current_playback_state.as_ref().map(|s| s.paused()) != Some(state.paused())
                || (now - self.last_os_playback_update > Duration::from_secs(1) && !state.paused())
@@ -1452,8 +1467,12 @@ impl eframe::App for App {
 
                                                         row.col(|ui| { ui.label(setlist.song_count.to_string()); });
                                                         row.col(|ui| { ui.label(setlist.play_count.to_string()); });
-                                                        row.col(|ui| { ui.label(setlist.set_list_date.as_deref().unwrap_or("N/A")); });
-                                                    });
+                                                        row.col(|ui| {
+                                                            let date = setlist.set_list_date.as_deref()
+                                                                .map(|d| d.split('T').next().unwrap_or(d))
+                                                                .unwrap_or("N/A");
+                                                            ui.label(date);
+                                                        });                                                    });
                                                 });
                                         });
                                     },
