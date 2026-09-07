@@ -1,0 +1,11 @@
+[build]
+# Ensure we use Docker
+pre-build = []
+
+[target.aarch64-unknown-linux-gnu]
+# Install ARM-specific development libraries
+pre-build = [
+    "dpkg --add-architecture arm64",
+    "apt-get update",
+    "apt-get install -y libasound2-dev:arm64 pkg-config"
+]

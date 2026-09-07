@@ -381,10 +381,10 @@ impl App {
 }
 
 fn init_playwire(player: Player, shared_config: SharedConfig) -> Option<MediaControls> {
+    let mut hwnd_ptr: Option<*mut std::ffi::c_void> = None;
 
     #[cfg(target_os = "windows")]
     {
-        let mut hwnd_ptr: Option<*mut std::ffi::c_void> = None;
         unsafe extern "system" {
             fn GetActiveWindow() -> *mut std::ffi::c_void;
             fn GetWindowThreadProcessId(hwnd: *mut std::ffi::c_void, process_id: *mut u32) -> u32;
@@ -430,7 +430,7 @@ fn init_playwire(player: Player, shared_config: SharedConfig) -> Option<MediaCon
         dbus_name = "neurokaraoke.desktop.dev";
     }
 
-    let playwire_config = playwire::PlayerConfig::new(dbus_name)
+    let mut playwire_config = playwire::PlayerConfig::new(dbus_name)
         .desktop_entry("neurokaraoke.desktop")
         .track_id_prefix("/neurokaraoke/desktop/track");
 
