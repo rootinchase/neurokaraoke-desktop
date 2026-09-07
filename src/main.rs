@@ -293,7 +293,7 @@ impl App {
             // Use cloudflare_id if available, otherwise construct URL from absolute_path if it's a relative path on the image server
             let image_base = "https://images.neurokaraoke.com";
             let url = if let Some(id) = cloudflare_id {
-                format!("{}/WxURxyML82UkE7gY-PiBKw/{}/w=512,h=512,fit=cover,quality=90", image_base, id)
+                format!("{}/WxURxyML82UkE7gY-PiBKw/{}/w=512,h=512,fit=crop,gravity=auto", image_base, id)
             } else {
                 format!("{}/{}/{}", image_base, absolute_path.trim_start_matches('/'), "/width=512,height=512,fit=crop,gravity=auto")
             };
@@ -810,7 +810,7 @@ impl eframe::App for App {
                     });
 
                     let cover_art_url = cloudflare_id
-                        .map(|id| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90", id))
+                        .map(|id| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=512,h=512,fit=cover,quality=90", id))
                         .unwrap_or_else(|| "".to_string());
                     
                     self.update_os_metadata(
