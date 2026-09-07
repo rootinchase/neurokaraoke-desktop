@@ -571,6 +571,32 @@ impl LazySongDatabase {
         Ok(playlists)
     }
 
+    pub async fn add_to_favorites(&self, song_id: Uuid) -> anyhow::Result<()> {
+        debug_log!("Adding song to favorites: {}", song_id);
+        let url = format!("https://api.neurokaraoke.com/api/user/favorites/{}", song_id);
+        let request = self.client.put(url);
+        let request = self.apply_auth(request).await;
+
+        let response = request.send().await?;
+        if !response.status().is_success() {
+            return Err(anyhow!("Failed to add to favorites: {}", response.status()));
+        }
+        Ok(())
+    }
+
+    pub async fn remove_from_favorites(&self, song_id: Uuid) -> anyhow::Result<()> {
+        debug_log!("Removing song from favorites: {}", song_id);
+        let url = format!("https://api.neurokaraoke.com/api/user/favorites/{}", song_id);
+        let request = self.client.delete(url);
+        let request = self.apply_auth(request).await;
+
+        let response = request.send().await?;
+        if !response.status().is_success() {
+            return Err(anyhow!("Failed to remove from favorites: {}", response.status()));
+        }
+        Ok(())
+    }
+
     pub async fn report_play_count(&self, song_id: Uuid) -> anyhow::Result<()> {
         let url = format!("https://api.neurokaraoke.com/api/songs/playCount/{}", song_id);
         let request = self.client.put(url);

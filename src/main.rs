@@ -94,6 +94,7 @@ pub struct App {
 
     profile_data: Option<api::ProfileHeader>,
     cached_avatar_path: Option<String>,
+    favorite_songs: Arc<tokio::sync::RwLock<std::collections::HashSet<Uuid>>>,
 }
 
 
@@ -218,7 +219,7 @@ impl App {
         let cached_art_paths = Arc::new(DashMap::new());
         let active_art_downloads = Arc::new(dashmap::DashSet::new());
 
-        Self {
+        let app = Self {
             cache,
             songs: songs.clone(),
             player,
@@ -234,7 +235,7 @@ impl App {
             activity: ActivityType::Home,
             playlist_activity: PlaylistActivity::new(ctx.clone(), songs.clone(), false),
             my_playlist_activity: PlaylistActivity::new(ctx.clone(), songs.clone(), true),
-            setlist_activity: SetlistActivity::new(ctx.clone(), songs),
+            setlist_activity: SetlistActivity::new(ctx.clone(), songs.clone()),
             favorites_activity: FavoritesActivity::new(ctx.clone()),
             profile_activity,
 
@@ -246,13 +247,29 @@ impl App {
             client,
             config,
             shared_config,
+            favorite_songs: Arc::new(tokio::sync::RwLock::new(std::collections::HashSet::new())),
 
             cached_art_paths,
             active_art_downloads,
 
             profile_data: None,
             cached_avatar_path: None,
-        }
+        };
+
+        let songs_clone = app.songs.clone();
+        let favs_clone = app.favorite_songs.clone();
+        let ctx_clone = ctx.clone();
+        tokio::spawn(async move {
+            if let Ok(favs) = songs_clone.get_favorite_songs().await {
+                let mut lock = favs_clone.write().await;
+                for song in favs {
+                    lock.insert(song.id);
+                }
+                ctx_clone.request_repaint();
+            }
+        });
+
+        app
     }
 
     fn resolve_artwork_uri(&self, ctx: &egui::Context, cloudflare_id: Option<Arc<str>>, absolute_path: Arc<str>) -> Option<String> {
@@ -1109,6 +1126,47 @@ impl eframe::App for App {
                                 }
 
                                 ui.add_space(10.0);
+
+                                if let Some(current_song_uuid) = self.current_song_uuid {
+                                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                        let is_favorite = self.favorite_songs.blocking_read().contains(&current_song_uuid);
+                                        let icon = if is_favorite {
+                                            include_image!("../assets/favorite.svg")
+                                        } else {
+                                            include_image!("../assets/favorite-empty.svg")
+                                        };
+
+                                        ui.add_space(10.0);
+                                        let resp = ui.add(egui::Image::new(icon)
+                                            .fit_to_exact_size(Vec2::new(24.0, 24.0))
+                                            .tint(if is_favorite { self.theme.accent_light } else { self.theme.text }))
+                                            .interact(Sense::click());
+
+                                        if resp.hovered() {
+                                            ui.set_cursor_icon(CursorIcon::PointingHand);
+                                        }
+
+                                        if resp.clicked() {
+                                            let songs = self.songs.clone();
+                                            let favs_clone = self.favorite_songs.clone();
+                                            let is_favorite = is_favorite; // Capture current status
+                                            tokio::spawn(async move {
+                                                if is_favorite {
+                                                    if songs.remove_from_favorites(current_song_uuid).await.is_ok() {
+                                                        favs_clone.write().await.remove(&current_song_uuid);
+                                                    }
+                                                } else {
+                                                    if songs.add_to_favorites(current_song_uuid).await.is_ok() {
+                                                        favs_clone.write().await.insert(current_song_uuid);
+                                                    }
+                                                }
+                                            });
+                                            ui.ctx().request_repaint();
+                                        }
+                                    });
+                                }
+
+                                ui.add_space(10.0);
                             });
                         });
                     });
@@ -1209,7 +1267,7 @@ impl eframe::App for App {
                                                         let songs = &detail.songs;
                                                         debug_log!("Playlist '{}' has {} songs.", detail.name, songs.len());
                                                         // Restore playlist for Player logic
-                                                        let pl: Vec<Uuid> = songs.iter().map(|_| Uuid::new_v4()).collect();
+                                                        let pl: Vec<Uuid> = songs.iter().map(|s| s.id).collect();
                                                         self.player.clear_playlist();
                                                         self.player.playlist(Some(pl.clone().into()));
                                                         self.player.url_playlist(Some(songs.clone().into()));
@@ -1301,7 +1359,7 @@ impl eframe::App for App {
                                                 let songs = &detail.songs;
                                                 debug_log!("Playlist '{}' has {} songs.", detail.name, songs.len());
                                                 // Restore playlist for Player logic
-                                                let pl: Vec<Uuid> = songs.iter().map(|_| Uuid::new_v4()).collect();
+                                                let pl: Vec<Uuid> = songs.iter().map(|s| s.id).collect();
                                                 self.player.clear_playlist();
                                                 self.player.playlist(Some(pl.clone().into()));
                                                 self.player.url_playlist(Some(songs.clone().into()));
@@ -1402,7 +1460,7 @@ impl eframe::App for App {
                                                         let songs = &detail.songs;
                                                         debug_log!("Playlist '{}' has {} songs.", detail.name, songs.len());
                                                         // Restore playlist for Player logic
-                                                        let pl: Vec<Uuid> = songs.iter().map(|_| Uuid::new_v4()).collect();
+                                                        let pl: Vec<Uuid> = songs.iter().map(|s| s.id).collect();
                                                         self.player.clear_playlist();
                                                         self.player.playlist(Some(pl.clone().into()));
                                                         self.player.url_playlist(Some(songs.clone().into()));
@@ -1497,7 +1555,7 @@ impl eframe::App for App {
                                                 let songs = &detail.songs;
                                                 debug_log!("Setlist '{}' has {} songs.", detail.name, songs.len());
                                                 // Restore playlist for Player logic
-                                                let pl: Vec<Uuid> = songs.iter().map(|_| Uuid::new_v4()).collect();
+                                                let pl: Vec<Uuid> = songs.iter().map(|s| s.id).collect();
                                                 self.player.clear_playlist();
                                                 self.player.playlist(Some(pl.clone().into()));
                                                 self.player.url_playlist(Some(songs.clone().into()));
