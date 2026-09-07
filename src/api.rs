@@ -152,6 +152,8 @@ pub struct Playlist {
     pub song_count: u64,
     #[serde(default)]
     pub play_count: u64,
+    #[serde(alias = "setListDate")]
+    pub set_list_date: Option<String>,
 }
 
 #[serde_as]

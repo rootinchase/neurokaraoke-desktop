@@ -1415,15 +1415,47 @@ impl eframe::App for App {
                                 }
                             });
                         } else if self.activity == ActivityType::Setlists {
-                            egui::ScrollArea::vertical().show(ui, |ui| {
+                            ui.vertical(|ui| {
                                 ui.label("Official Setlists:");
-                                match &*self.setlist_activity.setlists.blocking_lock() {
+                                let setlists = self.setlist_activity.setlists.blocking_lock();
+
+                                match &*setlists {
                                     LoadingState::Loaded(setlists) => {
-                                        for setlist in setlists {
-                                            if ui.button(format!("{} by {}", setlist.name, setlist.creator)).clicked() {
-                                                self.setlist_activity.select_setlist(setlist.id);
-                                            }
-                                        }
+                                        use egui_extras::{TableBuilder, Column};
+
+                                        ui.push_id("setlists_table", |ui| {
+                                            TableBuilder::new(ui)
+                                                .column(Column::remainder())
+                                                .column(Column::exact(60.0))
+                                                .column(Column::exact(80.0))
+                                                .column(Column::exact(120.0))
+                                                .header(20.0, |mut header| {
+                                                    header.col(|ui| { ui.label("Name"); });
+                                                    header.col(|ui| { ui.label("Songs"); });
+                                                    header.col(|ui| { ui.label("Views"); });
+                                                    header.col(|ui| { ui.label("Stream Date"); });
+                                                })
+                                                .body(|body| {
+                                                    body.rows(20.0, setlists.len(), |mut row| {
+                                                        let setlist = &setlists[row.index()];
+                                                        let mut clicked = false;
+
+                                                        row.col(|ui| {
+                                                            if ui.selectable_label(false, &*setlist.name).clicked() {
+                                                                clicked = true;
+                                                            }
+                                                        });
+
+                                                        if clicked {
+                                                            self.setlist_activity.select_setlist(setlist.id);
+                                                        }
+
+                                                        row.col(|ui| { ui.label(setlist.song_count.to_string()); });
+                                                        row.col(|ui| { ui.label(setlist.play_count.to_string()); });
+                                                        row.col(|ui| { ui.label(setlist.set_list_date.as_deref().unwrap_or("N/A")); });
+                                                    });
+                                                });
+                                        });
                                     },
                                     LoadingState::Loading => {
                                         ui.label("Loading...");
@@ -1432,6 +1464,7 @@ impl eframe::App for App {
                                         ui.label(format!("Error loading setlists: {}", err));
                                     }
                                 }
+
 
 
                                 
