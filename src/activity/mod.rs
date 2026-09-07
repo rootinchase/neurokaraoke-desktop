@@ -26,12 +26,12 @@ impl ActivityType {
 
     pub fn icon(&self) -> Option<ImageSource<'static>> {
         match self {
-            Self::Home => Some(include_image!("../../assets/home.png")),
-            Self::Search => Some(include_image!("../../assets/search.png")),
-            Self::Playlists => Some(include_image!("../../assets/search.png")),
-            Self::MyPlaylists => Some(include_image!("../../assets/search.png")),
-            Self::Setlists => Some(include_image!("../../assets/search.png")),
-            Self::Favorites => Some(include_image!("../../assets/search.png")),
+            Self::Home => Some(include_image!("../../assets/home.svg")),
+            Self::Search => Some(include_image!("../../assets/search.svg")),
+            Self::Playlists => Some(include_image!("../../assets/playlist.svg")),
+            Self::MyPlaylists => Some(include_image!("../../assets/playlist.svg")),
+            Self::Setlists => Some(include_image!("../../assets/setlist.svg")),
+            Self::Favorites => Some(include_image!("../../assets/favorite.svg")),
             Self::Profile => Some(include_image!("../../assets/icon.png")),
         }
     }
