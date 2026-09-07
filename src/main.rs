@@ -34,7 +34,7 @@ use tokio::time::Instant;
 use uuid::Uuid;
 
 // For media controls on Linux, macOS, and Windows
-use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, PlatformConfig, MediaPosition};
+use playwire::MediaControls;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -58,6 +58,7 @@ pub struct App {
     songs: LazySongDatabase,
     player: Player,
     media_controls: Option<MediaControls>,
+    current_track: Option<playwire::Track>,
 
     search: String,
     dragging_seeker: bool,
@@ -211,28 +212,7 @@ impl App {
             }
         }, rt.handle().clone(), client.clone(), config.cache.clone());
 
-        let mut media_controls = init_souvlaki();
-        if let Some(controls) = &mut media_controls {
-            let player_clone = player.clone();
-            if let Err(e) = controls.attach(move |event| {
-                match event {
-                    MediaControlEvent::Play => { player_clone.play() },
-                    MediaControlEvent::Pause => { player_clone.pause(); },
-                    MediaControlEvent::Toggle => {
-                        if let Some(state) = player_clone.get_playback_state() {
-                            if state.paused() { player_clone.play(); }
-                            else { player_clone.pause(); }
-                        }
-                    },
-                    MediaControlEvent::Next => player_clone.next_song(),
-                    MediaControlEvent::Previous => player_clone.previous(),
-                    MediaControlEvent::SetVolume(vol) => player_clone.volume(vol as f32),
-                    _ => {}
-                }
-            }) {
-                eprintln!("Failed to attach media controls: {:?}", e);
-            }
-        }
+        let media_controls = init_playwire(player.clone(), shared_config.clone());
 
         let cached_art_paths = Arc::new(DashMap::new());
         let active_art_downloads = Arc::new(dashmap::DashSet::new());
@@ -242,6 +222,7 @@ impl App {
             songs: songs.clone(),
             player,
             media_controls,
+            current_track: None,
             search: "".to_string(),
             dragging_seeker: false,
             dragging_volume: false,
@@ -320,31 +301,18 @@ impl App {
             debug_log!("Downloading image: {}", url);
 
             self.rt.spawn(async move {
-                // If it's a UUID, we can use the existing cache mechanism. 
+                // If it's a UUID, we can use the existing cache mechanism.
                 // If it's a URL path, we might need a more generic download-to-cache.
-                if let Ok(target_uuid) = Uuid::parse_str(&id_worker) {
-                    match cache.get_or_download_image(&client, target_uuid, url).await {
-                        Ok(path) => {
-                            let path_str = path.to_string_lossy().into_owned();
-                            cached_paths.insert(id_worker.clone().into(), path_str.clone());
-                            debug_log!("🖼️ [Image Cache] Successfully cached image path: {}", path_str);
-                        }
-                        Err(e) => {
-                            debug_log!("❌ [Image Cache] Failed to cache image {}: {}", id_worker, e);
-                        }
+                let target_uuid = Uuid::parse_str(&id_worker).unwrap_or_else(|_| Uuid::new_v4());
+
+                match cache.get_or_download_image(&client, target_uuid, url).await {
+                    Ok(path) => {
+                        let path_str = path.to_string_lossy().into_owned();
+                        cached_paths.insert(id_worker.clone().into(), path_str.clone());
+                        debug_log!("🖼️ [Image Cache] Successfully cached image path: {}", path_str);
                     }
-                } else {
-                    // Fallback for non-UUID image paths: just download directly to a hashed name
-                    let target_uuid = Uuid::new_v4(); // Simple unique ID for the download task
-                    match cache.get_or_download_image(&client, target_uuid, url).await {
-                        Ok(path) => {
-                            let path_str = path.to_string_lossy().into_owned();
-                            cached_paths.insert(id_worker.clone().into(), path_str.clone());
-                            debug_log!("🖼️ [Image Cache] Successfully cached image path: {}", path_str);
-                        }
-                        Err(e) => {
-                            debug_log!("❌ [Image Cache] Failed to cache image {}: {}", id_worker, e);
-                        }
+                    Err(e) => {
+                        debug_log!("❌ [Image Cache] Failed to cache image {}: {}", id_worker, e);
                     }
                 }
                 active_downloads.remove::<Arc<str>>(&id_worker.into());
@@ -355,28 +323,39 @@ impl App {
         None
     }
 
-    pub fn update_os_metadata(&mut self, title: &str, artist: &str, duration_secs: u64, cover_url: &str ) {
-        if let Some(controls) = &mut self.media_controls {
-            let meta = MediaMetadata {
-                title: Some(title),
-                artist: Some(artist),
-                album: Some("NeuroKaraoke Live"),
-                duration: Some(Duration::from_secs(duration_secs)),
-                cover_url: Some(cover_url),
-            };
-            let _ = controls.set_metadata(meta);
-        }
+    pub fn update_os_metadata(&mut self, title: &str, artist: &str, _duration_secs: u64, cover_url: &str ) {
+        self.current_track = Some(playwire::Track {
+            id: self.current_song_uuid.map(|id| id.to_string()).unwrap_or_default(),
+            title: title.to_string(),
+            artists: vec![artist.to_string()],
+            album: "NeuroKaraoke Live".to_string(),
+            artwork_url: cover_url.to_string(),
+            url: String::new(),
+        });
+        self.update_os_playback();
     }
 
     pub fn update_os_playback(&mut self) {
         if let Some(controls) = &mut self.media_controls {
              if let Some(state) = self.player.get_playback_state() {
-                let playback = if state.paused() {
-                    MediaPlayback::Paused { progress: Some(MediaPosition(state.position())) }
-                } else {
-                    MediaPlayback::Playing { progress: Some(MediaPosition(state.position())) }
-                };
-                let _ = controls.set_playback(playback);
+                 let repeat = match self.player.get_loop_mode() {
+                     LoopMode::None => playwire::Repeat::Off,
+                     LoopMode::One => playwire::Repeat::One,
+                     LoopMode::All => playwire::Repeat::All,
+                 };
+                 let shuffle = self.player.get_shuffle();
+                 let volume = self.player.get_volume() as f64;
+
+                 let _ = controls.set_state(&playwire::PlaybackState {
+                     track: self.current_track.clone(),
+                     playing: !state.paused(),
+                     position: state.position(),
+                     duration: Some(state.duration()),
+                     volume,
+                     repeat,
+                     shuffle,
+                     capabilities: playwire::Capabilities::default(),
+                 });
              }
         }
     }
@@ -399,23 +378,40 @@ impl App {
     }
 }
 
-fn init_souvlaki() -> Option<MediaControls> {
-    let mut hwnd_ptr: Option<*mut std::ffi::c_void> = None;
+fn init_playwire(player: Player, shared_config: SharedConfig) -> Option<MediaControls> {
 
     #[cfg(target_os = "windows")]
     {
+        let mut hwnd_ptr: Option<*mut std::ffi::c_void> = None;
         unsafe extern "system" {
             fn GetActiveWindow() -> *mut std::ffi::c_void;
-            fn GetForegroundWindow() -> *mut std::ffi::c_void;
+            fn GetWindowThreadProcessId(hwnd: *mut std::ffi::c_void, process_id: *mut u32) -> u32;
+            fn GetCurrentProcessId() -> u32;
+            fn FindWindowA(class_name: *const u8, window_name: *const u8) -> *mut std::ffi::c_void;
         }
 
+        let our_pid = unsafe { GetCurrentProcessId() };
+
+        // 1. Try GetActiveWindow() (belongs to current thread)
         let hwnd = unsafe { GetActiveWindow() };
         if !hwnd.is_null() {
-            hwnd_ptr = Some(hwnd);
-        } else {
-            let hwnd = unsafe { GetForegroundWindow() };
-            if !hwnd.is_null() {
+            let mut pid = 0;
+            unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+            if pid == our_pid {
                 hwnd_ptr = Some(hwnd);
+            }
+        }
+
+        // 2. Fallback to finding our window specifically by title "Karaoke App"
+        if hwnd_ptr.is_none() {
+            let title = b"Karaoke App\0";
+            let hwnd = unsafe { FindWindowA(std::ptr::null(), title.as_ptr()) };
+            if !hwnd.is_null() {
+                let mut pid = 0;
+                unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+                if pid == our_pid {
+                    hwnd_ptr = Some(hwnd);
+                }
             }
         }
 
@@ -425,22 +421,63 @@ fn init_souvlaki() -> Option<MediaControls> {
         }
     }
 
-    let dbus_name = if cfg!(debug_assertions) {
-        "neurokaraoke.dev"
-    } else {
-        "neurokaraoke.desktop"
-    };
 
-    let config = PlatformConfig {
-        dbus_name,
-        display_name: "NeuroKaraoke Player",
-        hwnd: hwnd_ptr,
-    };
+    let mut dbus_name = "neurokaraoke.desktop";
 
-    match MediaControls::new(config) {
+    if cfg!(debug_assertions) {
+        dbus_name = "neurokaraoke.desktop.dev";
+    }
+
+    let playwire_config = playwire::PlayerConfig::new(dbus_name)
+        .desktop_entry("neurokaraoke.desktop")
+        .track_id_prefix("/neurokaraoke/desktop/track");
+
+    #[cfg(target_os = "windows")]
+    if let Some(hwnd) = hwnd_ptr {
+        playwire_config = playwire_config.hwnd(hwnd as u64);
+    }
+
+
+    match MediaControls::new(playwire_config, move |event| {
+        match event {
+            playwire::Event::Play => player.play(),
+            playwire::Event::Pause => player.pause(),
+            playwire::Event::PlayPause => {
+                if let Some(state) = player.get_playback_state() {
+                    if state.paused() { player.play(); }
+                    else { player.pause(); }
+                }
+            },
+            playwire::Event::Next => player.next_song(),
+            playwire::Event::Previous => player.previous(),
+            playwire::Event::SeekTo(pos) => player.seek(pos),
+            playwire::Event::SetVolume(vol) => player.volume(vol as f32),
+            playwire::Event::SetRepeat(mode) => {
+                let loop_mode = match mode {
+                        playwire::Repeat::All => LoopMode::All,
+                        playwire::Repeat::One => LoopMode::One,
+                        playwire::Repeat::Off => LoopMode::None,
+                };
+                player.looping(loop_mode);
+                
+                // Update shared config so App can see the change
+                let mode_u32 = match loop_mode {
+                    LoopMode::None => 0,
+                    LoopMode::One => 1,
+                    LoopMode::All => 2,
+                };
+                shared_config.loop_mode.store(mode_u32, std::sync::atomic::Ordering::SeqCst);
+            },
+            playwire::Event::SetShuffle(mode) => {
+                player.shuffle(mode);
+                shared_config.shuffle.store(mode, std::sync::atomic::Ordering::SeqCst);
+            }
+            _ => { }
+        }
+    }) {
         Ok(controls) => Some(controls),
         Err(e) => {
-            eprintln!("Failed to initialize Souvlaki media sublayer: {:?}. Disabling media controls.", e);
+            eprintln!("Failed to initialize playwire media controls: {:?}. Disabling media controls.", e);
             None
         }
     }
@@ -547,10 +584,6 @@ impl eframe::App for App {
                     }
                     self.profile_data = None;
                     self.cached_avatar_path = None;
-
-                    if self.activity == ActivityType::MyPlaylists || self.activity == ActivityType::Favorites {
-                        self.activity = ActivityType::Home;
-                    }
                 }
                 profile::ProfileMessage::AvatarLoaded(_) => {}
             }
@@ -763,15 +796,23 @@ impl eframe::App for App {
             if let Some(s) = &song {
                 if self.current_song_uuid != Some(state.song()) {
                     self.current_song_uuid = Some(state.song());
-                    
-                    let cover_art_url = if let Some(meta) = self.player.current_url_metadata.lock().unwrap().as_ref() {
-                        meta.cover_art.as_ref().and_then(|art| art.cloudflare_id.as_ref()).map(|id| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90", id)).unwrap_or_else(|| "".to_string())
-                    } else {
+
+                    let cloudflare_id = {
+                        let guard = self.player.current_url_metadata.lock().unwrap();
+                        guard.as_ref()
+                            .and_then(|m| m.cover_art.as_ref())
+                            .and_then(|a| a.cloudflare_id.as_ref())
+                            .map(|id| id.to_string())
+                    }.or_else(|| {
                         s.cover_art.as_ref()
-                            .and_then(|ca| ca.cloudflare_id.as_ref())
-                            .map(|id| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90", id))
-                            .unwrap_or_else(|| "".to_string())
-                    };
+                            .and_then(|a| a.cloudflare_id.as_ref())
+                            .map(|id| id.to_string())
+                    });
+
+                    let cover_art_url = cloudflare_id
+                        .map(|id| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=70,h=70,fit=cover,quality=90", id))
+                        .unwrap_or_else(|| "".to_string());
+                    
                     self.update_os_metadata(
                         &s.title,
                         &format!("{} (feat. {})", s.original_artists.join(" & "), s.cover_artists.join(" & ")),
@@ -920,24 +961,26 @@ impl eframe::App for App {
 
                             ui.spacing_mut().item_spacing = Vec2::ZERO;
 
-                            fn btn(theme: &ThemeManager, ui: &mut Ui, source: ImageSource, active: bool, set_active: impl FnOnce(bool)) {
+                            fn btn(theme: &ThemeManager, ui: &mut Ui, source: ImageSource, active: bool, set_active: impl FnOnce(&egui::Context, bool)) {
                                 let resp = ui.add(egui::Image::new(source).fit_to_exact_size(Vec2::new(24.0, 24.0)).tint(if active { theme.accent_light } else { theme.text })).interact(Sense::click());
                                 if resp.hovered() {
                                     ui.set_cursor_icon(CursorIcon::PointingHand);
                                 }
                                 if resp.clicked() {
-                                    set_active(!active);
+                                    set_active(ui.ctx(), !active);
                                 }
                             }
 
-                            btn(&self.theme, ui, include_image!("../assets/backward.png"), false, |_x| {
+                            btn(&self.theme, ui, include_image!("../assets/backward.png"), false, |_ctx, _x| {
                                 self.player.previous();
                             });
                             ui.add_space(10.0);
 
-                            btn(&self.theme, ui, include_image!("../assets/shuffle.png"), self.config.shuffle, |x| {
+                            btn(&self.theme, ui, include_image!("../assets/shuffle.png"), self.config.shuffle, |_ctx, x| {
                                 self.config.shuffle = x;
                                 self.player.shuffle(x);
+                                let _ = self.config.write();
+                                _ctx.request_repaint();
                             });
 
                             ui.add_space(10.0);
@@ -962,10 +1005,21 @@ impl eframe::App for App {
 
                             ui.add_space(10.0);
 
+                            // Sync local config with shared config
+                            let current_mode_u32 = self.shared_config.loop_mode.load(std::sync::atomic::Ordering::SeqCst);
+                            self.config.loop_mode = match current_mode_u32 {
+                                1 => LoopMode::One,
+                                2 => LoopMode::All,
+                                _ => LoopMode::None,
+                            };
+                            self.config.shuffle = self.shared_config.shuffle.load(std::sync::atomic::Ordering::SeqCst);
+
+                            let mut loop_mode_changed = false;
+
                             btn(&self.theme, ui, match self.config.loop_mode {
                                 LoopMode::One => include_image!("../assets/loop-one.svg"),
                                 _ => include_image!("../assets/loop.svg"),
-                            }, self.config.loop_mode != LoopMode::None, |_| {
+                            }, self.config.loop_mode != LoopMode::None, |ctx, _| {
                                 let next_mode = match self.config.loop_mode {
                                     LoopMode::None => LoopMode::One,
                                     LoopMode::One => LoopMode::All,
@@ -974,12 +1028,27 @@ impl eframe::App for App {
                                 debug_log!("Loop mode toggled: {:?} -> {:?}", self.config.loop_mode, next_mode);
                                 self.config.loop_mode = next_mode;
                                 self.player.looping(next_mode);
+                                
+                                let mode_u32 = match next_mode {
+                                    LoopMode::None => 0,
+                                    LoopMode::One => 1,
+                                    LoopMode::All => 2,
+                                };
+                                self.shared_config.loop_mode.store(mode_u32, std::sync::atomic::Ordering::SeqCst);
+                                
+                                let _ = self.config.write();
+                                loop_mode_changed = true;
+                                ctx.request_repaint();
                             });
+                            
+                            if loop_mode_changed {
+                                self.update_os_playback();
+                            }
 
 
                             ui.add_space(10.0);
 
-                            btn(&self.theme, ui, include_image!("../assets/forward.png"), false, |_x| {
+                            btn(&self.theme, ui, include_image!("../assets/forward.png"), false, |_ctx, _x| {
                                 self.player.next_song();
                             });
                         });
