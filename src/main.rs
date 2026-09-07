@@ -994,6 +994,7 @@ impl eframe::App for App {
                             btn(&self.theme, ui, include_image!("../assets/shuffle.png"), self.config.shuffle, |_ctx, x| {
                                 self.config.shuffle = x;
                                 self.player.shuffle(x);
+                                self.shared_config.shuffle.store(x, std::sync::atomic::Ordering::SeqCst);
                                 let _ = self.config.write();
                                 _ctx.request_repaint();
                             });
