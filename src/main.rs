@@ -398,6 +398,8 @@ impl App {
 }
 
 fn init_playwire(player: Player, shared_config: SharedConfig) -> Option<MediaControls> {
+    // Windows uses this, but macOS and windows don't.
+    #[allow(unused_mut, unused_variables)]
     let mut hwnd_ptr: Option<*mut std::ffi::c_void> = None;
 
     #[cfg(target_os = "windows")]
@@ -447,6 +449,8 @@ fn init_playwire(player: Player, shared_config: SharedConfig) -> Option<MediaCon
         dbus_name = "neurokaraoke.desktop.dev";
     }
 
+    // This gets edited on Windows, so it needs to be mutable
+    #[allow(unused_mut)]
     let mut playwire_config = playwire::PlayerConfig::new(dbus_name)
         .desktop_entry("neurokaraoke.desktop")
         .track_id_prefix("/neurokaraoke/desktop/track");
