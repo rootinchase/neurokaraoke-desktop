@@ -478,7 +478,32 @@ pub struct FavoriteItem {
     pub playlist: Option<Playlist>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserLimits {
+    pub max_songs: u64,
+    pub max_storage_bytes: u64,
+    pub used_storage_bytes: u64,
+    pub current_song_count: u64,
+    pub current_playlist_count: u64,
+    pub playlist_limit: u64,
+    pub song_per_playlist_limit: u64,
+}
+
 impl LazySongDatabase {
+    pub async fn get_user_limits(&self) -> anyhow::Result<UserLimits> {
+        let request = self.client.get("https://api.neurokaraoke.com/api/user/upload-limits");
+        let request = self.apply_auth(request).await;
+
+        let response = request.send().await?;
+        if !response.status().is_success() {
+            return Err(anyhow!("Failed to fetch user limits: {}", response.status()));
+        }
+
+        let limits: UserLimits = response.json().await?;
+        Ok(limits)
+    }
+
     const SONGS_API_URL: &str = "https://api.neurokaraoke.com/api/songs";
 
     pub fn new(

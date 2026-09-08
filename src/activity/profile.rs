@@ -4,7 +4,7 @@ use crate::auth::discord::{NEURO_KARAOKE_DISCORD, capture_discord_token};
 use crate::cache::Cache;
 use crate::debug_log;
 use crate::theme::ThemeManager;
-use eframe::egui::{self, Color32, Frame, RichText, Ui, Vec2};
+use eframe::egui::{self, Color32, Frame, RichText, Ui, Vec2, include_image};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -14,6 +14,7 @@ pub enum ProfileMessage {
     // FIX: Add this state feedback variant
     ProfileHeaderLoaded(crate::api::ProfileHeader),
     AvatarLoaded(String),
+    UserLimitsLoaded(crate::api::UserLimits),
 }
 
 pub struct ProfileActivity {
@@ -33,6 +34,7 @@ pub enum AvatarState {
 pub struct ProfileState {
     pub profile_data: Option<crate::api::ProfileHeader>,
     pub avatar_state: AvatarState,
+    pub user_limits: Option<crate::api::UserLimits>,
 }
 
 impl ProfileActivity {
@@ -45,6 +47,7 @@ impl ProfileActivity {
             state: ProfileState {
                 profile_data: None,
                 avatar_state: AvatarState::None,
+                user_limits: None,
             },
             cache,
         }
@@ -63,6 +66,11 @@ impl ProfileActivity {
                         if let Ok(bytes) = std::fs::read(path) {
                             self.state.avatar_state = AvatarState::Ready { bytes };
                         }
+                    }
+                    ProfileMessage::UserLimitsLoaded(limits) => {
+                        debug_log!("Received UserLimits: max_songs={}, max_storage_bytes={}, max_playlists={}, song_per_playlist_limit={}",
+                            limits.max_songs, limits.max_storage_bytes, limits.playlist_limit, limits.song_per_playlist_limit);
+                        self.state.user_limits = Some(limits.clone());
                     }
                     _ => {}
                 }
@@ -135,6 +143,7 @@ impl ProfileActivity {
         current_auth: &Option<AuthContext>,
         auth_service: &AuthService,
         rt: &Arc<tokio::runtime::Runtime>,
+        client: &reqwest::Client,
     ) {
         ui.add_space(20.0);
 
@@ -146,29 +155,115 @@ impl ProfileActivity {
                     .corner_radius(12.0)
                     .inner_margin(20.0)
                     .show(ui, |ui| {
-                        ui.vertical(|ui| {
-                            ui.heading(
-                                RichText::new(format!("Welcome, {}!", auth_ctx.user.username))
-                                    .color(theme.primary),
-                            );
-                            ui.label(
-                                RichText::new(format!("User ID: {}", auth_ctx.user.id))
-                                    .color(theme.text_muted)
-                                    .size(11.0),
-                            );
-
-                            ui.add_space(15.0);
-                            ui.separator();
-                            ui.add_space(15.0);
-
-                            let logout_btn = egui::Button::new(RichText::new("Log Out").size(14.0))
-                                .fill(theme.error)
-                                .min_size(Vec2::new(120.0, 32.0));
-
-                            if ui.add(logout_btn).clicked() {
-                                let _ = self.tx.try_send(ProfileMessage::Logout);
+                        ui.horizontal(|ui| {
+                            let avatar_url = self.state.profile_data.as_ref().and_then(|p| p.avatar_url.clone());
+                            if let Some(avatar_url) = avatar_url {
+                                match &self.state.avatar_state {
+                                    AvatarState::Ready { bytes } => {
+                                        let uri = format!("bytes://avatar_{}.jpeg", avatar_url);
+                                        ui.add(
+                                            egui::Image::from_bytes(uri, bytes.clone())
+                                                .fit_to_exact_size(Vec2::new(64.0, 64.0))
+                                                .corner_radius(32.0)
+                                                .texture_options(egui::TextureOptions::LINEAR),
+                                        );
+                                    }
+                                    AvatarState::Downloading => {
+                                        let (rect, _) = ui.allocate_exact_size(Vec2::new(64.0, 64.0), egui::Sense::hover());
+                                        ui.painter().rect_filled(rect, 32.0, theme.background_elevated);
+                                    }
+                                    AvatarState::None => {
+                                        self.resolve_avatar_uri(ui.ctx(), rt, client, &avatar_url);
+                                        let (rect, _) = ui.allocate_exact_size(Vec2::new(64.0, 64.0), egui::Sense::hover());
+                                        ui.painter().rect_filled(rect, 32.0, theme.background_elevated);
+                                    }
+                                }
+                            } else {
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new("👤").size(64.0)
+                                    )
+                                );
                             }
+
+                            ui.add_space(10.0);
+
+                            ui.vertical(|ui| {
+                                ui.heading(
+                                    RichText::new(format!("Welcome, {}!", auth_ctx.user.username))
+                                        .color(theme.primary),
+                                );
+                                ui.label(
+                                    RichText::new(format!("User ID: {}", auth_ctx.user.id))
+                                        .color(theme.text_muted)
+                                        .size(11.0),
+                                );
+                            });
                         });
+
+                        ui.add_space(15.0);
+                        ui.separator();
+                        ui.add_space(15.0);
+
+                        if let Some(profile_data) = &self.state.profile_data {
+                            ui.add_space(8.0);
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(format!("Level {}", profile_data.level)).strong().size(14.0));
+                                if let Some(level_title) = &profile_data.level_title {
+                                    ui.label(RichText::new(level_title).color(theme.text_muted).size(12.0));
+                                }
+                            });
+
+                            ui.add_space(4.0);
+                            let progress = profile_data.level_progress.unwrap_or(0.0) as f32;
+                            let xp_text = format!("{}/{}", profile_data.total_xp, profile_data.total_xp + profile_data.xp_to_next_level);
+                            let bar = egui::ProgressBar::new(progress)
+                                .text(xp_text)
+                                .fill(theme.primary);
+                            ui.add(bar);
+                            
+                            //debug_log!("Rendering coin balances. Data: Neuro={}, Evil={}, Twins={}", profile_data.neuro_coin, profile_data.evil_coin, profile_data.twins_coin);
+                            ui.add_space(15.0);
+                            ui.horizontal(|ui| {
+                                let coin_size = Vec2::new(24.0, 24.0);
+
+                                ui.add(egui::Image::new(include_image!("../../assets/coin-neuros.png")).fit_to_exact_size(coin_size));
+                                ui.label(RichText::new(format!("{}", profile_data.neuro_coin)).size(14.0));
+
+                                ui.add_space(10.0);
+                                ui.add(egui::Image::new(include_image!("../../assets/coin-evil.png")).fit_to_exact_size(coin_size));
+                                ui.label(RichText::new(format!("{}", profile_data.evil_coin)).size(14.0));
+
+                                ui.add_space(10.0);
+                                ui.add(egui::Image::new(include_image!("../../assets/coin-twins.png")).fit_to_exact_size(coin_size));
+                                ui.label(RichText::new(format!("{}", profile_data.twins_coin)).size(14.0));
+                            });
+
+                            if let Some(limits) = &self.state.user_limits {
+                                ui.add_space(15.0);
+                                ui.separator();
+                                ui.add_space(10.0);
+                                ui.label(RichText::new("Account Limits").strong().size(14.0));
+                                ui.label(format!("Songs: {} / {}", limits.current_song_count, limits.max_songs));
+                                ui.label(format!("Storage: {:.2} MB / {:.2} MB", limits.used_storage_bytes as f64 / 1024.0 / 1024.0, limits.max_storage_bytes as f64 / 1024.0 / 1024.0));
+                                ui.label(format!("Playlists: {} / {}", limits.current_playlist_count, limits.playlist_limit));
+                                ui.label(format!("Songs per Playlist: {}", limits.song_per_playlist_limit));
+                            }
+                            } else {
+                            debug_log!("profile_data is None, not rendering level/coin info.");
+                            }
+
+                        ui.add_space(15.0);
+                        ui.separator();
+                        ui.add_space(15.0);
+
+                        let logout_btn = egui::Button::new(RichText::new("Log Out").size(14.0))
+                            .fill(theme.error)
+                            .min_size(Vec2::new(120.0, 32.0));
+
+                        if ui.add(logout_btn).clicked() {
+                            let _ = self.tx.try_send(ProfileMessage::Logout);
+                        }
                     });
             }
             None => {

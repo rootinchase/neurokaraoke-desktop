@@ -153,6 +153,7 @@ impl App {
             let startup_tx = profile_activity.get_sender_handle();
             let client_clone = client.clone();
             let ctx_clone = ctx.clone();
+            let shared_config = shared_config.clone();
 
             rt.spawn(async move {
                 // FIX: Directly fetch profile, removing redundant verification call
@@ -175,6 +176,20 @@ impl App {
                                             profile_response.profile,
                                         ))
                                         .await;
+
+                                    // Fetch and send user limits on startup
+                                    let limits_client = client_clone.clone();
+                                    let limits_tx = startup_tx.clone();
+                                    let db = api::LazySongDatabase::new(limits_client, Arc::new(dashmap::DashMap::new()), "".into(), shared_config);
+                                    
+                                    match db.get_user_limits().await {
+                                        Ok(limits) => {
+                                            let _ = limits_tx.send(profile::ProfileMessage::UserLimitsLoaded(limits)).await;
+                                        }
+                                        Err(e) => {
+                                            debug_log!("❌ Failed to fetch user limits on startup: {}", e);
+                                        }
+                                    }
                                 } else {
                                     debug_log!("❌ Failed to deserialize ProfileResponse");
                                 }
@@ -740,8 +755,10 @@ impl eframe::App for App {
                     let ctx_clone = ui.ctx().clone();
                     let stored_token = context.token.clone();
                     let tx_channel = self.profile_activity.get_sender_handle();
+                    let shared_config = self.shared_config.clone();
+                    let rt = self.rt.clone();
 
-                    self.rt.spawn(async move {
+                    rt.spawn(async move {
                         // FIX: Directly fetch profile, removing redundant UserClaims check
                         let profile_url = "https://api.neurokaraoke.com/api/badge/profile";
                         match client_clone
@@ -764,6 +781,20 @@ impl eframe::App for App {
                                                     profile_response.profile,
                                                 ))
                                                 .await;
+                                            
+                                            // Fetch and send user limits
+                                            let limits_client = client_clone.clone();
+                                            let limits_tx = tx_channel.clone();
+                                            let db = api::LazySongDatabase::new(limits_client, Arc::new(dashmap::DashMap::new()), "".into(), shared_config);
+                                            
+                                            match db.get_user_limits().await {
+                                                Ok(limits) => {
+                                                    let _ = limits_tx.send(profile::ProfileMessage::UserLimitsLoaded(limits)).await;
+                                                }
+                                                Err(e) => {
+                                                    debug_log!("❌ Failed to fetch user limits: {}", e);
+                                                }
+                                            }
                                         } else {
                                             debug_log!("❌ Failed to deserialize ProfileResponse");
                                         }
@@ -795,6 +826,7 @@ impl eframe::App for App {
                     self.cached_avatar_path = None;
                 }
                 profile::ProfileMessage::AvatarLoaded(_) => {}
+                profile::ProfileMessage::UserLimitsLoaded(_) => {}
             }
             ui.ctx().request_repaint();
         }
@@ -2043,6 +2075,7 @@ impl eframe::App for App {
                                 &self.config.auth,
                                 &auth_service,
                                 &self.rt,
+                                &self.client,
                             );
                         }
                     });
