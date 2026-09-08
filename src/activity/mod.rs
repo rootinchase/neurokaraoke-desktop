@@ -1,14 +1,20 @@
+pub mod favorites;
 pub mod home;
 pub mod playlist;
-pub mod setlist;
 pub mod profile;
-pub mod favorites;
+pub mod setlist;
 
-use eframe::egui::{include_image, ImageSource};
+use eframe::egui::{ImageSource, include_image};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ActivityType {
-    Home, Search, Profile, Playlists, MyPlaylists, Setlists, Favorites
+    Home,
+    Search,
+    Profile,
+    Playlists,
+    MyPlaylists,
+    Setlists,
+    Favorites,
 }
 
 impl ActivityType {

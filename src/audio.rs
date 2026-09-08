@@ -1,10 +1,11 @@
-use serde::{Deserialize, Serialize};
 use crate::api::{LazySongDatabase, LoadingState};
-use crate::cache::{Cache};
+use crate::cache::Cache;
+use crate::debug_log;
 use eframe::egui;
 use rand::prelude::SliceRandom;
-use rodio::decoder::DecoderBuilder;
 use rodio::Source;
+use rodio::decoder::DecoderBuilder;
+use serde::{Deserialize, Serialize};
 use std::io::BufReader;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -12,7 +13,6 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 use uuid::Uuid;
-use crate::debug_log;
 
 #[derive(Debug, Clone, Copy)]
 pub struct PlaybackState {
@@ -23,10 +23,18 @@ pub struct PlaybackState {
 }
 
 impl PlaybackState {
-    pub fn duration(&self) -> Duration { self.duration }
-    pub fn position(&self) -> Duration { (self.paused.unwrap_or_else(Instant::now) - self.start).min(self.duration) }
-    pub fn paused(&self) -> bool { self.paused.is_some() }
-    pub fn song(&self) -> Uuid { self.song }
+    pub fn duration(&self) -> Duration {
+        self.duration
+    }
+    pub fn position(&self) -> Duration {
+        (self.paused.unwrap_or_else(Instant::now) - self.start).min(self.duration)
+    }
+    pub fn paused(&self) -> bool {
+        self.paused.is_some()
+    }
+    pub fn song(&self) -> Uuid {
+        self.song
+    }
 
     fn new(duration: Duration, song: Uuid, is_playing: bool) -> Self {
         let now = Instant::now();
@@ -56,7 +64,12 @@ impl PlaybackState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum LoopMode { #[default] None, One, All }
+pub enum LoopMode {
+    #[default]
+    None,
+    One,
+    All,
+}
 
 #[derive(Debug, Clone)]
 struct PlayerState {
@@ -76,8 +89,16 @@ enum PlaybackCommand {
     Playlist(Option<Arc<[Uuid]>>),
     UrlPlaylist(Option<Arc<[crate::api::SongDTO]>>),
     Song(Option<Uuid>, Box<dyn FnOnce(&Player) + Send + 'static>),
-    UrlPlayback(Option<Uuid>, crate::api::SongDTO, Box<dyn FnOnce(&Player) + Send + 'static>),
-    SongReady(Option<Uuid>, std::fs::File, Option<Box<dyn FnOnce(&Player) + Send + 'static>>),
+    UrlPlayback(
+        Option<Uuid>,
+        crate::api::SongDTO,
+        Box<dyn FnOnce(&Player) + Send + 'static>,
+    ),
+    SongReady(
+        Option<Uuid>,
+        std::fs::File,
+        Option<Box<dyn FnOnce(&Player) + Send + 'static>>,
+    ),
     Seek(Duration),
     Shutdown,
     NextSong,
@@ -94,7 +115,9 @@ pub struct Player {
 
 impl Clone for Player {
     fn clone(&self) -> Self {
-        if let Some(refs) = &self.refs { refs.fetch_add(1, Ordering::Relaxed); }
+        if let Some(refs) = &self.refs {
+            refs.fetch_add(1, Ordering::Relaxed);
+        }
         Self {
             refs: self.refs.clone(),
             state: self.state.clone(),
@@ -106,7 +129,12 @@ impl Clone for Player {
 }
 
 impl Player {
-    pub fn new(rt: Arc<Runtime>, ctx: egui::Context, database: LazySongDatabase, cache: Arc<Cache>) -> Player {
+    pub fn new(
+        rt: Arc<Runtime>,
+        ctx: egui::Context,
+        database: LazySongDatabase,
+        cache: Arc<Cache>,
+    ) -> Player {
         let (tx, mut rx) = tokio::sync::mpsc::channel(64);
 
         let p = Player {
@@ -126,10 +154,9 @@ impl Player {
         let mut player = p.clone();
         player.internal();
 
-
         thread::spawn(move || {
-            let mut handle = rodio::DeviceSinkBuilder::open_default_sink()
-                .expect("open default audio stream");
+            let mut handle =
+                rodio::DeviceSinkBuilder::open_default_sink().expect("open default audio stream");
             handle.log_on_drop(false);
             let mut mixer = rodio::Player::connect_new(&handle.mixer());
 
@@ -144,7 +171,10 @@ impl Player {
 
             let p = player.clone();
             // 1. UPDATE: Change the closure signature to accept a mutable reference to loop_mode
-            let reorder = |playlist: &mut Option<Arc<[Uuid]>>, shuffle: bool, swap: bool, loop_mode_ref: &mut LoopMode| {
+            let reorder = |playlist: &mut Option<Arc<[Uuid]>>,
+                           shuffle: bool,
+                           swap: bool,
+                           loop_mode_ref: &mut LoopMode| {
                 let mut ps = p.player_state.lock().unwrap();
                 let pl = ps.playlist.clone();
                 let upl = ps.url_playlist.clone();
@@ -160,23 +190,33 @@ impl Player {
                         indices.shuffle(&mut rand::rng());
 
                         let mut new_pl: Vec<Uuid> = indices.iter().map(|&i| pl[i]).collect();
-                        let mut new_upl: Vec<crate::api::SongDTO> = upl.map(|upl| indices.iter().map(|&i| upl[i].clone()).collect()).unwrap_or_else(|| vec![]);
+                        let mut new_upl: Vec<crate::api::SongDTO> = upl
+                            .map(|upl| indices.iter().map(|&i| upl[i].clone()).collect())
+                            .unwrap_or_else(|| vec![]);
 
                         if let Some(song) = song {
                             if let Some(i) = new_pl.iter().position(|s| *s == song) {
                                 if swap {
                                     new_pl.swap(0, i);
-                                    if !new_upl.is_empty() { new_upl.swap(0, i); }
+                                    if !new_upl.is_empty() {
+                                        new_upl.swap(0, i);
+                                    }
                                 } else if i == 0 && len > 1 {
                                     let swap_idx = rand::random_range(1..len);
                                     new_pl.swap(0, swap_idx);
-                                    if !new_upl.is_empty() { new_upl.swap(0, swap_idx); }
+                                    if !new_upl.is_empty() {
+                                        new_upl.swap(0, swap_idx);
+                                    }
                                 }
                             }
                         }
                         *playlist = Some(new_pl.clone().into());
                         ps.playlist = Some(new_pl.into());
-                        ps.url_playlist = if new_upl.is_empty() { None } else { Some(new_upl.into()) };
+                        ps.url_playlist = if new_upl.is_empty() {
+                            None
+                        } else {
+                            Some(new_upl.into())
+                        };
                     }
                 } else {
                     *playlist = pl;
@@ -186,11 +226,17 @@ impl Player {
             loop {
                 'block: {
                     let lock = player.state.lock().unwrap();
-                    if let Some(state) = lock.as_ref() && !state.paused() {
+                    if let Some(state) = lock.as_ref()
+                        && !state.paused()
+                    {
                         let pos = state.position();
                         let dur = state.duration();
                         if pos >= dur && dur > Duration::from_secs(0) {
-                            debug_log!("Transition: Position {} >= Duration {}", pos.as_secs(), dur.as_secs());
+                            debug_log!(
+                                "Transition: Position {} >= Duration {}",
+                                pos.as_secs(),
+                                dur.as_secs()
+                            );
                             let state = state.clone();
                             drop(lock);
 
@@ -211,11 +257,22 @@ impl Player {
                                     // This catches URL tracks and DB tracks anywhere in the playlist.
                                     if loop_mode == LoopMode::One {
                                         let player_state = player.player_state.lock().unwrap();
-                                        if let Some(url_playlist) = &player_state.url_playlist && url_playlist.len() == playlist.len() {
-                                            debug_log!("Transition: Replaying current URL song via LoopMode::One at index {}", idx);
-                                            player.url_playback(Some(playlist[idx]), url_playlist[idx].clone(), Player::play);
+                                        if let Some(url_playlist) = &player_state.url_playlist
+                                            && url_playlist.len() == playlist.len()
+                                        {
+                                            debug_log!(
+                                                "Transition: Replaying current URL song via LoopMode::One at index {}",
+                                                idx
+                                            );
+                                            player.url_playback(
+                                                Some(playlist[idx]),
+                                                url_playlist[idx].clone(),
+                                                Player::play,
+                                            );
                                         } else {
-                                            debug_log!("Transition: Replaying current DB song via LoopMode::One");
+                                            debug_log!(
+                                                "Transition: Replaying current DB song via LoopMode::One"
+                                            );
                                             player.song(Some(playlist[idx]), Player::play);
                                         }
                                         break 'block;
@@ -223,7 +280,11 @@ impl Player {
 
                                     if idx + 1 >= len {
                                         // Song ended, check loop/shuffle
-                                        debug_log!("Transition: Song ended, index {} >= len {}", idx, len);
+                                        debug_log!(
+                                            "Transition: Song ended, index {} >= len {}",
+                                            idx,
+                                            len
+                                        );
                                         match loop_mode {
                                             // Loop mode all is not handled here
                                             LoopMode::All => {
@@ -241,11 +302,23 @@ impl Player {
                                     } else {
                                         // Normal transition (Only executes if LoopMode is All or None)
                                         let next_idx = idx + 1;
-                                        debug_log!("Transition: Normal transition to index {}", next_idx);
+                                        debug_log!(
+                                            "Transition: Normal transition to index {}",
+                                            next_idx
+                                        );
                                         let player_state = player.player_state.lock().unwrap();
-                                        if let Some(url_playlist) = &player_state.url_playlist && url_playlist.len() == playlist.len() {
-                                            debug_log!("2 Transition: Loading next URL song at index {}", next_idx);
-                                            player.url_playback(Some(playlist[next_idx]), url_playlist[next_idx].clone(), Player::play);
+                                        if let Some(url_playlist) = &player_state.url_playlist
+                                            && url_playlist.len() == playlist.len()
+                                        {
+                                            debug_log!(
+                                                "2 Transition: Loading next URL song at index {}",
+                                                next_idx
+                                            );
+                                            player.url_playback(
+                                                Some(playlist[next_idx]),
+                                                url_playlist[next_idx].clone(),
+                                                Player::play,
+                                            );
                                         } else {
                                             player.song(Some(playlist[next_idx]), Player::play);
                                         }
@@ -273,8 +346,7 @@ impl Player {
                                 state.pause();
                                 ctx.request_repaint();
                             }
-                        },
-
+                        }
 
                         PlaybackCommand::Play => {
                             if let Some(state) = player.state.lock().unwrap().as_mut() {
@@ -282,8 +354,7 @@ impl Player {
                                 state.play();
                                 ctx.request_repaint();
                             }
-                        },
-
+                        }
 
                         PlaybackCommand::Volume(mut v) => {
                             v = v.powi(3);
@@ -291,24 +362,29 @@ impl Player {
                             player.player_state.lock().unwrap().volume = v;
                         }
 
-
                         PlaybackCommand::Shuffle(enabled) => {
                             player.player_state.lock().unwrap().shuffle = enabled;
-                            if shuffle != enabled { reorder(&mut ordered_playlist, enabled, true, &mut loop_mode); }
+                            if shuffle != enabled {
+                                reorder(&mut ordered_playlist, enabled, true, &mut loop_mode);
+                            }
                             shuffle = enabled;
                         }
-
 
                         PlaybackCommand::Loop(mode) => {
                             player.player_state.lock().unwrap().loop_mode = mode;
                             loop_mode = mode;
                         }
 
-
                         PlaybackCommand::Playlist(playlist) => {
                             let lock = player.state.lock().unwrap();
-                            if let Some(playlist) = playlist.as_ref() && let Some(state) = lock.as_ref() && !playlist.contains(&state.song()) {
-                                player.sender.try_send(PlaybackCommand::Song(None, Box::new(|_| {}))).unwrap();
+                            if let Some(playlist) = playlist.as_ref()
+                                && let Some(state) = lock.as_ref()
+                                && !playlist.contains(&state.song())
+                            {
+                                player
+                                    .sender
+                                    .try_send(PlaybackCommand::Song(None, Box::new(|_| {})))
+                                    .unwrap();
                             }
                             drop(lock);
 
@@ -324,7 +400,6 @@ impl Player {
                             reorder(&mut ordered_playlist, shuffle, true, &mut loop_mode);
                         }
 
-
                         PlaybackCommand::UrlPlaylist(playlist) => {
                             player.player_state.lock().unwrap().url_playlist = playlist;
                         }
@@ -339,8 +414,7 @@ impl Player {
                                 state.seek(position);
                                 ctx.request_repaint();
                             }
-                        },
-
+                        }
 
                         PlaybackCommand::NextSong => {
                             let mut next_song_to_play = None;
@@ -351,27 +425,41 @@ impl Player {
 
                                 debug_log!("NextSong: Called");
 
-                                if let (Some(playlist), Some(state)) = (&player_state.playlist, &*lock) {
-                                    let current_index = playlist.iter().position(|&uuid| uuid == state.song());
-                                    debug_log!("NextSong: Current index: {:?}, Playlist len: {}", current_index, playlist.len());
+                                if let (Some(playlist), Some(state)) =
+                                    (&player_state.playlist, &*lock)
+                                {
+                                    let current_index =
+                                        playlist.iter().position(|&uuid| uuid == state.song());
+                                    debug_log!(
+                                        "NextSong: Current index: {:?}, Playlist len: {}",
+                                        current_index,
+                                        playlist.len()
+                                    );
 
                                     if let Some(idx) = current_index {
                                         let len = playlist.len();
                                         for next_idx in (idx + 1)..len {
                                             if let Some(url_playlist) = &player_state.url_playlist {
                                                 if url_playlist.len() == playlist.len() {
-                                                    if let Some(next_song) = url_playlist.get(next_idx) {
+                                                    if let Some(next_song) =
+                                                        url_playlist.get(next_idx)
+                                                    {
                                                         if next_song.audio_url.is_some() {
-                                                            next_song_to_play = Some((Some(playlist[next_idx]), Some(next_song.clone())));
+                                                            next_song_to_play = Some((
+                                                                Some(playlist[next_idx]),
+                                                                Some(next_song.clone()),
+                                                            ));
                                                             break;
                                                         }
                                                     }
                                                 } else {
-                                                    next_song_to_play = Some((Some(playlist[next_idx]), None));
+                                                    next_song_to_play =
+                                                        Some((Some(playlist[next_idx]), None));
                                                     break;
                                                 }
                                             } else {
-                                                next_song_to_play = Some((Some(playlist[next_idx]), None));
+                                                next_song_to_play =
+                                                    Some((Some(playlist[next_idx]), None));
                                                 break;
                                             }
                                         }
@@ -394,31 +482,41 @@ impl Player {
                             } else {
                                 debug_log!("NextSong: Reached end of playlist");
                             }
-                        },
-
+                        }
 
                         PlaybackCommand::Shutdown => break,
-
 
                         PlaybackCommand::Song(uuid, cb) => {
                             let mut lock = player.state.lock().unwrap();
                             if let Some(uuid) = uuid {
-                                if let Some(pl) = ordered_playlist.as_ref() && !pl.contains(&uuid) {
-                                    player.sender.try_send(PlaybackCommand::Playlist(None)).unwrap();
+                                if let Some(pl) = ordered_playlist.as_ref()
+                                    && !pl.contains(&uuid)
+                                {
+                                    player
+                                        .sender
+                                        .try_send(PlaybackCommand::Playlist(None))
+                                        .unwrap();
                                 }
 
                                 // FIX: Check if it's a target repeat condition (same song id but mixer finished)
-                                let is_same_song = lock.as_ref().map(|s| s.song == uuid).unwrap_or(false);
+                                let is_same_song =
+                                    lock.as_ref().map(|s| s.song == uuid).unwrap_or(false);
 
-                                if lock.as_ref().map(|s| s.song != uuid).unwrap_or(true) || (mixer.empty() && !is_same_song) {
+                                if lock.as_ref().map(|s| s.song != uuid).unwrap_or(true)
+                                    || (mixer.empty() && !is_same_song)
+                                {
                                     mixer.pause();
                                     mixer.clear();
                                     *lock = None;
                                     drop(lock);
-                                    match database.get(&uuid, |s| s.opus.clone().or_else(|| s.absolute_path.clone())) {
-                                        LoadingState::Loaded(_path) => {  }
-                                        LoadingState::Loading => {  }
-                                        LoadingState::Failed(_) => { continue; }
+                                    match database.get(&uuid, |s| {
+                                        s.opus.clone().or_else(|| s.absolute_path.clone())
+                                    }) {
+                                        LoadingState::Loaded(_path) => {}
+                                        LoadingState::Loading => {}
+                                        LoadingState::Failed(_) => {
+                                            continue;
+                                        }
                                     }
                                 } else {
                                     mixer.pause();
@@ -439,8 +537,7 @@ impl Player {
                             }
 
                             ctx.request_repaint();
-                        },
-
+                        }
 
                         PlaybackCommand::UrlPlayback(uuid, song_dto, cb) => {
                             let mut lock = player.state.lock().unwrap();
@@ -450,16 +547,26 @@ impl Player {
                             mixer.set_volume(0.0);
 
                             let target_uuid = uuid.unwrap_or_else(Uuid::new_v4);
-                            debug_log!("📥 [Audio API] Initiating pipeline resolution for song: '{}' (UUID: {})", song_dto.title, target_uuid);
+                            debug_log!(
+                                "📥 [Audio API] Initiating pipeline resolution for song: '{}' (UUID: {})",
+                                song_dto.title,
+                                target_uuid
+                            );
 
-                            *lock = Some(PlaybackState::new(Duration::from_secs(0), target_uuid, true));
+                            *lock = Some(PlaybackState::new(
+                                Duration::from_secs(0),
+                                target_uuid,
+                                true,
+                            ));
                             drop(lock);
 
                             *player.current_url_metadata.lock().unwrap() = Some(song_dto.clone());
                             ctx.request_repaint();
 
                             if let Some(audio_url) = song_dto.audio_url.as_ref() {
-                                let url = if audio_url.starts_with("http://") || audio_url.starts_with("https://") {
+                                let url = if audio_url.starts_with("http://")
+                                    || audio_url.starts_with("https://")
+                                {
                                     audio_url.to_string()
                                 } else {
                                     let clean_path = audio_url.trim_start_matches('/');
@@ -468,7 +575,10 @@ impl Player {
 
                                 // Fix absolute path base mismatches if the API returned neurokaraoke.com directly
                                 let url = if url.contains("https://neurokaraoke.com/") {
-                                    url.replace("https://neurokaraoke.com/", "https://storage.neurokaraoke.com/")
+                                    url.replace(
+                                        "https://neurokaraoke.com/",
+                                        "https://storage.neurokaraoke.com/",
+                                    )
                                 } else {
                                     url
                                 };
@@ -498,11 +608,13 @@ impl Player {
                                     }
                                 });
                             } else {
-                                debug_log!("UrlPlayback: No audio URL AssetType available for song: {}", song_dto.title);
+                                debug_log!(
+                                    "UrlPlayback: No audio URL AssetType available for song: {}",
+                                    song_dto.title
+                                );
                             }
                             ctx.request_repaint();
-                        },
-
+                        }
 
                         PlaybackCommand::SongReady(uuid, file, cb) => {
                             let len = match file.metadata() {
@@ -510,15 +622,22 @@ impl Player {
                                 Err(_) => continue,
                             };
 
-                            let current_song_id = player.state.lock().unwrap().as_ref().map(|s| s.song());
+                            let current_song_id =
+                                player.state.lock().unwrap().as_ref().map(|s| s.song());
                             if let (Some(incoming), Some(current)) = (uuid, current_song_id) {
                                 if incoming != current {
-                                    debug_log!("⚠️ [Audio API] Discarding outdated network stream.");
+                                    debug_log!(
+                                        "⚠️ [Audio API] Discarding outdated network stream."
+                                    );
                                     continue;
                                 }
                             }
 
-                            if let Ok(decoder) = DecoderBuilder::new().with_data(BufReader::new(file)).with_byte_len(len).build() {
+                            if let Ok(decoder) = DecoderBuilder::new()
+                                .with_data(BufReader::new(file))
+                                .with_byte_len(len)
+                                .build()
+                            {
                                 let mut lock = player.state.lock().unwrap();
 
                                 mixer.pause();
@@ -530,10 +649,12 @@ impl Player {
                                 let current_vol = player.player_state.lock().unwrap().volume;
                                 mixer.set_volume(current_vol);
 
-                                let duration = decoder.total_duration().unwrap_or_else(Duration::default);
+                                let duration =
+                                    decoder.total_duration().unwrap_or_else(Duration::default);
                                 let target_uuid = uuid.unwrap_or_else(Uuid::new_v4);
 
-                                debug_log!( "🟢 [Audio API] SUCCESS: Playing fresh mixer instance. UUID: {}, Duration: {}s",
+                                debug_log!(
+                                    "🟢 [Audio API] SUCCESS: Playing fresh mixer instance. UUID: {}, Duration: {}s",
                                     target_uuid,
                                     duration.as_secs()
                                 );
@@ -550,13 +671,14 @@ impl Player {
                                 // FIX: Force target UI frame paint sequence calculation loops instantly here
                                 ctx.request_repaint();
                             } else {
-                                debug_log!("❌ [Audio API] Rodio failed to parse the downloaded file format headers.");
+                                debug_log!(
+                                    "❌ [Audio API] Rodio failed to parse the downloaded file format headers."
+                                );
                             }
-                        },
+                        }
                     },
 
-
-                    Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {},
+                    Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {}
                     Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => break,
                 }
 
@@ -592,11 +714,15 @@ impl Player {
     }
 
     pub fn volume(&self, volume: f32) {
-        self.sender.try_send(PlaybackCommand::Volume(volume)).unwrap();
+        self.sender
+            .try_send(PlaybackCommand::Volume(volume))
+            .unwrap();
     }
 
     pub fn shuffle(&self, shuffle: bool) {
-        self.sender.try_send(PlaybackCommand::Shuffle(shuffle)).unwrap();
+        self.sender
+            .try_send(PlaybackCommand::Shuffle(shuffle))
+            .unwrap();
         debug_log!("audio.rs: Setting shuffle mode to: {}", shuffle)
     }
 
@@ -605,34 +731,57 @@ impl Player {
     }
 
     pub fn playlist(&self, playlist: Option<Arc<[Uuid]>>) {
-        self.sender.try_send(PlaybackCommand::Playlist(playlist)).ok();
+        self.sender
+            .try_send(PlaybackCommand::Playlist(playlist))
+            .ok();
     }
     pub fn url_playlist(&self, playlist: Option<Arc<[crate::api::SongDTO]>>) {
-        self.sender.try_send(PlaybackCommand::UrlPlaylist(playlist)).ok();
+        self.sender
+            .try_send(PlaybackCommand::UrlPlaylist(playlist))
+            .ok();
     }
     pub fn clear_playlist(&self) {
         self.playlist(None);
         self.url_playlist(None);
     }
-    pub fn url_playback(&self, uuid: Option<Uuid>, song_dto: crate::api::SongDTO, commands_after_load: impl FnOnce(&Player) + Send + 'static) {
-        self.sender.try_send(PlaybackCommand::UrlPlayback(uuid, song_dto, Box::new(commands_after_load))).ok();
+    pub fn url_playback(
+        &self,
+        uuid: Option<Uuid>,
+        song_dto: crate::api::SongDTO,
+        commands_after_load: impl FnOnce(&Player) + Send + 'static,
+    ) {
+        self.sender
+            .try_send(PlaybackCommand::UrlPlayback(
+                uuid,
+                song_dto,
+                Box::new(commands_after_load),
+            ))
+            .ok();
     }
     pub fn previous(&self) {
         let player_state = self.player_state.lock().unwrap();
         let playlist = player_state.playlist.as_ref().cloned();
         let url_playlist = player_state.url_playlist.as_ref().cloned();
         drop(player_state);
-        
+
         if let Some(playlist) = playlist {
             let lock = self.state.lock().unwrap();
             if let Some(state) = lock.as_ref() {
                 let current_index = playlist.iter().position(|&uuid| uuid == state.song());
-                if let Some(idx) = current_index && idx > 0 {
+                if let Some(idx) = current_index
+                    && idx > 0
+                {
                     let prev_idx = idx - 1;
-                    
-                    if let Some(url_playlist) = &url_playlist && url_playlist.len() == playlist.len() {
+
+                    if let Some(url_playlist) = &url_playlist
+                        && url_playlist.len() == playlist.len()
+                    {
                         debug_log!("Previous: Loading previous URL song at index {}", prev_idx);
-                        self.url_playback(Some(playlist[prev_idx]), url_playlist[prev_idx].clone(), Player::play);
+                        self.url_playback(
+                            Some(playlist[prev_idx]),
+                            url_playlist[prev_idx].clone(),
+                            Player::play,
+                        );
                     } else {
                         debug_log!("Previous: Loading previous DB song");
                         self.song(Some(playlist[prev_idx]), Player::play);
@@ -646,8 +795,14 @@ impl Player {
         self.sender.try_send(PlaybackCommand::NextSong).ok();
     }
 
-    pub fn song(&self, song: Option<Uuid>, commands_after_load: impl FnOnce(&Player) + Send + 'static) {
-        self.sender.try_send(PlaybackCommand::Song(song, Box::new(commands_after_load))).ok();
+    pub fn song(
+        &self,
+        song: Option<Uuid>,
+        commands_after_load: impl FnOnce(&Player) + Send + 'static,
+    ) {
+        self.sender
+            .try_send(PlaybackCommand::Song(song, Box::new(commands_after_load)))
+            .ok();
     }
 
     pub fn seek(&self, position: Duration) {
@@ -659,12 +814,16 @@ impl Player {
     }
 
     fn internal(&mut self) {
-        if let Some(refs) = &self.refs { refs.fetch_add(1, Ordering::Relaxed); }
+        if let Some(refs) = &self.refs {
+            refs.fetch_add(1, Ordering::Relaxed);
+        }
     }
 }
 impl Drop for Player {
     fn drop(&mut self) {
-        if let Some(refs) = &self.refs && refs.fetch_sub(1, Ordering::Relaxed) == 1 {
+        if let Some(refs) = &self.refs
+            && refs.fetch_sub(1, Ordering::Relaxed) == 1
+        {
             let _ = self.sender.try_send(PlaybackCommand::Shutdown);
         }
     }

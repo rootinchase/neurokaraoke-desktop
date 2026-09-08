@@ -1,11 +1,11 @@
-use eframe::egui::{self, Ui, RichText, Color32, Vec2, Frame};
-use std::sync::Arc;
-use crate::api::{AuthContext};
-use crate::auth::{ discord::{capture_discord_token, NEURO_KARAOKE_DISCORD}};
+use crate::api::AuthContext;
 use crate::auth::AuthService;
+use crate::auth::discord::{NEURO_KARAOKE_DISCORD, capture_discord_token};
+use crate::cache::Cache;
 use crate::debug_log;
 use crate::theme::ThemeManager;
-use crate::cache::{Cache};
+use eframe::egui::{self, Color32, Frame, RichText, Ui, Vec2};
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub enum ProfileMessage {
@@ -38,15 +38,15 @@ pub struct ProfileState {
 impl ProfileActivity {
     pub fn new(ctx: egui::Context, cache: Arc<Cache>) -> Self {
         let (tx, rx) = tokio::sync::mpsc::channel(8);
-        Self { 
-            ctx, 
-            tx, 
+        Self {
+            ctx,
+            tx,
             rx,
             state: ProfileState {
                 profile_data: None,
                 avatar_state: AvatarState::None,
             },
-            cache
+            cache,
         }
     }
 
@@ -58,16 +58,16 @@ impl ProfileActivity {
                 match &msg {
                     ProfileMessage::ProfileHeaderLoaded(data) => {
                         self.state.profile_data = Some(data.clone());
-                    },
+                    }
                     ProfileMessage::AvatarLoaded(path) => {
                         if let Ok(bytes) = std::fs::read(path) {
                             self.state.avatar_state = AvatarState::Ready { bytes };
                         }
-                    },
+                    }
                     _ => {}
                 }
                 Some(msg)
-            },
+            }
             _ => None,
         }
     }
@@ -77,11 +77,17 @@ impl ProfileActivity {
     }
 
     // Resolution logic matching your existing Cloudflare Image variant criteria
-    pub fn resolve_avatar_uri(&mut self, ctx: &egui::Context, rt: &tokio::runtime::Runtime, client: &reqwest::Client, avatar_url: &str) {
+    pub fn resolve_avatar_uri(
+        &mut self,
+        ctx: &egui::Context,
+        rt: &tokio::runtime::Runtime,
+        client: &reqwest::Client,
+        avatar_url: &str,
+    ) {
         if matches!(self.state.avatar_state, AvatarState::Downloading) {
             return;
         }
-        
+
         self.state.avatar_state = AvatarState::Downloading;
 
         // 1. Determine if the path is fully qualified or needs a Cloudflare public variant suffix
@@ -104,13 +110,16 @@ impl ProfileActivity {
         let ctx_clone = ctx.clone();
         let cache = self.cache.clone();
         let client_clone = client.clone();
-        
+
         rt.spawn(async move {
-            match cache.get_or_download_image(&client_clone, avatar_uuid, final_url).await {
+            match cache
+                .get_or_download_image(&client_clone, avatar_uuid, final_url)
+                .await
+            {
                 Ok(path) => {
                     let path_str = path.to_string_lossy().into_owned();
                     let _ = tx.send(ProfileMessage::AvatarLoaded(path_str)).await;
-                },
+                }
                 Err(e) => {
                     debug_log!("❌ Failed to download avatar: {}", e);
                 }
@@ -119,14 +128,13 @@ impl ProfileActivity {
         });
     }
 
-
     pub fn render(
         &mut self,
         ui: &mut Ui,
         theme: &ThemeManager,
         current_auth: &Option<AuthContext>,
         auth_service: &AuthService,
-        rt: &Arc<tokio::runtime::Runtime>
+        rt: &Arc<tokio::runtime::Runtime>,
     ) {
         ui.add_space(20.0);
 
@@ -139,8 +147,15 @@ impl ProfileActivity {
                     .inner_margin(20.0)
                     .show(ui, |ui| {
                         ui.vertical(|ui| {
-                            ui.heading(RichText::new(format!("Welcome, {}!", auth_ctx.user.username)).color(theme.primary));
-                            ui.label(RichText::new(format!("User ID: {}", auth_ctx.user.id)).color(theme.text_muted).size(11.0));
+                            ui.heading(
+                                RichText::new(format!("Welcome, {}!", auth_ctx.user.username))
+                                    .color(theme.primary),
+                            );
+                            ui.label(
+                                RichText::new(format!("User ID: {}", auth_ctx.user.id))
+                                    .color(theme.text_muted)
+                                    .size(11.0),
+                            );
 
                             ui.add_space(15.0);
                             ui.separator();

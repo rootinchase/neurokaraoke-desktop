@@ -1,11 +1,11 @@
 pub mod discord;
 
-use reqwest::{Client};
-use std::sync::Arc;
-use anyhow::{anyhow, Result};
 use crate::api;
 use crate::debug_log;
+use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use reqwest::Client;
+use std::sync::Arc;
 // Pulling definitions from section above
 
 #[derive(Clone)]
@@ -61,19 +61,27 @@ impl AuthService {
     /// POST /api/auth/discord-token
     pub async fn login_via_discord(&self, access_token: &str) -> Result<api::AuthContext> {
         let url = format!("{}/api/auth/discord-token", self.auth_host);
-        let payload = api::DiscordTokenRequest { access_token: access_token.into() };
+        let payload = api::DiscordTokenRequest {
+            access_token: access_token.into(),
+        };
         if let Ok(json_string) = serde_json::to_string(&payload) {
-            debug_log !("🔍 DEBUG OUTBOUND JSON PAYLOAD: {}", json_string);
+            debug_log!("🔍 DEBUG OUTBOUND JSON PAYLOAD: {}", json_string);
         } else {
-            debug_log !("🔍 DEBUG OUTBOUND JSON PAYLOAD: [Failed to serialize struct]");
+            debug_log!("🔍 DEBUG OUTBOUND JSON PAYLOAD: [Failed to serialize struct]");
         }
         let res = self.client.post(&url).json(&payload).send().await?;
         let status = res.status().clone();
 
         // ─── ADD RESPONSE TEXT CAPTURING TO PREVENT COLD DECODING CRASHES ───
-        let response_text = res.text().await.unwrap_or_else(|_| "[Failed to read response body]".to_string());
-        debug_log!("📥 DEBUG INBOUND RAW RESPONSE (Status {}): {}", status, response_text);
-
+        let response_text = res
+            .text()
+            .await
+            .unwrap_or_else(|_| "[Failed to read response body]".to_string());
+        debug_log!(
+            "📥 DEBUG INBOUND RAW RESPONSE (Status {}): {}",
+            status,
+            response_text
+        );
 
         if status.is_success() {
             // 1. Parse the flat token container
@@ -82,11 +90,14 @@ impl AuthService {
             // 2. Decode the inner user claims from the token string
             let user_claims = extract_claims_from_jwt(&data.token)?;
 
-            debug_log!("Successfully parsed claims for user: {}", user_claims.username);
+            debug_log!(
+                "Successfully parsed claims for user: {}",
+                user_claims.username
+            );
 
             Ok(api::AuthContext {
                 token: data.token,
-                user: user_claims
+                user: user_claims,
             })
         } else {
             Err(anyhow!("Auth Error ({}): {}", status, response_text))
@@ -110,7 +121,6 @@ impl AuthService {
         }
     }
      */
-
 
     /*
     /// POST /api/auth/qr-session
@@ -192,7 +202,8 @@ fn extract_claims_from_jwt(token: &str) -> Result<api::UserClaims> {
     }
 
     // Decode the middle segment (Index 1) using standard URL-Safe Base64
-    let decoded_bytes = URL_SAFE_NO_PAD.decode(segments[1])
+    let decoded_bytes = URL_SAFE_NO_PAD
+        .decode(segments[1])
         .map_err(|e| anyhow::anyhow!("Failed to decode JWT Base64 segment: {}", e))?;
 
     // ─── UPDATE THIS TYPE HOOK TO PATH REF ───
@@ -201,11 +212,10 @@ fn extract_claims_from_jwt(token: &str) -> Result<api::UserClaims> {
 
     // Attempt to parse out the identity string. If the server passes a non-standard numeric string,
     // or string literal, we handle fallback mappings or map it safely to a Uuid:
-    let user_uuid = uuid::Uuid::parse_str(&raw_payload.id)
-        .unwrap_or_else(|_| {
-            // Fallback generation for numeric/non-standard string IDs
-            uuid::Uuid::new_v4()
-        });
+    let user_uuid = uuid::Uuid::parse_str(&raw_payload.id).unwrap_or_else(|_| {
+        // Fallback generation for numeric/non-standard string IDs
+        uuid::Uuid::new_v4()
+    });
 
     Ok(api::UserClaims {
         id: user_uuid,

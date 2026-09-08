@@ -1,7 +1,7 @@
 // Create a new module file: src/auth/discord.rs
-use anyhow::{anyhow, Result};
-use tokio::net::TcpListener;
+use anyhow::{Result, anyhow};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::TcpListener;
 use url::Url;
 
 /// The client configuration parameters for the Neuro Karaoke Discord integration.
@@ -75,7 +75,8 @@ pub async fn capture_discord_token(config: &DiscordOAuthConfig) -> Result<String
         let url_path = format!("http://localhost{}", raw_path);
         let parsed_url = Url::parse(&url_path)?;
 
-        let token_opt = parsed_url.query_pairs()
+        let token_opt = parsed_url
+            .query_pairs()
             .find(|(key, _)| key == "access_token")
             .map(|(_, val)| val.into_owned());
 

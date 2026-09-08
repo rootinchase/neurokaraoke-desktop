@@ -1,5 +1,5 @@
 use eframe::egui;
-use eframe::egui::{lerp, Color32, Rgba};
+use eframe::egui::{Color32, Rgba, lerp};
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 
@@ -68,7 +68,7 @@ impl Theme {
                 Rgba::from(background)..=Rgba::from(background_secondary),
                 0.5,
             )
-                .into(),
+            .into(),
             background_elevated,
             background_hover,
 
@@ -85,9 +85,7 @@ impl Theme {
     }
 
     pub fn lerp(a: &Self, b: &Self, t: f32) -> Self {
-        let lerp_color = |a: Color32, b: Color32| {
-            lerp(Rgba::from(a)..=Rgba::from(b), t).into()
-        };
+        let lerp_color = |a: Color32, b: Color32| lerp(Rgba::from(a)..=Rgba::from(b), t).into();
 
         Self {
             primary: lerp_color(a.primary, b.primary),
@@ -239,7 +237,11 @@ impl ThemeManager {
     pub fn animate(&mut self, dt: f32) -> bool {
         if self.t < 1.0 {
             self.t += dt / 2.0; // 2.0s animation time
-            self.current = Theme::lerp(&self.from, &self.to, 0.5 * (1.0 - (std::f32::consts::PI * self.t).cos())); // sine ease in/out
+            self.current = Theme::lerp(
+                &self.from,
+                &self.to,
+                0.5 * (1.0 - (std::f32::consts::PI * self.t).cos()),
+            ); // sine ease in/out
             true
         } else {
             self.current = self.to;
@@ -263,7 +265,9 @@ impl Deref for ThemeManager {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum SelectableTheme {
-    Neuro, Evil, Twins
+    Neuro,
+    Evil,
+    Twins,
 }
 
 impl SelectableTheme {

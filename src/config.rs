@@ -1,19 +1,21 @@
 // Inside src/config.rs
 
-use std::path::PathBuf;
-use std::sync::{Arc, OnceLock, RwLock};
-use std::sync::atomic::{AtomicBool, AtomicU32};
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-use tokio::sync::Mutex;
+use crate::api::AuthContext;
 use crate::theme::SelectableTheme;
 use crate::util::AsArcMutex;
-use crate::api::AuthContext;
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU32};
+use std::sync::{Arc, OnceLock, RwLock};
+use tokio::sync::Mutex;
 
 static CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 pub fn init_config_dir() {
-    let dir = dirs::config_dir().expect("config directory should exist").join("neurokaraoke-desktop");
+    let dir = dirs::config_dir()
+        .expect("config directory should exist")
+        .join("neurokaraoke-desktop");
     std::fs::create_dir_all(&dir).unwrap();
     CONFIG_DIR.set(dir).expect("CONFIG_DIR already initialized");
 }
@@ -21,15 +23,29 @@ pub fn init_config_dir() {
 pub fn config_dir() -> &'static PathBuf {
     CONFIG_DIR.get().expect("CONFIG_DIR not initialized")
 }
-pub fn config_file() -> PathBuf { config_dir().join("config.ron") }
+pub fn config_file() -> PathBuf {
+    config_dir().join("config.ron")
+}
 
 mod defaults {
-    pub fn volume() -> f32 { 0.5 }
-    pub fn cache_expiration_secs() -> u64 { 24 * 60 * 60 }
-    pub fn cache_sweep_interval_secs() -> u64 { 60 }
-    pub fn cache_size_limit_mb() -> u64 { 1024 }
-    pub fn framerate_when_not_focused() -> f32 { 1.0 }
-    pub fn song_database_update_interval_secs() -> u64 { 4 * 60 * 60 }
+    pub fn volume() -> f32 {
+        0.5
+    }
+    pub fn cache_expiration_secs() -> u64 {
+        24 * 60 * 60
+    }
+    pub fn cache_sweep_interval_secs() -> u64 {
+        60
+    }
+    pub fn cache_size_limit_mb() -> u64 {
+        1024
+    }
+    pub fn framerate_when_not_focused() -> f32 {
+        1.0
+    }
+    pub fn song_database_update_interval_secs() -> u64 {
+        4 * 60 * 60
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,7 +96,6 @@ pub struct Config {
     pub auth: Option<AuthContext>,
 }
 
-
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -106,11 +121,16 @@ pub struct SharedConfig {
 
 impl Config {
     pub fn read() -> anyhow::Result<Self> {
-        Ok(ron::de::from_bytes(std::fs::read(config_file())?.as_slice())?)
+        Ok(ron::de::from_bytes(
+            std::fs::read(config_file())?.as_slice(),
+        )?)
     }
 
     pub fn write(&self) -> anyhow::Result<()> {
-        std::fs::write(config_file(), ron::ser::to_string_pretty(self, Default::default())?.as_bytes())?;
+        std::fs::write(
+            config_file(),
+            ron::ser::to_string_pretty(self, Default::default())?.as_bytes(),
+        )?;
         Ok(())
     }
 

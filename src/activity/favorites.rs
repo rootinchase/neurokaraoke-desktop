@@ -1,10 +1,9 @@
-use crate::api::{Playlist, PlaylistDetail, SongDTO, LazySongDatabase, LoadingState};
-use eframe::egui::{Context};
+use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongDTO};
+use eframe::egui::Context;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tokio::sync::Mutex;
 use uuid::Uuid;
-use crate::{debug_log, Player};
 
 pub struct FavoritesActivity {
     pub ctx: Context,
@@ -59,7 +58,7 @@ impl FavoritesActivity {
                     *s.lock().await = LoadingState::Failed(Arc::new(err));
                 }
             }
-            
+
             is_fetching.store(false, Ordering::SeqCst);
             ctx.request_repaint();
         });
@@ -69,9 +68,9 @@ impl FavoritesActivity {
         let selected = self.selected_playlist.clone();
         let db = db.clone();
         let ctx = self.ctx.clone();
-        
+
         *selected.blocking_lock() = Some(LoadingState::Loading);
-        
+
         tokio::spawn(async move {
             match db.get_playlist_details(id).await {
                 Ok(data) => {
@@ -83,9 +82,5 @@ impl FavoritesActivity {
             }
             ctx.request_repaint();
         });
-    }
-
-    pub fn play_favorites(&self, _player: &Player) {
-        debug_log!("Playing favorite playlists is not yet implemented for the favorites activity");
     }
 }

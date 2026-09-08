@@ -1,34 +1,34 @@
-mod theme;
 mod activity;
-mod audio;
 mod api;
-mod util;
+mod audio;
+mod auth;
 mod cache;
 mod config;
-mod auth;
+mod theme;
+mod util;
 
-use crate::activity::{ActivityType,
-                      playlist::PlaylistActivity,
-                      setlist::SetlistActivity,
-                      favorites::FavoritesActivity,
-                      profile};
+use crate::activity::{
+    ActivityType, favorites::FavoritesActivity, playlist::PlaylistActivity, profile,
+    setlist::SetlistActivity,
+};
 // RustRover is stupid and wants to get rid of this crate... that's needed by egui_extras
-use image as _;
-use crate::api::{LazySongDatabase, LoadingState, Song, PlaylistDetail};
-use crate::audio::{Player, PlaybackState, LoopMode};
+use crate::api::{LazySongDatabase, LoadingState, PlaylistDetail, Song};
+use crate::audio::{LoopMode, PlaybackState, Player};
 use crate::cache::Cache;
 use crate::config::{Config, SharedConfig};
 use crate::theme::{SelectableTheme, ThemeManager};
+use image as _;
 
-use eframe::egui::{include_image, lerp, Align, Color32, CornerRadius, CursorIcon, ImageSource,
-                   Layout, PopupKind, Pos2, RectAlign, Rgba, RichText, Sense, Stroke, TextWrapMode,
-                   Ui, Vec2};
-use eframe::{egui, Frame};
+use dashmap::DashMap;
+use eframe::egui::{
+    Align, Color32, CornerRadius, CursorIcon, ImageSource, Layout, PopupKind, Pos2, RectAlign,
+    Rgba, RichText, Sense, Stroke, TextWrapMode, Ui, Vec2, include_image, lerp,
+};
+use eframe::{Frame, egui};
 use mimalloc::MiMalloc;
 use reqwest::Client;
 use std::sync::Arc;
 use std::time::Duration;
-use dashmap::DashMap;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 use uuid::Uuid;
@@ -43,10 +43,12 @@ fn main() -> eframe::Result<()> {
     cache::init_cache_dir();
     config::init_config_dir();
 
-    let runtime = Arc::new(tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .unwrap());
+    let runtime = Arc::new(
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap(),
+    );
 
     let _guard = runtime.enter();
 
@@ -80,14 +82,12 @@ pub struct App {
     current_playback_state: Option<PlaybackState>,
     last_os_playback_update: Instant,
 
-
     rt: Arc<tokio::runtime::Runtime>,
     client: Client,
 
     // Image caching
     cached_art_paths: Arc<DashMap<Arc<str>, String>>,
     active_art_downloads: Arc<dashmap::DashSet<Arc<str>>>,
-
 
     pub config: Config,
     pub shared_config: SharedConfig,
@@ -96,7 +96,6 @@ pub struct App {
     cached_avatar_path: Option<String>,
     favorite_songs: Arc<tokio::sync::RwLock<std::collections::HashSet<Uuid>>>,
 }
-
 
 impl App {
     fn new(creation_ctx: &eframe::CreationContext, rt: Arc<tokio::runtime::Runtime>) -> Self {
@@ -108,12 +107,16 @@ impl App {
 
         fonts.font_data.insert(
             "noto-sans-jp".to_string(),
-            egui::FontData::from_static(include_bytes!("../assets/fonts/NotoSansJP-Regular.ttf")).into()
+            egui::FontData::from_static(include_bytes!("../assets/fonts/NotoSansJP-Regular.ttf"))
+                .into(),
         );
 
         fonts.font_data.insert(
             "Roboto".to_string(),
-            egui::FontData::from_static(include_bytes!("../assets/fonts/Roboto-VariableFont_wdth,wght.ttf")).into()
+            egui::FontData::from_static(include_bytes!(
+                "../assets/fonts/Roboto-VariableFont_wdth,wght.ttf"
+            ))
+            .into(),
         );
 
         fonts
@@ -154,19 +157,33 @@ impl App {
             rt.spawn(async move {
                 // FIX: Directly fetch profile, removing redundant verification call
                 let profile_url = "https://api.neurokaraoke.com/api/badge/profile";
-                match client_clone.get(profile_url).bearer_auth(&stored_token).send().await {
+                match client_clone
+                    .get(profile_url)
+                    .bearer_auth(&stored_token)
+                    .send()
+                    .await
+                {
                     Ok(prof_res) => {
                         if prof_res.status().is_success() {
                             if let Ok(raw_prof_text) = prof_res.text().await {
-                                if let Ok(profile_response) = serde_json::from_str::<api::ProfileResponse>(&raw_prof_text) {
+                                if let Ok(profile_response) =
+                                    serde_json::from_str::<api::ProfileResponse>(&raw_prof_text)
+                                {
                                     debug_log!("🟢 Startup profile synchronization complete!");
-                                    let _ = startup_tx.send(profile::ProfileMessage::ProfileHeaderLoaded(profile_response.profile)).await;
+                                    let _ = startup_tx
+                                        .send(profile::ProfileMessage::ProfileHeaderLoaded(
+                                            profile_response.profile,
+                                        ))
+                                        .await;
                                 } else {
                                     debug_log!("❌ Failed to deserialize ProfileResponse");
                                 }
                             }
                         } else {
-                            debug_log!("🔴 Profile fetch failed with status: {}", prof_res.status());
+                            debug_log!(
+                                "🔴 Profile fetch failed with status: {}",
+                                prof_res.status()
+                            );
                         }
                     }
                     Err(e) => debug_log!("❌ Startup profile fetch collapsed: {}", e),
@@ -174,7 +191,6 @@ impl App {
                 ctx_clone.request_repaint();
             });
         }
-
 
         let guest_id: Arc<str> = Uuid::new_v4().to_string().into();
 
@@ -184,7 +200,6 @@ impl App {
             guest_id,
             shared_config.clone(),
         );
-
 
         let player = Player::new(rt.clone(), ctx.clone(), songs.clone(), cache.clone());
         player.volume(config.volume);
@@ -196,23 +211,36 @@ impl App {
         let c = cache.clone();
         let cc = config.cache.clone();
         let last_update: Arc<Mutex<Option<Instant>>> = Arc::default();
-        cache.clone().create_worker(move || {
-            let s = s.clone();
-            let c = c.clone();
-            let cc = cc.clone();
-            let last_update = last_update.clone();
-            async move {
-                let d = Duration::from_secs(cc.lock().await.cache_expiration_secs);
-                if last_update.lock().await.map(|i| Instant::now() - i >= d).unwrap_or(true) && c.is_online() {
-                    last_update.lock().await.replace(Instant::now());
-                    s.load_all(|_| ()).await.unwrap();
-                    tokio::fs::write(cache::cache_dir().join("songs.ron"),
-                                     ron::ser::to_string_pretty(&s, Default::default()).unwrap())
+        cache.clone().create_worker(
+            move || {
+                let s = s.clone();
+                let c = c.clone();
+                let cc = cc.clone();
+                let last_update = last_update.clone();
+                async move {
+                    let d = Duration::from_secs(cc.lock().await.cache_expiration_secs);
+                    if last_update
+                        .lock()
+                        .await
+                        .map(|i| Instant::now() - i >= d)
+                        .unwrap_or(true)
+                        && c.is_online()
+                    {
+                        last_update.lock().await.replace(Instant::now());
+                        s.load_all(|_| ()).await.unwrap();
+                        tokio::fs::write(
+                            cache::cache_dir().join("songs.ron"),
+                            ron::ser::to_string_pretty(&s, Default::default()).unwrap(),
+                        )
                         .await
                         .unwrap();
+                    }
                 }
-            }
-        }, rt.handle().clone(), client.clone(), config.cache.clone());
+            },
+            rt.handle().clone(),
+            client.clone(),
+            config.cache.clone(),
+        );
 
         let media_controls = init_playwire(player.clone(), shared_config.clone());
 
@@ -229,13 +257,12 @@ impl App {
             dragging_seeker: false,
             dragging_volume: false,
 
-
             theme: ThemeManager::new(config.theme.as_theme()),
 
             activity: ActivityType::Home,
-            playlist_activity: PlaylistActivity::new(ctx.clone(), songs.clone(), false),
-            my_playlist_activity: PlaylistActivity::new(ctx.clone(), songs.clone(), true),
-            setlist_activity: SetlistActivity::new(ctx.clone(), songs.clone()),
+            playlist_activity: PlaylistActivity::new(songs.clone(), false),
+            my_playlist_activity: PlaylistActivity::new(songs.clone(), true),
+            setlist_activity: SetlistActivity::new(songs.clone()),
             favorites_activity: FavoritesActivity::new(ctx.clone()),
             profile_activity,
 
@@ -272,11 +299,19 @@ impl App {
         app
     }
 
-    fn resolve_artwork_uri(&self, ctx: &egui::Context, cloudflare_id: Option<Arc<str>>, absolute_path: Arc<str>) -> Option<String> {
-        let key = cloudflare_id.clone().map(|id| id.to_string()).unwrap_or_else(|| absolute_path.to_string());
-        
+    fn resolve_artwork_uri(
+        &self,
+        ctx: &egui::Context,
+        cloudflare_id: Option<Arc<str>>,
+        absolute_path: Arc<str>,
+    ) -> Option<String> {
+        let key = cloudflare_id
+            .clone()
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| absolute_path.to_string());
+
         let key_str: Arc<str> = key.clone().into();
-        
+
         // We will return the matching file path string as our verified key
         if let Some(path_str) = self.cached_art_paths.get::<Arc<str>>(&key_str) {
             return Some(path_str.value().clone());
@@ -308,13 +343,21 @@ impl App {
             let active_downloads = self.active_art_downloads.clone();
             let ctx_clone = ctx.clone();
             let id_worker = key.clone();
-            
+
             // Use cloudflare_id if available, otherwise construct URL from absolute_path if it's a relative path on the image server
             let image_base = "https://images.neurokaraoke.com";
             let url = if let Some(id) = cloudflare_id {
-                format!("{}/WxURxyML82UkE7gY-PiBKw/{}/w=512,h=512,fit=crop,gravity=auto ", image_base, id)
+                format!(
+                    "{}/WxURxyML82UkE7gY-PiBKw/{}/w=512,h=512,fit=crop,gravity=auto ",
+                    image_base, id
+                )
             } else {
-                format!("{}/{}/{}", image_base, absolute_path.trim_start_matches('/'), "/width=512,height=512,fit=crop,gravity=auto")
+                format!(
+                    "{}/{}/{}",
+                    image_base,
+                    absolute_path.trim_start_matches('/'),
+                    "/width=512,height=512,fit=crop,gravity=auto"
+                )
             };
 
             debug_log!("Downloading image: {}", url);
@@ -328,10 +371,17 @@ impl App {
                     Ok(path) => {
                         let path_str = path.to_string_lossy().into_owned();
                         cached_paths.insert(id_worker.clone().into(), path_str.clone());
-                        debug_log!("🖼️ [Image Cache] Successfully cached image path: {}", path_str);
+                        debug_log!(
+                            "🖼️ [Image Cache] Successfully cached image path: {}",
+                            path_str
+                        );
                     }
                     Err(e) => {
-                        debug_log!("❌ [Image Cache] Failed to cache image {}: {}", id_worker, e);
+                        debug_log!(
+                            "❌ [Image Cache] Failed to cache image {}: {}",
+                            id_worker,
+                            e
+                        );
                     }
                 }
                 active_downloads.remove::<Arc<str>>(&id_worker.into());
@@ -342,9 +392,18 @@ impl App {
         None
     }
 
-    pub fn update_os_metadata(&mut self, title: &str, artist: &str, _duration_secs: u64, cover_url: &str ) {
+    pub fn update_os_metadata(
+        &mut self,
+        title: &str,
+        artist: &str,
+        _duration_secs: u64,
+        cover_url: &str,
+    ) {
         self.current_track = Some(playwire::Track {
-            id: self.current_song_uuid.map(|id| id.to_string()).unwrap_or_default(),
+            id: self
+                .current_song_uuid
+                .map(|id| id.to_string())
+                .unwrap_or_default(),
             title: title.to_string(),
             artists: vec![artist.to_string()],
             album: "NeuroKaraoke Live".to_string(),
@@ -356,26 +415,26 @@ impl App {
 
     pub fn update_os_playback(&mut self) {
         if let Some(controls) = &mut self.media_controls {
-             if let Some(state) = self.player.get_playback_state() {
-                 let repeat = match self.player.get_loop_mode() {
-                     LoopMode::None => playwire::Repeat::Off,
-                     LoopMode::One => playwire::Repeat::One,
-                     LoopMode::All => playwire::Repeat::All,
-                 };
-                 let shuffle = self.player.get_shuffle();
-                 let volume = self.player.get_volume() as f64;
+            if let Some(state) = self.player.get_playback_state() {
+                let repeat = match self.player.get_loop_mode() {
+                    LoopMode::None => playwire::Repeat::Off,
+                    LoopMode::One => playwire::Repeat::One,
+                    LoopMode::All => playwire::Repeat::All,
+                };
+                let shuffle = self.player.get_shuffle();
+                let volume = self.player.get_volume() as f64;
 
-                 let _ = controls.set_state(&playwire::PlaybackState {
-                     track: self.current_track.clone(),
-                     playing: !state.paused(),
-                     position: state.position(),
-                     duration: Some(state.duration()),
-                     volume,
-                     repeat,
-                     shuffle,
-                     capabilities: playwire::Capabilities::default(),
-                 });
-             }
+                let _ = controls.set_state(&playwire::PlaybackState {
+                    track: self.current_track.clone(),
+                    playing: !state.paused(),
+                    position: state.position(),
+                    duration: Some(state.duration()),
+                    volume,
+                    repeat,
+                    shuffle,
+                    capabilities: playwire::Capabilities::default(),
+                });
+            }
         }
     }
     fn run(rt: Arc<tokio::runtime::Runtime>) -> eframe::Result<()> {
@@ -413,8 +472,13 @@ fn init_playwire(player: Player, shared_config: SharedConfig) -> Option<MediaCon
 
         let our_pid = unsafe { GetCurrentProcessId() };
 
-        // 1. Try GetActiveWindow() (belongs to current thread)
         let hwnd = unsafe { GetActiveWindow() };
+
+        if hwnd_ptr.is_none() {
+            let title = b"Karaoke App\0";
+            let hwnd = unsafe { FindWindowA(std::ptr::null(), title.as_ptr()) };
+
+        }
         if !hwnd.is_null() {
             let mut pid = 0;
             unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
@@ -423,25 +487,11 @@ fn init_playwire(player: Player, shared_config: SharedConfig) -> Option<MediaCon
             }
         }
 
-        // 2. Fallback to finding our window specifically by title "Karaoke App"
-        if hwnd_ptr.is_none() {
-            let title = b"Karaoke App\0";
-            let hwnd = unsafe { FindWindowA(std::ptr::null(), title.as_ptr()) };
-            if !hwnd.is_null() {
-                let mut pid = 0;
-                unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
-                if pid == our_pid {
-                    hwnd_ptr = Some(hwnd);
-                }
-            }
-        }
-
         if hwnd_ptr.is_none() {
             eprintln!("Warning: Windows HWND could not be resolved. Media controls disabled.");
             return None;
         }
     }
-
 
     let mut dbus_name = "neurokaraoke.desktop";
 
@@ -460,100 +510,221 @@ fn init_playwire(player: Player, shared_config: SharedConfig) -> Option<MediaCon
         playwire_config = playwire_config.hwnd(hwnd as u64);
     }
 
-
     match MediaControls::new(playwire_config, move |event| {
         match event {
             playwire::Event::Play => player.play(),
             playwire::Event::Pause => player.pause(),
             playwire::Event::PlayPause => {
                 if let Some(state) = player.get_playback_state() {
-                    if state.paused() { player.play(); }
-                    else { player.pause(); }
+                    if state.paused() {
+                        player.play();
+                    } else {
+                        player.pause();
+                    }
                 }
-            },
+            }
             playwire::Event::Next => player.next_song(),
             playwire::Event::Previous => player.previous(),
             playwire::Event::SeekTo(pos) => player.seek(pos),
             playwire::Event::SetVolume(vol) => player.volume(vol as f32),
             playwire::Event::SetRepeat(mode) => {
                 let loop_mode = match mode {
-                        playwire::Repeat::All => LoopMode::All,
-                        playwire::Repeat::One => LoopMode::One,
-                        playwire::Repeat::Off => LoopMode::None,
+                    playwire::Repeat::All => LoopMode::All,
+                    playwire::Repeat::One => LoopMode::One,
+                    playwire::Repeat::Off => LoopMode::None,
                 };
                 player.looping(loop_mode);
-                
+
                 // Update shared config so App can see the change
                 let mode_u32 = match loop_mode {
                     LoopMode::None => 0,
                     LoopMode::One => 1,
                     LoopMode::All => 2,
                 };
-                shared_config.loop_mode.store(mode_u32, std::sync::atomic::Ordering::SeqCst);
-            },
+                shared_config
+                    .loop_mode
+                    .store(mode_u32, std::sync::atomic::Ordering::SeqCst);
+            }
             playwire::Event::SetShuffle(mode) => {
                 player.shuffle(mode);
-                shared_config.shuffle.store(mode, std::sync::atomic::Ordering::SeqCst);
+                shared_config
+                    .shuffle
+                    .store(mode, std::sync::atomic::Ordering::SeqCst);
             }
-            _ => { }
+            _ => {}
         }
     }) {
         Ok(controls) => Some(controls),
         Err(e) => {
-            eprintln!("Failed to initialize playwire media controls: {:?}. Disabling media controls.", e);
+            eprintln!(
+                "Failed to initialize playwire media controls: {:?}. Disabling media controls.",
+                e
+            );
             None
         }
     }
 }
 
+fn play_playlist(player: &mut Player, songs: &[api::SongDTO], name: &str) {
+    debug_log!("Playlist '{}' has {} songs.", name, songs.len());
+    // Restore playlist for Player logic
+    let pl: Vec<Uuid> = songs.iter().map(|s| s.id).collect();
+    player.clear_playlist();
+    player.playlist(Some(pl.clone().into()));
+    player.url_playlist(Some(songs.into()));
+
+    if let Some(first_song) = songs.first() {
+        player.url_playback(Some(pl[0]), first_song.clone(), Player::play);
+    }
+}
+
+fn render_playlist_details(
+    ui: &mut Ui,
+    selected: &LoadingState<PlaylistDetail>,
+    mut on_play: impl FnMut(&PlaylistDetail),
+) {
+    ui.separator();
+    match selected {
+        LoadingState::Loaded(detail) => {
+            ui.label(format!("Playlist: {}", detail.name));
+            if ui.button("Play Playlist").clicked() {
+                on_play(detail);
+            }
+            render_song_table(ui, &detail.songs);
+        }
+        LoadingState::Loading => {
+            ui.label("Loading playlist details...");
+        }
+        LoadingState::Failed(err) => {
+            ui.label(format!("Error loading playlist details: {}", err));
+        }
+    }
+}
 
 fn render_song_table(ui: &mut Ui, songs: &[api::SongDTO]) {
-        use egui_extras::{TableBuilder, Column};
+    use egui_extras::{Column, TableBuilder};
 
+    TableBuilder::new(ui)
+        .column(Column::remainder())
+        .column(Column::exact(60.0))
+        .column(Column::exact(100.0))
+        .column(Column::exact(60.0))
+        .header(20.0, |mut header| {
+            header.col(|ui| {
+                ui.label("Song");
+            });
+            header.col(|ui| {
+                ui.label("Plays");
+            });
+            header.col(|ui| {
+                ui.label("Date");
+            });
+            header.col(|ui| {
+                ui.label("Duration");
+            });
+        })
+        .body(|body| {
+            body.rows(20.0, songs.len(), |mut row| {
+                let row_index = row.index();
+                let song = &songs[row_index];
+                row.col(|ui| {
+                    let text = format!(
+                        "{} - {} ({})",
+                        song.original_artists.join(" & "),
+                        song.title,
+                        song.cover_artists.join(" & ")
+                    );
+                    ui.label(text);
+                });
+                row.col(|ui| {
+                    ui.label(
+                        song.play_count
+                            .map(|c| c.to_string())
+                            .unwrap_or_else(|| "-".to_string()),
+                    );
+                });
+                row.col(|ui| {
+                    ui.label(song.stream_date.as_deref().unwrap_or("-"));
+                });
+                row.col(|ui| {
+                    if let Some(duration) = song.duration {
+                        let mins = duration / 60;
+                        let secs = duration % 60;
+                        ui.label(format!("{}:{:02}", mins, secs));
+                    } else {
+                        ui.label("-");
+                    }
+                });
+            });
+        });
+}
+
+fn render_list_table<T>(
+    ui: &mut Ui,
+    id: &str,
+    items: &[T],
+    name: impl Fn(&T) -> String,
+    song_count: impl Fn(&T) -> String,
+    play_count: impl Fn(&T) -> String,
+    metadata: impl Fn(&T) -> String,
+    on_click: impl Fn(usize),
+) {
+    use egui_extras::{Column, TableBuilder};
+
+    ui.push_id(id, |ui| {
         TableBuilder::new(ui)
             .column(Column::remainder())
             .column(Column::exact(60.0))
-            .column(Column::exact(100.0))
-            .column(Column::exact(60.0))
+            .column(Column::exact(80.0))
+            .column(Column::exact(120.0))
             .header(20.0, |mut header| {
-                header.col(|ui| { ui.label("Song"); });
-                header.col(|ui| { ui.label("Plays"); });
-                header.col(|ui| { ui.label("Date"); });
-                header.col(|ui| { ui.label("Duration"); });
+                header.col(|ui| {
+                    ui.label("Name");
+                });
+                header.col(|ui| {
+                    ui.label("Songs");
+                });
+                header.col(|ui| {
+                    ui.label("Plays");
+                });
+                header.col(|ui| {
+                    ui.label("Creator/Date");
+                });
             })
             .body(|body| {
-                body.rows(20.0, songs.len(), | mut row| {
-                    let row_index = row.index();
-                    let song = &songs[row_index];
+                body.rows(20.0, items.len(), |mut row| {
+                    let item = &items[row.index()];
+                    let mut clicked = false;
                     row.col(|ui| {
-                        let text = format!("{} - {} ({})", 
-                            song.original_artists.join(" & "), 
-                            song.title, 
-                            song.cover_artists.join(" & "));
-                        ui.label(text);
-                    });
-                    row.col(|ui| { ui.label(song.play_count.map(|c| c.to_string()).unwrap_or_else(|| "-".to_string())); });
-                    row.col(|ui| { ui.label(song.stream_date.as_deref().unwrap_or("-")); });
-                    row.col(|ui| { 
-                        if let Some(duration) = song.duration {
-                            let mins = duration / 60;
-                            let secs = duration % 60;
-                            ui.label(format!("{}:{:02}", mins, secs));
-                        } else {
-                            ui.label("-");
+                        if ui.selectable_label(false, name(item)).clicked() {
+                            clicked = true;
                         }
+                    });
+                    if clicked {
+                        on_click(row.index());
+                    }
+                    row.col(|ui| {
+                        ui.label(song_count(item));
+                    });
+                    row.col(|ui| {
+                        ui.label(play_count(item));
+                    });
+                    row.col(|ui| {
+                        ui.label(metadata(item));
                     });
                 });
             });
-    }
+    });
+}
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
-
         if let Some(msg) = self.profile_activity.poll_messages() {
             match msg {
                 profile::ProfileMessage::LoginSuccess(context) => {
-                    debug_log!("🔐 [Auth Sync] Login success captured. Updating app runtime structures...");
+                    debug_log!(
+                        "🔐 [Auth Sync] Login success captured. Updating app runtime structures..."
+                    );
 
                     // 1. Update the live configuration container directly
                     self.config.auth = Some(context.clone());
@@ -573,19 +744,35 @@ impl eframe::App for App {
                     self.rt.spawn(async move {
                         // FIX: Directly fetch profile, removing redundant UserClaims check
                         let profile_url = "https://api.neurokaraoke.com/api/badge/profile";
-                        match client_clone.get(profile_url).bearer_auth(&stored_token).send().await {
+                        match client_clone
+                            .get(profile_url)
+                            .bearer_auth(&stored_token)
+                            .send()
+                            .await
+                        {
                             Ok(prof_res) => {
                                 if prof_res.status().is_success() {
                                     if let Ok(raw_prof_text) = prof_res.text().await {
-                                        if let Ok(profile_response) = serde_json::from_str::<api::ProfileResponse>(&raw_prof_text) {
+                                        if let Ok(profile_response) =
+                                            serde_json::from_str::<api::ProfileResponse>(
+                                                &raw_prof_text,
+                                            )
+                                        {
                                             debug_log!("🟢 Profile synchronization complete!");
-                                            let _ = tx_channel.send(profile::ProfileMessage::ProfileHeaderLoaded(profile_response.profile)).await;
+                                            let _ = tx_channel
+                                                .send(profile::ProfileMessage::ProfileHeaderLoaded(
+                                                    profile_response.profile,
+                                                ))
+                                                .await;
                                         } else {
                                             debug_log!("❌ Failed to deserialize ProfileResponse");
                                         }
                                     }
                                 } else {
-                                    debug_log!("🔴 Profile fetch failed with status: {}", prof_res.status());
+                                    debug_log!(
+                                        "🔴 Profile fetch failed with status: {}",
+                                        prof_res.status()
+                                    );
                                 }
                             }
                             Err(e) => debug_log!("❌ Profile fetch collapsed: {}", e),
@@ -593,7 +780,6 @@ impl eframe::App for App {
                         ctx_clone.request_repaint();
                     });
                 }
-
 
                 profile::ProfileMessage::ProfileHeaderLoaded(header_data) => {
                     self.profile_data = Some(header_data);
@@ -639,32 +825,42 @@ impl eframe::App for App {
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.add_space(4.0);
-                    ui.add(egui::Image::new(include_image!("../assets/icon.png"))
-                        .fit_to_exact_size(Vec2::new(32.0, 32.0))
-                        .texture_options(egui::TextureOptions::LINEAR)
+                    ui.add(
+                        egui::Image::new(include_image!("../assets/icon.png"))
+                            .fit_to_exact_size(Vec2::new(32.0, 32.0))
+                            .texture_options(egui::TextureOptions::LINEAR),
                     );
-                    ui.with_layout(
-                        Layout::top_down(Align::Center),
-                        |ui| ui.label(RichText::new(self.config.theme.karaoke_str()).color(self.theme.primary_dark).size(24.0))
-                    );
+                    ui.with_layout(Layout::top_down(Align::Center), |ui| {
+                        ui.label(
+                            RichText::new(self.config.theme.karaoke_str())
+                                .color(self.theme.primary_dark)
+                                .size(24.0),
+                        )
+                    });
                 });
 
                 ui.separator();
                 ui.add_space(10.0);
 
                 let mut nav_button = |ui: &mut Ui, activity: ActivityType| {
-                    let resp = ui.scope(|ui| {
-                        ui.set_min_width(ui.available_width());
-                        ui.horizontal(|ui| {
-                            ui.add(egui::Image::new(activity.icon().unwrap()).fit_to_exact_size(Vec2::new(24.0, 24.0)));
-                            ui.add_space(4.0);
-                            let mut text = RichText::new(activity.as_str()).size(16.0);
-                            if self.activity == activity {
-                                text = text.color(self.theme.primary);
-                            }
-                            ui.add(egui::Label::new(text).selectable(false));
-                        });
-                    }).response.interact(Sense::click());
+                    let resp = ui
+                        .scope(|ui| {
+                            ui.set_min_width(ui.available_width());
+                            ui.horizontal(|ui| {
+                                ui.add(
+                                    egui::Image::new(activity.icon().unwrap())
+                                        .fit_to_exact_size(Vec2::new(24.0, 24.0)),
+                                );
+                                ui.add_space(4.0);
+                                let mut text = RichText::new(activity.as_str()).size(16.0);
+                                if self.activity == activity {
+                                    text = text.color(self.theme.primary);
+                                }
+                                ui.add(egui::Label::new(text).selectable(false));
+                            });
+                        })
+                        .response
+                        .interact(Sense::click());
                     ui.add_space(4.0);
                     if resp.hovered() {
                         ui.set_cursor_icon(CursorIcon::PointingHand);
@@ -673,7 +869,6 @@ impl eframe::App for App {
                         self.activity = activity;
                     }
                 };
-
 
                 // nav buttons
                 nav_button(ui, ActivityType::Home);
@@ -685,59 +880,72 @@ impl eframe::App for App {
                 }
                 nav_button(ui, ActivityType::Setlists);
 
-
                 // bottom area
-                ui.with_layout(
-                    Layout::bottom_up(Align::LEFT),
-                    |ui| {
-                        ui.add_space(10.0);
+                ui.with_layout(Layout::bottom_up(Align::LEFT), |ui| {
+                    ui.add_space(10.0);
 
-                        // theme switcher
-                        ui.horizontal(|ui| {
-                            let current = { self.config.theme };
-                            let mut button = |ui: &mut Ui, select_theme: SelectableTheme| {
-                                let mut button = egui::Button::new(select_theme.as_str())
-                                    .fill(if current == select_theme { self.theme.primary } else { self.theme.background_elevated });
+                    // theme switcher
+                    ui.horizontal(|ui| {
+                        let current = { self.config.theme };
+                        let mut button = |ui: &mut Ui, select_theme: SelectableTheme| {
+                            let mut button = egui::Button::new(select_theme.as_str()).fill(
+                                if current == select_theme {
+                                    self.theme.primary
+                                } else {
+                                    self.theme.background_elevated
+                                },
+                            );
 
-                                button = match select_theme {
-                                    SelectableTheme::Neuro => button.corner_radius(CornerRadius { nw: 5, sw: 5, ..Default::default() }),
-                                    SelectableTheme::Evil => button.corner_radius(CornerRadius { ne: 5, se: 5, ..Default::default() }),
-                                    _ => button.corner_radius(0),
-                                };
-
-                                if ui.add_sized([ui.available_width(), 0.0], button).clicked() {
-                                    self.config.theme = select_theme;
-                                }
+                            button = match select_theme {
+                                SelectableTheme::Neuro => button.corner_radius(CornerRadius {
+                                    nw: 5,
+                                    sw: 5,
+                                    ..Default::default()
+                                }),
+                                SelectableTheme::Evil => button.corner_radius(CornerRadius {
+                                    ne: 5,
+                                    se: 5,
+                                    ..Default::default()
+                                }),
+                                _ => button.corner_radius(0),
                             };
 
-                            let spacing = ui.spacing_mut();
-                            let old_spacing = (spacing.item_spacing, spacing.button_padding);
-                            spacing.item_spacing = Vec2::default();
-                            spacing.button_padding = Vec2::new(4.0, 4.0);
-
-                            ui.columns(3, |columns| {
-                                button(&mut columns[0], SelectableTheme::Neuro);
-                                button(&mut columns[1], SelectableTheme::Twins);
-                                button(&mut columns[2], SelectableTheme::Evil);
-                            });
-
-                            let spacing = ui.spacing_mut();
-                            (spacing.item_spacing, spacing.button_padding) = old_spacing;
-
-                            if current != self.config.theme {
-                                self.theme.set(self.config.theme.as_theme());
+                            if ui.add_sized([ui.available_width(), 0.0], button).clicked() {
+                                self.config.theme = select_theme;
                             }
+                        };
+
+                        let spacing = ui.spacing_mut();
+                        let old_spacing = (spacing.item_spacing, spacing.button_padding);
+                        spacing.item_spacing = Vec2::default();
+                        spacing.button_padding = Vec2::new(4.0, 4.0);
+
+                        ui.columns(3, |columns| {
+                            button(&mut columns[0], SelectableTheme::Neuro);
+                            button(&mut columns[1], SelectableTheme::Twins);
+                            button(&mut columns[2], SelectableTheme::Evil);
                         });
 
-                        ui.add_space(16.0);
+                        let spacing = ui.spacing_mut();
+                        (spacing.item_spacing, spacing.button_padding) = old_spacing;
 
-                        // Profile Icon
-                        let resp = ui.scope(|ui| {
+                        if current != self.config.theme {
+                            self.theme.set(self.config.theme.as_theme());
+                        }
+                    });
+
+                    ui.add_space(16.0);
+
+                    // Profile Icon
+                    let resp = ui
+                        .scope(|ui| {
                             ui.horizontal(|ui| {
-                            ui.add_space(4.0);
+                                ui.add_space(4.0);
 
-                            // ─── THE FIX: Read dynamically from profile data, or directly from active auth session records ───
-                                let current_avatar_url = self.profile_data.as_ref()
+                                // ─── THE FIX: Read dynamically from profile data, or directly from active auth session records ───
+                                let current_avatar_url = self
+                                    .profile_data
+                                    .as_ref()
                                     .and_then(|p| p.avatar_url.clone());
 
                                 if let Some(avatar_url) = current_avatar_url {
@@ -746,50 +954,84 @@ impl eframe::App for App {
                                             // Ensure a unique URI with a valid extension for format inference
                                             let uri = format!("bytes://avatar_{}.jpeg", avatar_url);
 
-                                            ui.add(egui::Image::from_bytes(
-                                                uri,
-                                                bytes.clone()
-                                            )
-                                                .fit_to_exact_size(Vec2::new(32.0, 32.0))
-                                                .corner_radius(16.0)
-                                                .texture_options(egui::TextureOptions::LINEAR));
-                                        },
+                                            ui.add(
+                                                egui::Image::from_bytes(uri, bytes.clone())
+                                                    .fit_to_exact_size(Vec2::new(32.0, 32.0))
+                                                    .corner_radius(16.0)
+                                                    .texture_options(egui::TextureOptions::LINEAR),
+                                            );
+                                        }
                                         profile::AvatarState::Downloading => {
-                                            let (rect, _) = ui.allocate_exact_size(Vec2::new(32.0, 32.0), Sense::hover());
-                                            ui.painter().rect_filled(rect, 16.0, self.theme.background_elevated);
-                                        },
+                                            let (rect, _) = ui.allocate_exact_size(
+                                                Vec2::new(32.0, 32.0),
+                                                Sense::hover(),
+                                            );
+                                            ui.painter().rect_filled(
+                                                rect,
+                                                16.0,
+                                                self.theme.background_elevated,
+                                            );
+                                        }
                                         profile::AvatarState::None => {
-                                            self.profile_activity.resolve_avatar_uri(ui.ctx(), &self.rt, &self.client, &avatar_url);
-                                            let (rect, _) = ui.allocate_exact_size(Vec2::new(32.0, 32.0), Sense::hover());
-                                            ui.painter().rect_filled(rect, 16.0, self.theme.background_elevated);
+                                            self.profile_activity.resolve_avatar_uri(
+                                                ui.ctx(),
+                                                &self.rt,
+                                                &self.client,
+                                                &avatar_url,
+                                            );
+                                            let (rect, _) = ui.allocate_exact_size(
+                                                Vec2::new(32.0, 32.0),
+                                                Sense::hover(),
+                                            );
+                                            ui.painter().rect_filled(
+                                                rect,
+                                                16.0,
+                                                self.theme.background_elevated,
+                                            );
                                         }
                                     }
                                 } else {
-                                    ui.add(egui::Image::new(include_image!("../assets/icon.png"))
-                                        .fit_to_exact_size(Vec2::new(32.0, 32.0))
-                                        .corner_radius(16.0));
+                                    ui.add(
+                                        egui::Image::new(include_image!("../assets/icon.png"))
+                                            .fit_to_exact_size(Vec2::new(32.0, 32.0))
+                                            .corner_radius(16.0),
+                                    );
                                 }
 
                                 if let Some(auth) = &self.config.auth {
                                     let username_str = &auth.user.username;
-                                    ui.add(egui::Label::new(RichText::new(username_str.to_string()).size(16.0)).selectable(false));
+                                    ui.add(
+                                        egui::Label::new(
+                                            RichText::new(username_str.to_string()).size(16.0),
+                                        )
+                                        .selectable(false),
+                                    );
                                 } else {
-                                    ui.add(egui::Label::new(RichText::new("Guest Account").italics().color(self.theme.text_muted).size(14.0)).selectable(false));
+                                    ui.add(
+                                        egui::Label::new(
+                                            RichText::new("Guest Account")
+                                                .italics()
+                                                .color(self.theme.text_muted)
+                                                .size(14.0),
+                                        )
+                                        .selectable(false),
+                                    );
                                 }
                             });
-                        }).response.interact(Sense::click());
+                        })
+                        .response
+                        .interact(Sense::click());
 
-                        if resp.hovered() {
-                            ui.set_cursor_icon(CursorIcon::PointingHand);
-                        }
+                    if resp.hovered() {
+                        ui.set_cursor_icon(CursorIcon::PointingHand);
+                    }
 
-                        if resp.clicked() {
-                            self.activity = ActivityType::Profile;
-                        }
+                    if resp.clicked() {
+                        self.activity = ActivityType::Profile;
+                    }
 
-                        ui.separator();
-                    },
-                );
+                    ui.separator();
+                });
             });
 
         if let Some(state) = self.player.get_playback_state() {
@@ -797,7 +1039,7 @@ impl eframe::App for App {
                 LoadingState::Loaded(s) => Some(s),
                 _ => None,
             };
-            
+
             // Fallback to URL-based metadata if database lookup failed
             if song.is_none() {
                 if let Ok(meta) = self.player.current_url_metadata.lock() {
@@ -815,7 +1057,7 @@ impl eframe::App for App {
                     }
                 }
             }
-            
+
             if let Some(s) = &song {
                 if self.current_song_uuid != Some(state.song()) {
                     self.current_song_uuid = Some(state.song());
@@ -823,12 +1065,15 @@ impl eframe::App for App {
 
                     let cloudflare_id = {
                         let guard = self.player.current_url_metadata.lock().unwrap();
-                        guard.as_ref()
+                        guard
+                            .as_ref()
                             .and_then(|m| m.cover_art.as_ref())
                             .and_then(|a| a.cloudflare_id.as_ref())
                             .map(|id| id.to_string())
-                    }.or_else(|| {
-                        s.cover_art.as_ref()
+                    }
+                    .or_else(|| {
+                        s.cover_art
+                            .as_ref()
                             .and_then(|a| a.cloudflare_id.as_ref())
                             .map(|id| id.to_string())
                     });
@@ -839,9 +1084,13 @@ impl eframe::App for App {
 
                     self.update_os_metadata(
                         &s.title,
-                        &format!("{} (feat. {})", s.original_artists.join(" & "), s.cover_artists.join(" & ")),
+                        &format!(
+                            "{} (feat. {})",
+                            s.original_artists.join(" & "),
+                            s.cover_artists.join(" & ")
+                        ),
                         state.duration().as_secs(),
-                        &cover_art_url
+                        &cover_art_url,
                     );
                 } else if let Some(start) = self.last_song_playback_start {
                     if start.elapsed() >= Duration::from_secs(30) {
@@ -851,7 +1100,9 @@ impl eframe::App for App {
                             if let Err(e) = songs.report_play_count(uuid).await {
                                 debug_log!("❌ [Playback Reporting] Failed: {}", e);
                             } else {
-                                debug_log!("✅ [Playback Reporting] Successfully reported play count.");
+                                debug_log!(
+                                    "✅ [Playback Reporting] Successfully reported play count."
+                                );
                             }
                         });
                         self.last_song_playback_start = None;
@@ -860,10 +1111,10 @@ impl eframe::App for App {
             }
             let now = Instant::now();
             if self.current_playback_state.as_ref().map(|s| s.paused()) != Some(state.paused())
-               || (now - self.last_os_playback_update > Duration::from_secs(1) && !state.paused())
+                || (now - self.last_os_playback_update > Duration::from_secs(1) && !state.paused())
             {
-                 self.update_os_playback();
-                 self.last_os_playback_update = now;
+                self.update_os_playback();
+                self.last_os_playback_update = now;
             }
             self.current_playback_state = Some(state);
 
@@ -875,19 +1126,33 @@ impl eframe::App for App {
                         .inner_margin(0.0)
                         .outer_margin(0.0)
                         .stroke(Stroke::new(0.0, Color32::TRANSPARENT))
-                        .fill(self.theme.background_secondary)
+                        .fill(self.theme.background_secondary),
                 )
                 .exact_size(80.0)
                 .show(ui, |ui| {
                     // progress bar (but really fancy and overcomplicated)
                     let mut rect = ui.max_rect();
                     rect.set_height(3.0);
-                    let dragging_progress = ui.pointer_latest_pos().map(|pos| (pos.x - rect.left()).clamp(0.0, rect.width()) / rect.width());
-                    let position = if self.dragging_seeker && let Some(p) = dragging_progress { state.duration().mul_f32(p) } else { state.position() };
-                    let progress = (position.as_millis() as f64 / state.duration().as_millis() as f64) as f32;
-                    ui.painter().rect_filled(rect, 0.0, self.theme.background_elevated);
+                    let dragging_progress = ui
+                        .pointer_latest_pos()
+                        .map(|pos| (pos.x - rect.left()).clamp(0.0, rect.width()) / rect.width());
+                    let position = if self.dragging_seeker
+                        && let Some(p) = dragging_progress
+                    {
+                        state.duration().mul_f32(p)
+                    } else {
+                        state.position()
+                    };
+                    let progress =
+                        (position.as_millis() as f64 / state.duration().as_millis() as f64) as f32;
+                    ui.painter()
+                        .rect_filled(rect, 0.0, self.theme.background_elevated);
                     let mut mesh = egui::Mesh::default();
-                    let lerped_color: Color32 = lerp(Rgba::from(self.theme.accent)..=Rgba::from(self.theme.primary), progress).into();
+                    let lerped_color: Color32 = lerp(
+                        Rgba::from(self.theme.accent)..=Rgba::from(self.theme.primary),
+                        progress,
+                    )
+                    .into();
                     let w = rect.width() * progress;
                     mesh.colored_vertex(rect.left_top() + Vec2::new(0.0, 1.0), self.theme.accent);
                     mesh.colored_vertex(rect.left_top() + Vec2::new(w, 1.0), lerped_color);
@@ -901,20 +1166,31 @@ impl eframe::App for App {
 
                     if resp.hovered() || resp.dragged() {
                         ui.set_cursor_icon(CursorIcon::PointingHand);
-                        if let Some(pos) = ui.pointer_latest_pos() && let Some(p) = dragging_progress {
+                        if let Some(pos) = ui.pointer_latest_pos()
+                            && let Some(p) = dragging_progress
+                        {
                             egui::Popup::new(
                                 ui.id().with("seeker_tooltip"),
                                 ui.ctx().clone(),
-                                egui::PopupAnchor::Position(Pos2::new(pos.x.clamp(rect.left(), rect.right()), rect.top() - 5.0)),
+                                egui::PopupAnchor::Position(Pos2::new(
+                                    pos.x.clamp(rect.left(), rect.right()),
+                                    rect.top() - 5.0,
+                                )),
                                 ui.layer_id(),
                             )
-                                .align(RectAlign::TOP)
-                                .kind(PopupKind::Tooltip)
-                                .open(true)
-                                .show(|ui| {
-                                    let point = state.duration().mul_f32(p).as_secs();
-                                    ui.add(egui::Label::new(RichText::new(format!("{}:{:02}", point / 60, point % 60)).size(12.0)).wrap_mode(TextWrapMode::Extend));
-                                });
+                            .align(RectAlign::TOP)
+                            .kind(PopupKind::Tooltip)
+                            .open(true)
+                            .show(|ui| {
+                                let point = state.duration().mul_f32(p).as_secs();
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(format!("{}:{:02}", point / 60, point % 60))
+                                            .size(12.0),
+                                    )
+                                    .wrap_mode(TextWrapMode::Extend),
+                                );
+                            });
                         }
                     }
 
@@ -923,7 +1199,10 @@ impl eframe::App for App {
                         self.dragging_seeker = true;
                     }
 
-                    if (resp.clicked() || !resp.dragged()) && self.dragging_seeker && let Some(p) = dragging_progress {
+                    if (resp.clicked() || !resp.dragged())
+                        && self.dragging_seeker
+                        && let Some(p) = dragging_progress
+                    {
                         self.player.seek(state.duration().mul_f32(p));
                         self.dragging_seeker = false;
                     }
@@ -954,7 +1233,8 @@ impl eframe::App for App {
 
                             let mut cached_path_str = None;
                             if let Some(abs_path) = current_abs_path {
-                                cached_path_str = self.resolve_artwork_uri(ui.ctx(), current_img_uuid, abs_path);
+                                cached_path_str =
+                                    self.resolve_artwork_uri(ui.ctx(), current_img_uuid, abs_path);
                             }
 
                             if let Some(path_str) = cached_path_str {
@@ -962,30 +1242,67 @@ impl eframe::App for App {
                                 if let Ok(image_bytes) = std::fs::read(&path_str) {
                                     // FIX: Build image source mapping bytes with correct type signature wrapper
                                     let image_source = ImageSource::Bytes {
-                                        uri: std::borrow::Cow::Owned(format!("bytes://{}", path_str)),
+                                        uri: std::borrow::Cow::Owned(format!(
+                                            "bytes://{}",
+                                            path_str
+                                        )),
                                         bytes: image_bytes.into(),
                                     };
 
-                                    ui.add(egui::Image::new(image_source)
-                                        .fit_to_exact_size(Vec2::new(70.0, 70.0))
-                                        .corner_radius(8.0));
+                                    ui.add(
+                                        egui::Image::new(image_source)
+                                            .fit_to_exact_size(Vec2::new(70.0, 70.0))
+                                            .corner_radius(8.0),
+                                    );
                                 }
                             } else {
                                 // Fallback skeleton placeholder frame while background download is in progress
-                                let (rect, _) = ui.allocate_exact_size(Vec2::new(70.0, 70.0), Sense::hover());
-                                ui.painter().rect_filled(rect, 8.0, self.theme.background_elevated);
+                                let (rect, _) =
+                                    ui.allocate_exact_size(Vec2::new(70.0, 70.0), Sense::hover());
+                                ui.painter()
+                                    .rect_filled(rect, 8.0, self.theme.background_elevated);
                             }
 
                             ui.with_layout(Layout::top_down(Align::LEFT), |ui| {
                                 ui.add_space(5.0);
-                                let title = song.as_ref().map(|s| s.title.to_string()).unwrap_or_else(|| "Unknown Song".to_string());
-                                ui.add(egui::Label::new(RichText::new(title).size(24.0)).wrap_mode(TextWrapMode::Truncate));
+                                let title = song
+                                    .as_ref()
+                                    .map(|s| s.title.to_string())
+                                    .unwrap_or_else(|| "Unknown Song".to_string());
+                                ui.add(
+                                    egui::Label::new(RichText::new(title).size(24.0))
+                                        .wrap_mode(TextWrapMode::Truncate),
+                                );
                                 if let Some(s) = &song {
-                                    ui.add(egui::Label::new(RichText::new(format!("{} (feat. {})", s.original_artists.join(" & "), s.cover_artists.join(" & "))).color(self.theme.text_muted).size(12.0)).wrap_mode(TextWrapMode::Truncate));
+                                    ui.add(
+                                        egui::Label::new(
+                                            RichText::new(format!(
+                                                "{} (feat. {})",
+                                                s.original_artists.join(" & "),
+                                                s.cover_artists.join(" & ")
+                                            ))
+                                            .color(self.theme.text_muted)
+                                            .size(12.0),
+                                        )
+                                        .wrap_mode(TextWrapMode::Truncate),
+                                    );
                                 }
                                 let position = state.position().as_secs();
                                 let duration = state.duration().as_secs();
-                                ui.add(egui::Label::new(RichText::new(format!("{}:{:02} / {}:{:02}", position / 60, position % 60, duration / 60, duration % 60)).color(self.theme.text_muted).size(10.0)).wrap_mode(TextWrapMode::Truncate))
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(format!(
+                                            "{}:{:02} / {}:{:02}",
+                                            position / 60,
+                                            position % 60,
+                                            duration / 60,
+                                            duration % 60
+                                        ))
+                                        .color(self.theme.text_muted)
+                                        .size(10.0),
+                                    )
+                                    .wrap_mode(TextWrapMode::Truncate),
+                                )
                             });
                         });
 
@@ -997,8 +1314,24 @@ impl eframe::App for App {
 
                             ui.spacing_mut().item_spacing = Vec2::ZERO;
 
-                            fn btn(theme: &ThemeManager, ui: &mut Ui, source: ImageSource, active: bool, set_active: impl FnOnce(&egui::Context, bool)) {
-                                let resp = ui.add(egui::Image::new(source).fit_to_exact_size(Vec2::new(24.0, 24.0)).tint(if active { theme.accent_light } else { theme.text })).interact(Sense::click());
+                            fn btn(
+                                theme: &ThemeManager,
+                                ui: &mut Ui,
+                                source: ImageSource,
+                                active: bool,
+                                set_active: impl FnOnce(&egui::Context, bool),
+                            ) {
+                                let resp = ui
+                                    .add(
+                                        egui::Image::new(source)
+                                            .fit_to_exact_size(Vec2::new(24.0, 24.0))
+                                            .tint(if active {
+                                                theme.accent_light
+                                            } else {
+                                                theme.text
+                                            }),
+                                    )
+                                    .interact(Sense::click());
                                 if resp.hovered() {
                                     ui.set_cursor_icon(CursorIcon::PointingHand);
                                 }
@@ -1007,28 +1340,47 @@ impl eframe::App for App {
                                 }
                             }
 
-                            btn(&self.theme, ui, include_image!("../assets/backward.png"), false, |_ctx, _x| {
-                                self.player.previous();
-                            });
+                            btn(
+                                &self.theme,
+                                ui,
+                                include_image!("../assets/backward.png"),
+                                false,
+                                |_ctx, _x| {
+                                    self.player.previous();
+                                },
+                            );
                             ui.add_space(10.0);
 
-                            btn(&self.theme, ui, include_image!("../assets/shuffle.png"), self.config.shuffle, |_ctx, x| {
-                                self.config.shuffle = x;
-                                self.player.shuffle(x);
-                                self.shared_config.shuffle.store(x, std::sync::atomic::Ordering::SeqCst);
-                                let _ = self.config.write();
-                                _ctx.request_repaint();
-                            });
+                            btn(
+                                &self.theme,
+                                ui,
+                                include_image!("../assets/shuffle.png"),
+                                self.config.shuffle,
+                                |_ctx, x| {
+                                    self.config.shuffle = x;
+                                    self.player.shuffle(x);
+                                    self.shared_config
+                                        .shuffle
+                                        .store(x, std::sync::atomic::Ordering::SeqCst);
+                                    let _ = self.config.write();
+                                    _ctx.request_repaint();
+                                },
+                            );
 
                             ui.add_space(10.0);
 
-                            let resp = ui.add(egui::Button::image(egui::Image::new(
-                                if state.paused() { include_image!("../assets/play.png") }
-                                else { include_image!("../assets/pause.png") }
-                            ).fit_to_exact_size(Vec2::new(24.0, 24.0)))
+                            let resp = ui.add(
+                                egui::Button::image(
+                                    egui::Image::new(if state.paused() {
+                                        include_image!("../assets/play.png")
+                                    } else {
+                                        include_image!("../assets/pause.png")
+                                    })
+                                    .fit_to_exact_size(Vec2::new(24.0, 24.0)),
+                                )
                                 .min_size(Vec2::new(40.0, 40.0))
                                 .corner_radius(20.0)
-                                .fill(self.theme.primary)
+                                .fill(self.theme.primary),
                             );
 
                             if resp.hovered() {
@@ -1036,58 +1388,84 @@ impl eframe::App for App {
                             }
 
                             if resp.clicked() {
-                                if state.paused() { self.player.play(); }
-                                else { self.player.pause(); }
+                                if state.paused() {
+                                    self.player.play();
+                                } else {
+                                    self.player.pause();
+                                }
                             }
 
                             ui.add_space(10.0);
 
                             // Sync local config with shared config
-                            let current_mode_u32 = self.shared_config.loop_mode.load(std::sync::atomic::Ordering::SeqCst);
+                            let current_mode_u32 = self
+                                .shared_config
+                                .loop_mode
+                                .load(std::sync::atomic::Ordering::SeqCst);
                             self.config.loop_mode = match current_mode_u32 {
                                 1 => LoopMode::One,
                                 2 => LoopMode::All,
                                 _ => LoopMode::None,
                             };
-                            self.config.shuffle = self.shared_config.shuffle.load(std::sync::atomic::Ordering::SeqCst);
+                            self.config.shuffle = self
+                                .shared_config
+                                .shuffle
+                                .load(std::sync::atomic::Ordering::SeqCst);
 
                             let mut loop_mode_changed = false;
 
-                            btn(&self.theme, ui, match self.config.loop_mode {
-                                LoopMode::One => include_image!("../assets/loop-one.svg"),
-                                _ => include_image!("../assets/loop.svg"),
-                            }, self.config.loop_mode != LoopMode::None, |ctx, _| {
-                                let next_mode = match self.config.loop_mode {
-                                    LoopMode::None => LoopMode::One,
-                                    LoopMode::One => LoopMode::All,
-                                    LoopMode::All => LoopMode::None,
-                                };
-                                debug_log!("Loop mode toggled: {:?} -> {:?}", self.config.loop_mode, next_mode);
-                                self.config.loop_mode = next_mode;
-                                self.player.looping(next_mode);
-                                
-                                let mode_u32 = match next_mode {
-                                    LoopMode::None => 0,
-                                    LoopMode::One => 1,
-                                    LoopMode::All => 2,
-                                };
-                                self.shared_config.loop_mode.store(mode_u32, std::sync::atomic::Ordering::SeqCst);
-                                
-                                let _ = self.config.write();
-                                loop_mode_changed = true;
-                                ctx.request_repaint();
-                            });
-                            
+                            btn(
+                                &self.theme,
+                                ui,
+                                match self.config.loop_mode {
+                                    LoopMode::One => include_image!("../assets/loop-one.svg"),
+                                    _ => include_image!("../assets/loop.svg"),
+                                },
+                                self.config.loop_mode != LoopMode::None,
+                                |ctx, _| {
+                                    let next_mode = match self.config.loop_mode {
+                                        LoopMode::None => LoopMode::One,
+                                        LoopMode::One => LoopMode::All,
+                                        LoopMode::All => LoopMode::None,
+                                    };
+                                    debug_log!(
+                                        "Loop mode toggled: {:?} -> {:?}",
+                                        self.config.loop_mode,
+                                        next_mode
+                                    );
+                                    self.config.loop_mode = next_mode;
+                                    self.player.looping(next_mode);
+
+                                    let mode_u32 = match next_mode {
+                                        LoopMode::None => 0,
+                                        LoopMode::One => 1,
+                                        LoopMode::All => 2,
+                                    };
+                                    self.shared_config
+                                        .loop_mode
+                                        .store(mode_u32, std::sync::atomic::Ordering::SeqCst);
+
+                                    let _ = self.config.write();
+                                    loop_mode_changed = true;
+                                    ctx.request_repaint();
+                                },
+                            );
+
                             if loop_mode_changed {
                                 self.update_os_playback();
                             }
 
-
                             ui.add_space(10.0);
 
-                            btn(&self.theme, ui, include_image!("../assets/forward.png"), false, |_ctx, _x| {
-                                self.player.next_song();
-                            });
+                            btn(
+                                &self.theme,
+                                ui,
+                                include_image!("../assets/forward.png"),
+                                false,
+                                |_ctx, _x| {
+                                    self.player.next_song();
+                                },
+                            );
                         });
 
                         columns[2].scope(|ui| {
@@ -1098,19 +1476,35 @@ impl eframe::App for App {
                                 rect.set_top(rect.top() + 5.0);
                                 rect.set_bottom(rect.bottom() - 5.0);
 
-                                ui.painter().rect_filled(rect, 0.0, self.theme.background_elevated);
+                                ui.painter()
+                                    .rect_filled(rect, 0.0, self.theme.background_elevated);
                                 let mut mesh = egui::Mesh::default();
-                                let lerped_color: Color32 = lerp(Rgba::from(self.theme.accent)..=Rgba::from(self.theme.accent_light), self.config.volume).into();
+                                let lerped_color: Color32 = lerp(
+                                    Rgba::from(self.theme.accent)
+                                        ..=Rgba::from(self.theme.accent_light),
+                                    self.config.volume,
+                                )
+                                .into();
                                 let h = rect.height() * self.config.volume;
                                 mesh.colored_vertex(rect.left_bottom(), self.theme.accent);
-                                mesh.colored_vertex(rect.left_bottom() - Vec2::new(0.0, h), lerped_color);
-                                mesh.colored_vertex(rect.right_bottom() - Vec2::new(0.0, h), lerped_color);
+                                mesh.colored_vertex(
+                                    rect.left_bottom() - Vec2::new(0.0, h),
+                                    lerped_color,
+                                );
+                                mesh.colored_vertex(
+                                    rect.right_bottom() - Vec2::new(0.0, h),
+                                    lerped_color,
+                                );
                                 mesh.colored_vertex(rect.right_bottom(), self.theme.accent);
                                 mesh.add_triangle(0, 1, 2);
                                 mesh.add_triangle(0, 2, 3);
                                 ui.painter().add(egui::Shape::mesh(mesh));
 
-                                let resp = ui.interact(rect, ui.id().with("volume_slider"), Sense::click_and_drag());
+                                let resp = ui.interact(
+                                    rect,
+                                    ui.id().with("volume_slider"),
+                                    Sense::click_and_drag(),
+                                );
 
                                 if resp.hovered() {
                                     ui.set_cursor_icon(CursorIcon::PointingHand);
@@ -1120,7 +1514,9 @@ impl eframe::App for App {
                                     ui.set_cursor_icon(CursorIcon::Grabbing);
                                     self.dragging_volume = true;
                                     if let Some(pos) = ui.pointer_latest_pos() {
-                                        self.config.volume = 1.0 - ((pos.y - rect.top()).clamp(0.0, rect.height()) / rect.height());
+                                        self.config.volume = 1.0
+                                            - ((pos.y - rect.top()).clamp(0.0, rect.height())
+                                                / rect.height());
                                     }
                                 }
 
@@ -1133,7 +1529,10 @@ impl eframe::App for App {
 
                                 if let Some(current_song_uuid) = self.current_song_uuid {
                                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                        let is_favorite = self.favorite_songs.blocking_read().contains(&current_song_uuid);
+                                        let is_favorite = self
+                                            .favorite_songs
+                                            .blocking_read()
+                                            .contains(&current_song_uuid);
                                         let icon = if is_favorite {
                                             include_image!("../assets/favorite.svg")
                                         } else {
@@ -1141,9 +1540,16 @@ impl eframe::App for App {
                                         };
 
                                         ui.add_space(10.0);
-                                        let resp = ui.add(egui::Image::new(icon)
-                                            .fit_to_exact_size(Vec2::new(24.0, 24.0))
-                                            .tint(if is_favorite { self.theme.accent_light } else { self.theme.text }))
+                                        let resp = ui
+                                            .add(
+                                                egui::Image::new(icon)
+                                                    .fit_to_exact_size(Vec2::new(24.0, 24.0))
+                                                    .tint(if is_favorite {
+                                                        self.theme.accent_light
+                                                    } else {
+                                                        self.theme.text
+                                                    }),
+                                            )
                                             .interact(Sense::click());
 
                                         if resp.hovered() {
@@ -1156,12 +1562,26 @@ impl eframe::App for App {
                                             let is_favorite = is_favorite; // Capture current status
                                             tokio::spawn(async move {
                                                 if is_favorite {
-                                                    if songs.remove_from_favorites(current_song_uuid).await.is_ok() {
-                                                        favs_clone.write().await.remove(&current_song_uuid);
+                                                    if songs
+                                                        .remove_from_favorites(current_song_uuid)
+                                                        .await
+                                                        .is_ok()
+                                                    {
+                                                        favs_clone
+                                                            .write()
+                                                            .await
+                                                            .remove(&current_song_uuid);
                                                     }
                                                 } else {
-                                                    if songs.add_to_favorites(current_song_uuid).await.is_ok() {
-                                                        favs_clone.write().await.insert(current_song_uuid);
+                                                    if songs
+                                                        .add_to_favorites(current_song_uuid)
+                                                        .await
+                                                        .is_ok()
+                                                    {
+                                                        favs_clone
+                                                            .write()
+                                                            .await
+                                                            .insert(current_song_uuid);
                                                     }
                                                 }
                                             });
@@ -1174,7 +1594,6 @@ impl eframe::App for App {
                             });
                         });
                     });
-
                 });
         }
 
@@ -1183,7 +1602,6 @@ impl eframe::App for App {
             egui::CentralPanel::default()
                 .frame(egui::Frame::NONE.fill(Color32::TRANSPARENT))
                 .show(ui, |ui| {
-
                     ui.heading(self.activity.as_str());
                     ui.push_id(self.activity.as_str(), |ui| {
                         if self.activity == ActivityType::Home {
@@ -1192,13 +1610,50 @@ impl eframe::App for App {
                             ui.horizontal(|ui| {
                                 if ui.button("find and play").clicked() {
                                     let search = self.search.to_lowercase();
-                                    self.player.song(self.songs.get_map().iter().find(|x| x.value().if_loaded_or_else(|s| s.title.to_lowercase().starts_with(search.as_str()), false)).map(|x| *x.key()), Player::play);
+                                    self.player.song(
+                                        self.songs
+                                            .get_map()
+                                            .iter()
+                                            .find(|x| {
+                                                x.value().if_loaded_or_else(
+                                                    |s| {
+                                                        s.title
+                                                            .to_lowercase()
+                                                            .starts_with(search.as_str())
+                                                    },
+                                                    false,
+                                                )
+                                            })
+                                            .map(|x| *x.key()),
+                                        Player::play,
+                                    );
                                 }
 
                                 if ui.button("add search results to playlist").clicked() {
                                     let search = self.search.to_lowercase();
-                                    let mut pl = self.player.get_playlist().map(|x| Vec::from(&*x)).unwrap_or_else(Vec::new);
-                                    pl.append(&mut self.songs.get_map().iter().filter(|x| x.value().if_loaded_or_else(|s| s.title.to_lowercase().starts_with(search.as_str()), false)).map(|x| *x.key()).collect::<Vec<Uuid>>());
+                                    let mut pl = self
+                                        .player
+                                        .get_playlist()
+                                        .map(|x| Vec::from(&*x))
+                                        .unwrap_or_else(Vec::new);
+                                    pl.append(
+                                        &mut self
+                                            .songs
+                                            .get_map()
+                                            .iter()
+                                            .filter(|x| {
+                                                x.value().if_loaded_or_else(
+                                                    |s| {
+                                                        s.title
+                                                            .to_lowercase()
+                                                            .starts_with(search.as_str())
+                                                    },
+                                                    false,
+                                                )
+                                            })
+                                            .map(|x| *x.key())
+                                            .collect::<Vec<Uuid>>(),
+                                    );
                                     self.player.playlist(Some(pl.into()));
                                 }
 
@@ -1209,15 +1664,19 @@ impl eframe::App for App {
 
                             if let Some(pl) = self.player.get_playlist() {
                                 ui.label("Playlist:");
-                                egui::Frame::new().fill(self.theme.background_elevated).show(ui, |ui| {
-                                    ui.vertical(|ui| {
-                                        for song in &*pl {
-                                            if let LoadingState::Loaded(title) = self.songs.get(song, |s| s.title.clone()) {
-                                                ui.label(title.to_string());
+                                egui::Frame::new()
+                                    .fill(self.theme.background_elevated)
+                                    .show(ui, |ui| {
+                                        ui.vertical(|ui| {
+                                            for song in &*pl {
+                                                if let LoadingState::Loaded(title) =
+                                                    self.songs.get(song, |s| s.title.clone())
+                                                {
+                                                    ui.label(title.to_string());
+                                                }
                                             }
-                                        }
+                                        });
                                     });
-                                });
                             }
                         } else if self.activity == ActivityType::Playlists {
                             ui.vertical(|ui| {
@@ -1226,74 +1685,37 @@ impl eframe::App for App {
 
                                 match &*playlists {
                                     LoadingState::Loaded(playlists) => {
-                                        use egui_extras::{TableBuilder, Column};
+                                        render_list_table(
+                                            ui,
+                                            "public_playlists_table",
+                                            playlists,
+                                            |p| p.name.to_string(),
+                                            |p| p.song_count.to_string(),
+                                            |p| p.play_count.to_string(),
+                                            |p| p.creator.to_string(),
+                                            |idx| {
+                                                self.playlist_activity
+                                                    .select_playlist(playlists[idx].id)
+                                            },
+                                        );
 
-                                        ui.push_id("public_playlists_table", |ui| {
-                                            TableBuilder::new(ui)
-                                                .column(Column::remainder())
-                                                .column(Column::exact(60.0))
-                                                .column(Column::exact(80.0))
-                                                .column(Column::exact(120.0))
-                                                .header(20.0, |mut header| {
-                                                    header.col(|ui| { ui.label("Name"); });
-                                                    header.col(|ui| { ui.label("Songs"); });
-                                                    header.col(|ui| { ui.label("Plays"); });
-                                                    header.col(|ui| { ui.label("Creator"); });
-                                                })
-                                                .body(|body| {
-                                                    body.rows(20.0, playlists.len(), |mut row| {
-                                                        let playlist = &playlists[row.index()];
-                                                        let mut clicked = false;
-
-                                                        row.col(|ui| {
-                                                            if ui.selectable_label(false, &*playlist.name).clicked() {
-                                                                clicked = true;
-                                                            }
-                                                        });
-
-                                                        if clicked {
-                                                            self.playlist_activity.select_playlist(playlist.id);
-                                                        }
-
-                                                        row.col(|ui| { ui.label(playlist.song_count.to_string()); });
-                                                        row.col(|ui| { ui.label(playlist.play_count.to_string()); });
-                                                        row.col(|ui| { ui.label(&*playlist.creator); });
-                                                    });
-                                                });
-                                        });
-
-                                        if let Some(selected) = &*self.playlist_activity.selected_playlist.blocking_lock() {
-                                            ui.separator();
-                                            match selected {
-                                                LoadingState::Loaded(detail) => {
-                                                    ui.label(format!("Playlist: {}", detail.name));
-                                                    if ui.button("Play Playlist").clicked() {
-                                                        let songs = &detail.songs;
-                                                        debug_log!("Playlist '{}' has {} songs.", detail.name, songs.len());
-                                                        // Restore playlist for Player logic
-                                                        let pl: Vec<Uuid> = songs.iter().map(|s| s.id).collect();
-                                                        self.player.clear_playlist();
-                                                        self.player.playlist(Some(pl.clone().into()));
-                                                        self.player.url_playlist(Some(songs.clone().into()));
-
-                                                        if let Some(first_song) = songs.first() {
-                                                            self.player.url_playback(Some(pl[0]), first_song.clone(), Player::play);
-                                                        }
-                                                    }
-                                                    render_song_table(ui, &detail.songs);
-                                                },
-                                                LoadingState::Loading => {
-                                                    ui.label("Loading playlist details...");
-                                                },
-                                                LoadingState::Failed(err) => {
-                                                    ui.label(format!("Error loading playlist details: {}", err));
-                                                }
-                                            }
+                                        if let Some(selected) = &*self
+                                            .playlist_activity
+                                            .selected_playlist
+                                            .blocking_lock()
+                                        {
+                                            render_playlist_details(ui, selected, |detail| {
+                                                play_playlist(
+                                                    &mut self.player,
+                                                    &detail.songs,
+                                                    &detail.name,
+                                                );
+                                            });
                                         }
-                                    },
+                                    }
                                     LoadingState::Loading => {
                                         ui.label("Loading...");
-                                    },
+                                    }
                                     LoadingState::Failed(err) => {
                                         ui.label(format!("Error loading playlists: {}", err));
                                     }
@@ -1306,81 +1728,45 @@ impl eframe::App for App {
 
                                 match &*playlists {
                                     LoadingState::Loaded(playlists) => {
-                                        use egui_extras::{TableBuilder, Column};
+                                        render_list_table(
+                                            ui,
+                                            "my_playlists_table",
+                                            playlists,
+                                            |p| p.name.to_string(),
+                                            |p| p.song_count.to_string(),
+                                            |p| p.play_count.to_string(),
+                                            |p| {
+                                                self.config
+                                                    .auth
+                                                    .as_ref()
+                                                    .map(|a| a.user.username.to_string())
+                                                    .unwrap_or_else(|| p.creator.to_string())
+                                            },
+                                            |idx| {
+                                                self.my_playlist_activity
+                                                    .select_playlist(playlists[idx].id)
+                                            },
+                                        );
+                                    }
 
-                                        ui.push_id("my_playlists_table", |ui| {
-                                            TableBuilder::new(ui)
-                                                .column(Column::remainder())
-                                                .column(Column::exact(60.0))
-                                                .column(Column::exact(80.0))
-                                                .column(Column::exact(120.0))
-                                                .header(20.0, |mut header| {
-                                                    header.col(|ui| { ui.label("Name"); });
-                                                    header.col(|ui| { ui.label("Songs"); });
-                                                    header.col(|ui| { ui.label("Plays"); });
-                                                    header.col(|ui| { ui.label("Creator"); });
-                                                })
-                                                .body(|body| {
-                                                    body.rows(20.0, playlists.len(), |mut row| {
-                                                        let playlist = &playlists[row.index()];
-                                                        let mut clicked = false;
-
-                                                        row.col(|ui| {
-                                                            if ui.selectable_label(false, &*playlist.name).clicked() {
-                                                                clicked = true;
-                                                            }
-                                                        });
-
-                                                        if clicked {
-                                                            self.my_playlist_activity.select_playlist(playlist.id);
-                                                        }
-
-                                                        row.col(|ui| { ui.label(playlist.song_count.to_string()); });
-                                                        row.col(|ui| { ui.label(playlist.play_count.to_string()); });
-                                                        let creator = self.config.auth.as_ref()
-                                                            .map(|a| a.user.username.clone())
-                                                            .unwrap_or_else(|| playlist.creator.clone());
-                                                        row.col(|ui| { ui.label(&*creator); });
-                                                    });
-                                                });
-                                        });
-                                    },
                                     LoadingState::Loading => {
                                         ui.label("Loading...");
-                                    },
+                                    }
                                     LoadingState::Failed(err) => {
                                         ui.label(format!("Error loading playlists: {}", err));
                                     }
                                 }
 
-
-                                if let Some(selected) = &*self.my_playlist_activity.selected_playlist.blocking_lock() {
-                                    ui.separator();
-                                    match selected {
-                                        LoadingState::Loaded(detail) => {
-                                            ui.label(format!("Playlist: {}", detail.name));
-                                            if ui.button("Play Playlist").clicked() {
-                                                let songs = &detail.songs;
-                                                debug_log!("Playlist '{}' has {} songs.", detail.name, songs.len());
-                                                // Restore playlist for Player logic
-                                                let pl: Vec<Uuid> = songs.iter().map(|s| s.id).collect();
-                                                self.player.clear_playlist();
-                                                self.player.playlist(Some(pl.clone().into()));
-                                                self.player.url_playlist(Some(songs.clone().into()));
-
-                                                if let Some(first_song) = songs.first() {
-                                                    self.player.url_playback(Some(pl[0]), first_song.clone(), Player::play);
-                                                }
-                                            }
-                                            render_song_table(ui, &detail.songs);
-                                        },
-                                        LoadingState::Loading => {
-                                            ui.label("Loading playlist details...");
-                                        },
-                                        LoadingState::Failed(err) => {
-                                            ui.label(format!("Error loading playlist details: {}", err));
-                                        }
-                                    }
+                                if let Some(selected) =
+                                    &*self.my_playlist_activity.selected_playlist.blocking_lock()
+                                {
+                                    render_playlist_details(ui, selected, |detail| {
+                                        play_playlist(
+                                            &mut self.player,
+                                            &detail.songs,
+                                            &detail.name,
+                                        );
+                                    });
                                 }
                             });
                         } else if self.activity == ActivityType::Favorites {
@@ -1388,7 +1774,7 @@ impl eframe::App for App {
                                 let favorites = self.favorites_activity.playlists.blocking_lock();
                                 matches!(*favorites, LoadingState::Loading)
                             };
-                            
+
                             if should_fetch {
                                 self.favorites_activity.fetch_favorites(&self.songs);
                             }
@@ -1397,10 +1783,13 @@ impl eframe::App for App {
                                 ui.label("My Favorites:");
                                 let favorites = self.favorites_activity.playlists.blocking_lock();
                                 let favorite_songs = self.favorites_activity.songs.blocking_lock();
-                                
+
                                 match (&*favorites, &*favorite_songs) {
-                                    (LoadingState::Loaded(playlists), LoadingState::Loaded(songs)) => {
-                                        use egui_extras::{TableBuilder, Column};
+                                    (
+                                        LoadingState::Loaded(playlists),
+                                        LoadingState::Loaded(songs),
+                                    ) => {
+                                        use egui_extras::{Column, TableBuilder};
 
                                         ui.push_id("favorites_table", |ui| {
                                             TableBuilder::new(ui)
@@ -1409,85 +1798,156 @@ impl eframe::App for App {
                                                 .column(Column::exact(80.0))
                                                 .column(Column::exact(120.0))
                                                 .header(20.0, |mut header| {
-                                                    header.col(|ui| { ui.label("Name"); });
-                                                    header.col(|ui| { ui.label("Songs"); });
-                                                    header.col(|ui| { ui.label("Plays"); });
-                                                    header.col(|ui| { ui.label("Creator"); });
+                                                    header.col(|ui| {
+                                                        ui.label("Name");
+                                                    });
+                                                    header.col(|ui| {
+                                                        ui.label("Songs");
+                                                    });
+                                                    header.col(|ui| {
+                                                        ui.label("Plays");
+                                                    });
+                                                    header.col(|ui| {
+                                                        ui.label("Creator");
+                                                    });
                                                 })
                                                 .body(|body| {
                                                     let total_rows = playlists.len() + 1;
                                                     body.rows(20.0, total_rows, |mut row| {
-                                                        let (name, songs_count, plays, creator, playlist_data) = if row.index() == 0 {
-                                                            let creator = self.profile_activity.state.profile_data
+                                                        let (
+                                                            name,
+                                                            songs_count,
+                                                            plays,
+                                                            creator,
+                                                            playlist_data,
+                                                        ) = if row.index() == 0 {
+                                                            let creator = self
+                                                                .profile_activity
+                                                                .state
+                                                                .profile_data
                                                                 .as_ref()
                                                                 .map(|p| p.display_name.clone())
-                                                                .unwrap_or_else(|| "You".to_string());
-                                                            ("Favorite Songs".to_string(), songs.len().to_string(), "N/A".to_string(), creator, Some(songs.clone()))
+                                                                .unwrap_or_else(|| {
+                                                                    "You".to_string()
+                                                                });
+                                                            (
+                                                                "Favorite Songs".to_string(),
+                                                                songs.len().to_string(),
+                                                                "N/A".to_string(),
+                                                                creator,
+                                                                Some(songs.clone()),
+                                                            )
                                                         } else {
                                                             let p = &playlists[row.index() - 1];
-                                                            (p.name.to_string(), p.song_count.to_string(), p.play_count.to_string(), p.creator.to_string(), None)
+                                                            (
+                                                                p.name.to_string(),
+                                                                p.song_count.to_string(),
+                                                                p.play_count.to_string(),
+                                                                p.creator.to_string(),
+                                                                None,
+                                                            )
                                                         };
 
                                                         let mut clicked = false;
                                                         row.col(|ui| {
-                                                            if ui.selectable_label(false, name).clicked() {
+                                                            if ui
+                                                                .selectable_label(false, name)
+                                                                .clicked()
+                                                            {
                                                                 clicked = true;
                                                             }
                                                         });
-                                                        
+
                                                         if clicked {
                                                             if let Some(s) = playlist_data {
                                                                 // Special case: select favorite songs
-                                                                *self.favorites_activity.selected_playlist.blocking_lock() = Some(LoadingState::Loaded(PlaylistDetail {
-                                                                    name: "Favorite Songs".into(),
-                                                                    songs: s,
-                                                                }));
+                                                                *self
+                                                                    .favorites_activity
+                                                                    .selected_playlist
+                                                                    .blocking_lock() =
+                                                                    Some(LoadingState::Loaded(
+                                                                        PlaylistDetail {
+                                                                            name: "Favorite Songs"
+                                                                                .into(),
+                                                                            songs: s,
+                                                                        },
+                                                                    ));
                                                             } else {
                                                                 let p = &playlists[row.index() - 1];
-                                                                self.favorites_activity.select_playlist(p.id, &self.songs);
+                                                                self.favorites_activity
+                                                                    .select_playlist(
+                                                                        p.id,
+                                                                        &self.songs,
+                                                                    );
                                                             }
                                                         }
 
-                                                        row.col(|ui| { ui.label(songs_count); });
-                                                        row.col(|ui| { ui.label(plays); });
-                                                        row.col(|ui| { ui.label(creator); });
+                                                        row.col(|ui| {
+                                                            ui.label(songs_count);
+                                                        });
+                                                        row.col(|ui| {
+                                                            ui.label(plays);
+                                                        });
+                                                        row.col(|ui| {
+                                                            ui.label(creator);
+                                                        });
                                                     });
                                                 });
                                         });
 
-                                        if let Some(selected) = &*self.favorites_activity.selected_playlist.blocking_lock() {
+                                        if let Some(selected) = &*self
+                                            .favorites_activity
+                                            .selected_playlist
+                                            .blocking_lock()
+                                        {
                                             ui.separator();
                                             match selected {
                                                 LoadingState::Loaded(detail) => {
                                                     ui.label(format!("Playlist: {}", detail.name));
                                                     if ui.button("Play Playlist").clicked() {
                                                         let songs = &detail.songs;
-                                                        debug_log!("Playlist '{}' has {} songs.", detail.name, songs.len());
+                                                        debug_log!(
+                                                            "Playlist '{}' has {} songs.",
+                                                            detail.name,
+                                                            songs.len()
+                                                        );
                                                         // Restore playlist for Player logic
-                                                        let pl: Vec<Uuid> = songs.iter().map(|s| s.id).collect();
+                                                        let pl: Vec<Uuid> =
+                                                            songs.iter().map(|s| s.id).collect();
                                                         self.player.clear_playlist();
-                                                        self.player.playlist(Some(pl.clone().into()));
-                                                        self.player.url_playlist(Some(songs.clone().into()));
+                                                        self.player
+                                                            .playlist(Some(pl.clone().into()));
+                                                        self.player.url_playlist(Some(
+                                                            songs.clone().into(),
+                                                        ));
 
                                                         if let Some(first_song) = songs.first() {
-                                                            self.player.url_playback(Some(pl[0]), first_song.clone(), Player::play);
+                                                            self.player.url_playback(
+                                                                Some(pl[0]),
+                                                                first_song.clone(),
+                                                                Player::play,
+                                                            );
                                                         }
                                                     }
                                                     render_song_table(ui, &detail.songs);
-                                                },
+                                                }
                                                 LoadingState::Loading => {
                                                     ui.label("Loading playlist details...");
-                                                },
+                                                }
                                                 LoadingState::Failed(err) => {
-                                                    ui.label(format!("Error loading playlist details: {}", err));
+                                                    ui.label(format!(
+                                                        "Error loading playlist details: {}",
+                                                        err
+                                                    ));
                                                 }
                                             }
                                         }
-                                    },
+                                    }
                                     (LoadingState::Loading, _) | (_, LoadingState::Loading) => {
                                         ui.label("Loading favorites...");
-                                    },
-                                    (LoadingState::Failed(err), _) | (_, LoadingState::Failed(err)) => {
+                                    }
+                                    (LoadingState::Failed(err), _)
+                                    | (_, LoadingState::Failed(err)) => {
                                         ui.label(format!("Error loading favorites: {}", err));
                                     }
                                 }
@@ -1499,82 +1959,75 @@ impl eframe::App for App {
 
                                 match &*setlists {
                                     LoadingState::Loaded(setlists) => {
-                                        use egui_extras::{TableBuilder, Column};
+                                        render_list_table(
+                                            ui,
+                                            "setlists_table",
+                                            setlists,
+                                            |s| s.name.to_string(),
+                                            |s| s.song_count.to_string(),
+                                            |s| s.play_count.to_string(),
+                                            |s| {
+                                                s.set_list_date
+                                                    .as_deref()
+                                                    .map(|d| d.split('T').next().unwrap_or(d))
+                                                    .unwrap_or("N/A")
+                                                    .to_string()
+                                            },
+                                            |idx| {
+                                                self.setlist_activity
+                                                    .select_setlist(setlists[idx].id)
+                                            },
+                                        );
+                                    }
 
-                                        ui.push_id("setlists_table", |ui| {
-                                            TableBuilder::new(ui)
-                                                .column(Column::remainder())
-                                                .column(Column::exact(60.0))
-                                                .column(Column::exact(80.0))
-                                                .column(Column::exact(120.0))
-                                                .header(20.0, |mut header| {
-                                                    header.col(|ui| { ui.label("Name"); });
-                                                    header.col(|ui| { ui.label("Songs"); });
-                                                    header.col(|ui| { ui.label("Views"); });
-                                                    header.col(|ui| { ui.label("Stream Date"); });
-                                                })
-                                                .body(|body| {
-                                                    body.rows(20.0, setlists.len(), |mut row| {
-                                                        let setlist = &setlists[row.index()];
-                                                        let mut clicked = false;
-
-                                                        row.col(|ui| {
-                                                            if ui.selectable_label(false, &*setlist.name).clicked() {
-                                                                clicked = true;
-                                                            }
-                                                        });
-
-                                                        if clicked {
-                                                            self.setlist_activity.select_setlist(setlist.id);
-                                                        }
-
-                                                        row.col(|ui| { ui.label(setlist.song_count.to_string()); });
-                                                        row.col(|ui| { ui.label(setlist.play_count.to_string()); });
-                                                        row.col(|ui| {
-                                                            let date = setlist.set_list_date.as_deref()
-                                                                .map(|d| d.split('T').next().unwrap_or(d))
-                                                                .unwrap_or("N/A");
-                                                            ui.label(date);
-                                                        });                                                    });
-                                                });
-                                        });
-                                    },
                                     LoadingState::Loading => {
                                         ui.label("Loading...");
-                                    },
+                                    }
                                     LoadingState::Failed(err) => {
                                         ui.label(format!("Error loading setlists: {}", err));
                                     }
                                 }
 
-
-
-                                
-                                if let Some(selected) = &*self.setlist_activity.selected_setlist.blocking_lock() {
+                                if let Some(selected) =
+                                    &*self.setlist_activity.selected_setlist.blocking_lock()
+                                {
                                     ui.separator();
                                     match selected {
                                         LoadingState::Loaded(detail) => {
                                             ui.label(format!("Setlist: {}", detail.name));
                                             if ui.button("Play Setlist").clicked() {
                                                 let songs = &detail.songs;
-                                                debug_log!("Setlist '{}' has {} songs.", detail.name, songs.len());
+                                                debug_log!(
+                                                    "Setlist '{}' has {} songs.",
+                                                    detail.name,
+                                                    songs.len()
+                                                );
                                                 // Restore playlist for Player logic
-                                                let pl: Vec<Uuid> = songs.iter().map(|s| s.id).collect();
+                                                let pl: Vec<Uuid> =
+                                                    songs.iter().map(|s| s.id).collect();
                                                 self.player.clear_playlist();
                                                 self.player.playlist(Some(pl.clone().into()));
-                                                self.player.url_playlist(Some(songs.clone().into()));
-                                                
+                                                self.player
+                                                    .url_playlist(Some(songs.clone().into()));
+
                                                 if let Some(first_song) = songs.first() {
-                                                    self.player.url_playback(Some(pl[0]), first_song.clone(), Player::play);
+                                                    self.player.url_playback(
+                                                        Some(pl[0]),
+                                                        first_song.clone(),
+                                                        Player::play,
+                                                    );
                                                 }
                                             }
                                             render_song_table(ui, &detail.songs);
-                                        },
+                                        }
                                         LoadingState::Loading => {
                                             ui.label("Loading setlist details...");
-                                        },
+                                        }
                                         LoadingState::Failed(err) => {
-                                            ui.label(format!("Error loading setlist details: {}", err));
+                                            ui.label(format!(
+                                                "Error loading setlist details: {}",
+                                                err
+                                            ));
                                         }
                                     }
                                 }
@@ -1599,7 +2052,9 @@ impl eframe::App for App {
         if ui.input(|i| i.focused) {
             ui.request_repaint();
         } else if self.config.framerate_when_not_focused > 0.0 {
-            ui.request_repaint_after(Duration::from_micros((1_000_000.0 / self.config.framerate_when_not_focused) as u64));
+            ui.request_repaint_after(Duration::from_micros(
+                (1_000_000.0 / self.config.framerate_when_not_focused) as u64,
+            ));
         }
     }
 }
@@ -1610,8 +2065,13 @@ impl Drop for App {
             eprintln!("config write failed: {}", e);
         }
 
-        let (cache, client, config) = (self.cache.clone(), self.client.clone(), self.config.clone());
-        if let Err(e) = self.rt.block_on(self.rt.spawn(async move { cache.cache_pass(client, &config.cache.lock().await.clone()).await; })) {
+        let (cache, client, config) =
+            (self.cache.clone(), self.client.clone(), self.config.clone());
+        if let Err(e) = self.rt.block_on(self.rt.spawn(async move {
+            cache
+                .cache_pass(client, &config.cache.lock().await.clone())
+                .await;
+        })) {
             eprintln!("cache write failed: {}", e);
         }
     }
