@@ -23,17 +23,17 @@ winresource = "0.1.31"
 mimalloc = "0.1.52"
 
 tokio = { version = "1.53.1", features = ["full"]}
-eframe = "=0.36.1"
-egui_extras = { version = "0.36.1", features = [ "all_loaders", "file", "image", "http", "svg"] }
-image = { version = "0.25", features = ["png", "jpeg"] }
+eframe = "=0.36.2"
+egui_extras = { version = "0.36.2", features = [ "all_loaders", "file", "image", "http", "svg"] }
+image = { version = "0.25.10", features = ["png", "jpeg"] }
 # magnum wasn't working, but OMG THIS GOT MERGED https://github.com/RustAudio/rodio/pull/851
-rodio = { git = "https://github.com/RustAudio/rodio", rev = "4aa22e8", features = ["default", "symphonia-libopus"] } #{ version = "0.22.2", features = ["default"] }
+rodio = { git = "https://github.com/RustAudio/rodio", rev = "4aa22e8", features = ["default", "symphonia-libopus"] }
 uuid = { version = "1.26.0", features = ["serde", "v4", "v5"] }
 reqwest = { version = "0.13.4", features = ["json"] }
 rand = "0.10.2"
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 serde_json = "1.0.151"
-serde_with = "3.21.0"
+serde_with = "3.23.0"
 dashmap = { version = "7.0.0-rc2", features = ["serde"] }
 anyhow = "1.0.104"
 # Media Controls
