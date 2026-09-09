@@ -187,6 +187,9 @@ pub struct SongDTO {
     pub audio_url: Option<Arc<str>>,
     #[serde(default)]
     #[serde_as(as = "DefaultOnNull")]
+    pub absolute_path: Option<Arc<str>>,
+    #[serde(default)]
+    #[serde_as(as = "DefaultOnNull")]
     pub oss: Option<Arc<str>>,
     pub cover_art: Option<Artwork>,
     #[serde(default, deserialize_with = "deserialize_artists")]

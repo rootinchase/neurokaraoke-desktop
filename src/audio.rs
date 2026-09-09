@@ -563,7 +563,7 @@ impl Player {
                             *player.current_url_metadata.lock().unwrap() = Some(song_dto.clone());
                             ctx.request_repaint();
 
-                            if let Some(audio_url) = song_dto.audio_url.as_ref() {
+                            if let Some(audio_url) = song_dto.audio_url.as_ref().or(song_dto.absolute_path.as_ref()) {
                                 let url = if audio_url.starts_with("http://")
                                     || audio_url.starts_with("https://")
                                 {
