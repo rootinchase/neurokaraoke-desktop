@@ -186,14 +186,26 @@ impl App {
                                     // Fetch and send user limits on startup
                                     let limits_client = client_clone.clone();
                                     let limits_tx = startup_tx.clone();
-                                    let db = api::LazySongDatabase::new(limits_client, Arc::new(dashmap::DashMap::new()), "".into(), shared_config);
-                                    
+                                    let db = api::LazySongDatabase::new(
+                                        limits_client,
+                                        Arc::new(dashmap::DashMap::new()),
+                                        "".into(),
+                                        shared_config,
+                                    );
+
                                     match db.get_user_limits().await {
                                         Ok(limits) => {
-                                            let _ = limits_tx.send(profile::ProfileMessage::UserLimitsLoaded(limits)).await;
+                                            let _ = limits_tx
+                                                .send(profile::ProfileMessage::UserLimitsLoaded(
+                                                    limits,
+                                                ))
+                                                .await;
                                         }
                                         Err(e) => {
-                                            debug_log!("❌ Failed to fetch user limits on startup: {}", e);
+                                            debug_log!(
+                                                "❌ Failed to fetch user limits on startup: {}",
+                                                e
+                                            );
                                         }
                                     }
                                 } else {
@@ -498,7 +510,6 @@ fn init_playwire(player: Player, shared_config: SharedConfig) -> Option<MediaCon
         if hwnd_ptr.is_none() {
             let title = b"Karaoke App\0";
             let hwnd = unsafe { FindWindowA(std::ptr::null(), title.as_ptr()) };
-
         }
         if !hwnd.is_null() {
             let mut pid = 0;

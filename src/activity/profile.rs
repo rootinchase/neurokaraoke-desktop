@@ -5,8 +5,8 @@ use crate::cache::Cache;
 use crate::debug_log;
 use crate::theme::ThemeManager;
 use eframe::egui::{self, Color32, Frame, RichText, Ui, Vec2, include_image};
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub enum ProfileMessage {
@@ -75,8 +75,13 @@ impl ProfileActivity {
                         }
                     }
                     ProfileMessage::UserLimitsLoaded(limits) => {
-                        debug_log!("Received UserLimits: max_songs={}, max_storage_bytes={}, max_playlists={}, song_per_playlist_limit={}",
-                            limits.max_songs, limits.max_storage_bytes, limits.playlist_limit, limits.song_per_playlist_limit);
+                        debug_log!(
+                            "Received UserLimits: max_songs={}, max_storage_bytes={}, max_playlists={}, song_per_playlist_limit={}",
+                            limits.max_songs,
+                            limits.max_storage_bytes,
+                            limits.playlist_limit,
+                            limits.song_per_playlist_limit
+                        );
                         self.state.user_limits = Some(limits.clone());
                     }
                     ProfileMessage::BadgesLoaded(badges) => {
@@ -84,7 +89,9 @@ impl ProfileActivity {
                     }
                     ProfileMessage::BadgeImageLoaded(badge_id, path) => {
                         if let Ok(bytes) = std::fs::read(path) {
-                            self.state.badge_images.insert(badge_id.clone(), AvatarState::Ready { bytes });
+                            self.state
+                                .badge_images
+                                .insert(badge_id.clone(), AvatarState::Ready { bytes });
                         }
                     }
                     _ => {}
@@ -111,10 +118,12 @@ impl ProfileActivity {
             return;
         }
 
-        self.state.badge_images.insert(badge_id.to_string(), AvatarState::Downloading);
+        self.state
+            .badge_images
+            .insert(badge_id.to_string(), AvatarState::Downloading);
 
         let final_url = format!("https://images.neurokaraoke.com/{}/public", image_path);
-        
+
         let tx = self.tx.clone();
         let ctx_clone = ctx.clone();
         let cache = self.cache.clone();
@@ -133,7 +142,9 @@ impl ProfileActivity {
             {
                 Ok(path) => {
                     let path_str = path.to_string_lossy().into_owned();
-                    let _ = tx.send(ProfileMessage::BadgeImageLoaded(badge_id_owned, path_str)).await;
+                    let _ = tx
+                        .send(ProfileMessage::BadgeImageLoaded(badge_id_owned, path_str))
+                        .await;
                 }
                 Err(e) => {
                     debug_log!("❌ Failed to download badge image: {}", e);
