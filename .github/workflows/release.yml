@@ -11,6 +11,9 @@ on:
 
 jobs:
   build:
+    permissions:
+      contents: write
+
     strategy:
       matrix:
         include:
@@ -35,7 +38,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -58,7 +61,7 @@ jobs:
         run: ${{ matrix.use_cross && 'cross' || 'cargo' }} build --target ${{ matrix.target }} --release
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: neurokaraoke-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/neurokaraoke-desktop${{ runner.os == 'Windows' && '.exe' || '' }}
@@ -67,18 +70,28 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+
+      - name: Get Tag Message
+        id: tag_message
+        run: |
+          # Fetch the subject and body of the current annotated tag
+          MESSAGE=$(git tag -l --format='%(contents)' ${{ github.ref_name }})
+          
+          # Handle multi-line strings safely in GitHub Actions
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "$MESSAGE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: ./artifacts
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
+          body: ${{ steps.tag_message.outputs.note }}
           files: artifacts/**/*
           draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: true
