@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 use serde_with::{DefaultOnNull, serde_as};
 use std::string::ToString;
 use std::sync::Arc;
+use url::Url;
 use uuid::Uuid;
 
 pub mod internal {
@@ -466,6 +467,13 @@ pub struct LazySongDatabase {
     pub shared_config: SharedConfig,
 }
 
+#[derive(Serialize)]
+pub struct UploadSong {
+    pub url: String,
+    pub playlist_url: String,
+}
+
+
 impl SongDTO {
     pub fn is_valid(&self) -> bool {
         !self.title.is_empty()
@@ -618,6 +626,22 @@ impl LazySongDatabase {
         let response = request.send().await?;
         if !response.status().is_success() {
             return Err(anyhow!("Failed to add to favorites: {}", response.status()));
+        }
+        Ok(())
+    }
+
+    pub async fn upload_song(&self, upload: UploadSong) -> anyhow::Result<()> {
+
+        debug_log!("Adding song to favorites: {}", upload.url);
+        let url = "https://idk.neurokaraoke.com/api/user/song/download-from-url";
+
+        let request = self.client.post(url)
+                .json(&upload);
+        let request = self.apply_auth(request).await;
+
+        let response = request.send().await?;
+        if !response.status().is_success() {
+            return Err(anyhow!("Failed to upload: {}", response.status()));
         }
         Ok(())
     }
