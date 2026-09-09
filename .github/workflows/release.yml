@@ -61,7 +61,7 @@ jobs:
         run: ${{ matrix.use_cross && 'cross' || 'cargo' }} build --target ${{ matrix.target }} --release
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: neurokaraoke-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/neurokaraoke-desktop${{ runner.os == 'Windows' && '.exe' || '' }}
@@ -69,17 +69,26 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      - name: Get Tag Message
+      - name: Get Tag / Input Message
         id: tag_message
         run: |
-          # Fetch the subject and body of the current annotated tag
-          MESSAGE=$(git tag -l --format='%(contents)' ${{ github.ref_name }})
+          # 💡 Dynamically determine the tag name (handle push vs manual dispatch)
+          TAG_NAME="${{ github.event.inputs.tag || github.ref_name }}"
           
-          # Handle multi-line strings safely in GitHub Actions
-          echo "EOF" >> $GITHUB_OUTPUT
+          # Fetch the tag contents
+          MESSAGE=$(git tag -l --format='%(contents)' "$TAG_NAME")
+          
+          # Fallback message if tag isn't annotated or it's run manually without a git tag description
+          if [ -z "$MESSAGE" ]; then
+            MESSAGE="Automated release for version $TAG_NAME"
+          fi
+
+          echo "note<<EOF" >> $GITHUB_OUTPUT
           echo "$MESSAGE" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
