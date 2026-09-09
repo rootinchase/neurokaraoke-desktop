@@ -6,6 +6,7 @@ use crate::debug_log;
 use crate::theme::ThemeManager;
 use eframe::egui::{self, Color32, Frame, RichText, Ui, Vec2, include_image};
 use std::sync::Arc;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 pub enum ProfileMessage {
@@ -15,6 +16,8 @@ pub enum ProfileMessage {
     ProfileHeaderLoaded(crate::api::ProfileHeader),
     AvatarLoaded(String),
     UserLimitsLoaded(crate::api::UserLimits),
+    BadgesLoaded(Vec<crate::api::Badge>),
+    BadgeImageLoaded(String, String),
 }
 
 pub struct ProfileActivity {
@@ -35,6 +38,8 @@ pub struct ProfileState {
     pub profile_data: Option<crate::api::ProfileHeader>,
     pub avatar_state: AvatarState,
     pub user_limits: Option<crate::api::UserLimits>,
+    pub badges: Vec<crate::api::Badge>,
+    pub badge_images: HashMap<String, AvatarState>,
 }
 
 impl ProfileActivity {
@@ -48,6 +53,8 @@ impl ProfileActivity {
                 profile_data: None,
                 avatar_state: AvatarState::None,
                 user_limits: None,
+                badges: Vec::new(),
+                badge_images: HashMap::new(),
             },
             cache,
         }
@@ -72,6 +79,14 @@ impl ProfileActivity {
                             limits.max_songs, limits.max_storage_bytes, limits.playlist_limit, limits.song_per_playlist_limit);
                         self.state.user_limits = Some(limits.clone());
                     }
+                    ProfileMessage::BadgesLoaded(badges) => {
+                        self.state.badges = badges.clone();
+                    }
+                    ProfileMessage::BadgeImageLoaded(badge_id, path) => {
+                        if let Ok(bytes) = std::fs::read(path) {
+                            self.state.badge_images.insert(badge_id.clone(), AvatarState::Ready { bytes });
+                        }
+                    }
                     _ => {}
                 }
                 Some(msg)
@@ -82,6 +97,50 @@ impl ProfileActivity {
 
     pub fn get_sender_handle(&self) -> tokio::sync::mpsc::Sender<ProfileMessage> {
         self.tx.clone()
+    }
+
+    pub fn resolve_badge_image(
+        &mut self,
+        ctx: &egui::Context,
+        rt: &tokio::runtime::Runtime,
+        client: &reqwest::Client,
+        badge_id: &str,
+        image_path: &str,
+    ) {
+        if self.state.badge_images.contains_key(badge_id) {
+            return;
+        }
+
+        self.state.badge_images.insert(badge_id.to_string(), AvatarState::Downloading);
+
+        let final_url = format!("https://images.neurokaraoke.com/{}/public", image_path);
+        
+        let tx = self.tx.clone();
+        let ctx_clone = ctx.clone();
+        let cache = self.cache.clone();
+        let client_clone = client.clone();
+        let badge_id_owned = badge_id.to_string();
+
+        rt.spawn(async move {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            std::hash::Hash::hash(&badge_id_owned, &mut hasher);
+            let hash_val = std::hash::Hasher::finish(&hasher);
+            let badge_uuid = Uuid::from_u128(hash_val as u128);
+
+            match cache
+                .get_or_download_image(&client_clone, badge_uuid, final_url)
+                .await
+            {
+                Ok(path) => {
+                    let path_str = path.to_string_lossy().into_owned();
+                    let _ = tx.send(ProfileMessage::BadgeImageLoaded(badge_id_owned, path_str)).await;
+                }
+                Err(e) => {
+                    debug_log!("❌ Failed to download badge image: {}", e);
+                }
+            }
+            ctx_clone.request_repaint();
+        });
     }
 
     // Resolution logic matching your existing Cloudflare Image variant criteria
@@ -157,6 +216,7 @@ impl ProfileActivity {
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             let avatar_url = self.state.profile_data.as_ref().and_then(|p| p.avatar_url.clone());
+                            
                             if let Some(avatar_url) = avatar_url {
                                 match &self.state.avatar_state {
                                     AvatarState::Ready { bytes } => {
@@ -248,23 +308,114 @@ impl ProfileActivity {
                                 ui.label(format!("Storage: {:.2} MB / {:.2} MB", limits.used_storage_bytes as f64 / 1024.0 / 1024.0, limits.max_storage_bytes as f64 / 1024.0 / 1024.0));
                                 ui.label(format!("Playlists: {} / {}", limits.current_playlist_count, limits.playlist_limit));
                                 ui.label(format!("Songs per Playlist: {}", limits.song_per_playlist_limit));
-                            }
-                            } else {
-                            debug_log!("profile_data is None, not rendering level/coin info.");
-                            }
+                                }
 
-                        ui.add_space(15.0);
-                        ui.separator();
-                        ui.add_space(15.0);
+                                ui.add_space(15.0);
+                                ui.separator();
+                                ui.add_space(10.0);
+                                ui.label(RichText::new("Badges").strong().size(14.0));
+                                ui.add_space(5.0);
 
-                        let logout_btn = egui::Button::new(RichText::new("Log Out").size(14.0))
-                            .fill(theme.error)
-                            .min_size(Vec2::new(120.0, 32.0));
+                                let column_width = ui.available_width() / 4.0;
 
-                        if ui.add(logout_btn).clicked() {
-                            let _ = self.tx.try_send(ProfileMessage::Logout);
-                        }
-                    });
+                                egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+                                    egui::Grid::new("badges_grid")
+                                        .num_columns(4)
+                                        .min_col_width(column_width - 10.0) // Subtract spacing
+                                        .spacing(Vec2::new(10.0, 10.0))
+                                        .show(ui, |ui| {
+                                            let mut badges_to_download = Vec::new();
+                                            for badge in &self.state.badges {
+                                                if badge.unlocked {
+                                                    if !self.state.badge_images.contains_key(&badge.id) {
+                                                        if let Some(media) = &badge.media {
+                                                            badges_to_download.push((badge.id.clone(), media.cloudflare_id.clone()));
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            for (badge_id, cloudflare_id) in badges_to_download {
+                                                self.resolve_badge_image(ui.ctx(), rt, client, &badge_id, &cloudflare_id);
+                                            }
+
+                                            let mut count = 0;
+                                            for badge in &self.state.badges {
+                                                if badge.unlocked {
+                                                    let badge_id = &badge.id;
+                                                    let badge_state = self.state.badge_images.get(badge_id);
+
+                                                    let border_color = match badge.rarity {
+                                                        0 => theme.text_secondary,
+                                                        1 => theme.primary,
+                                                        2 => theme.accent,
+                                                        3 => theme.accent_light,
+                                                        _ => theme.text_muted,
+                                                    };
+                                                    
+                                                    let badge_size = column_width * 0.6;
+                                                    let radius = badge_size / 2.0;
+
+                                                    let frame = Frame::new()
+                                                        .fill(theme.background_elevated)
+                                                        .corner_radius(8.0)
+                                                        .inner_margin(5.0);
+
+                                                    frame.show(ui, |ui| {
+                                                        ui.vertical_centered(|ui| {
+                                                            match badge_state {
+                                                                Some(AvatarState::Ready { bytes }) => {
+                                                                    let uri = format!("bytes://badge_{}.png", badge_id);
+                                                                    
+                                                                    Frame::new()
+                                                                        .corner_radius(radius)
+                                                                        .stroke(egui::Stroke::new(2.0, border_color))
+                                                                        .show(ui, |ui| {
+                                                                            ui.add_sized(Vec2::splat(badge_size), 
+                                                                                egui::Image::from_bytes(uri, bytes.clone())
+                                                                                    .fit_to_exact_size(Vec2::splat(badge_size))
+                                                                                    .corner_radius(radius)
+                                                                                    .texture_options(egui::TextureOptions::LINEAR)
+                                                                            );
+                                                                        });
+                                                                }
+                                                                _ => {
+                                                                    Frame::new()
+                                                                        .corner_radius(radius)
+                                                                        .stroke(egui::Stroke::new(2.0, border_color))
+                                                                        .show(ui, |ui| {
+                                                                            ui.add_sized(Vec2::splat(badge_size), egui::Label::new(RichText::new("🏅").size(32.0)));
+                                                                        });
+                                                                }
+                                                            }
+                                                            ui.add_space(5.0); // Spacing between icon and label
+                                                            ui.label(RichText::new(&badge.name).size(10.0));
+                                                        });
+                                                    });
+                                                    count += 1;
+                                                    if count % 4 == 0 {
+                                                        ui.end_row();
+                                                    }
+                                                }
+                                            }
+                                        });
+                                });
+                                } else {
+                                    debug_log!("profile_data is None, not rendering level/coin info.");
+                                }
+
+                                ui.add_space(15.0);
+                                ui.separator();
+                                ui.add_space(15.0);
+
+                                let logout_btn = egui::Button::new(RichText::new("Log Out").size(14.0))
+                                .fill(theme.error)
+                                .min_size(Vec2::new(120.0, 32.0));
+
+                                if ui.add(logout_btn).clicked() {
+                                let _ = self.tx.try_send(ProfileMessage::Logout);
+                                }
+                                });
             }
             None => {
                 // 🔴 STATE: User is Logged Out

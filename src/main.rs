@@ -177,6 +177,12 @@ impl App {
                                         ))
                                         .await;
 
+                                    let _ = startup_tx
+                                        .send(profile::ProfileMessage::BadgesLoaded(
+                                            profile_response.badges,
+                                        ))
+                                        .await;
+
                                     // Fetch and send user limits on startup
                                     let limits_client = client_clone.clone();
                                     let limits_tx = startup_tx.clone();
@@ -827,6 +833,8 @@ impl eframe::App for App {
                 }
                 profile::ProfileMessage::AvatarLoaded(_) => {}
                 profile::ProfileMessage::UserLimitsLoaded(_) => {}
+                profile::ProfileMessage::BadgesLoaded(_) => {}
+                profile::ProfileMessage::BadgeImageLoaded(_, _) => {}
             }
             ui.ctx().request_repaint();
         }
