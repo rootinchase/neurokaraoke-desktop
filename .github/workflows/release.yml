@@ -20,21 +20,33 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             use_cross: false
+            os_name: linux
+            arch: x86_64
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             use_cross: true
+            os_name: linux
+            arch: aarch64
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             use_cross: false
+            os_name: windows
+            arch: x86_64
           - target: aarch64-pc-windows-msvc
             os: windows-latest
             use_cross: false
+            os_name: windows
+            arch: aarch64
           - target: x86_64-apple-darwin
             os: macos-latest
             use_cross: false
+            os_name: macos
+            arch: x86_64
           - target: aarch64-apple-darwin
             os: macos-latest
             use_cross: false
+            os_name: macos
+            arch: aarch64
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -60,11 +72,29 @@ jobs:
       - name: Build
         run: ${{ matrix.use_cross && 'cross' || 'cargo' }} build --target ${{ matrix.target }} --release
 
+      - name: Prepare release binary
+        id: prepare
+        run: |
+          VERSION="${{ github.event.inputs.tag || github.ref_name }}"
+          # Remove 'v' prefix if present
+          VERSION="${VERSION#v}"
+          
+          BINARY_NAME="neurokaraoke-desktop${{ runner.os == 'Windows' && '.exe' || '' }}"
+          SOURCE_PATH="target/${{ matrix.target }}/release/$BINARY_NAME"
+          
+          # Create output filename: version-os-arch(.exe)
+          EXT="${{ runner.os == 'Windows' && '.exe' || '' }}"
+          RELEASE_FILENAME="neurokaraoke-desktop-${VERSION}-${{ matrix.os_name }}-${{ matrix.arch }}${EXT}"
+          
+          cp "$SOURCE_PATH" "$RELEASE_FILENAME"
+          echo "release_filename=$RELEASE_FILENAME" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: neurokaraoke-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/neurokaraoke-desktop${{ runner.os == 'Windows' && '.exe' || '' }}
+          name: neurokaraoke-${{ matrix.os_name }}-${{ matrix.arch }}
+          path: ${{ steps.prepare.outputs.release_filename }}
 
   release:
     needs: build
