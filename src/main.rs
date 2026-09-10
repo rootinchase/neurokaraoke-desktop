@@ -22,7 +22,7 @@ use image as _;
 use dashmap::DashMap;
 use eframe::egui::{
     Align, Color32, CornerRadius, CursorIcon, ImageSource, Layout, PopupKind, Pos2, RectAlign,
-    Rgba, RichText, Sense, Stroke, TextWrapMode, Ui, Vec2, include_image, lerp,
+    Rgba, RichText, Sense, Stroke, TextWrapMode, Ui, Vec2, include_image, lerp
 };
 use eframe::{Frame, egui};
 use mimalloc::MiMalloc;
@@ -95,6 +95,8 @@ pub struct App {
     profile_data: Option<api::ProfileHeader>,
     cached_avatar_path: Option<String>,
     favorite_songs: Arc<tokio::sync::RwLock<std::collections::HashSet<Uuid>>>,
+    sleep_timer_end: Option<Instant>,
+    show_timer_menu: bool,
 }
 
 impl App {
@@ -314,6 +316,8 @@ impl App {
 
             profile_data: None,
             cached_avatar_path: None,
+            sleep_timer_end: None,
+            show_timer_menu: false,
         };
 
         let songs_clone = app.songs.clone();
@@ -749,8 +753,41 @@ fn render_list_table<T>(
     });
 }
 
+fn btn(
+    theme: &ThemeManager,
+    ui: &mut Ui,
+    source: ImageSource,
+    active: bool,
+    set_active: impl FnOnce(&egui::Context, bool),
+) {
+    let resp = ui
+        .add(
+            egui::Image::new(source)
+                .fit_to_exact_size(Vec2::new(24.0, 24.0))
+                .tint(if active {
+                    theme.accent_light
+                } else {
+                    theme.text
+                }),
+        )
+        .interact(Sense::click());
+    if resp.hovered() {
+        ui.set_cursor_icon(CursorIcon::PointingHand);
+    }
+    if resp.clicked() {
+        set_active(ui.ctx(), !active);
+    }
+}
+
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
+        if let Some(end) = self.sleep_timer_end {
+            if Instant::now() >= end {
+                self.player.pause();
+                self.sleep_timer_end = None;
+            }
+        }
+
         if let Some(msg) = self.profile_activity.poll_messages() {
             match msg {
                 profile::ProfileMessage::LoginSuccess(context) => {
@@ -1365,36 +1402,10 @@ impl eframe::App for App {
 
                             ui.spacing_mut().item_spacing = Vec2::ZERO;
 
-                            fn btn(
-                                theme: &ThemeManager,
-                                ui: &mut Ui,
-                                source: ImageSource,
-                                active: bool,
-                                set_active: impl FnOnce(&egui::Context, bool),
-                            ) {
-                                let resp = ui
-                                    .add(
-                                        egui::Image::new(source)
-                                            .fit_to_exact_size(Vec2::new(24.0, 24.0))
-                                            .tint(if active {
-                                                theme.accent_light
-                                            } else {
-                                                theme.text
-                                            }),
-                                    )
-                                    .interact(Sense::click());
-                                if resp.hovered() {
-                                    ui.set_cursor_icon(CursorIcon::PointingHand);
-                                }
-                                if resp.clicked() {
-                                    set_active(ui.ctx(), !active);
-                                }
-                            }
-
                             btn(
                                 &self.theme,
                                 ui,
-                                include_image!("../assets/backward.png"),
+                                include_image!("../assets/backward.svg"),
                                 false,
                                 |_ctx, _x| {
                                     self.player.previous();
@@ -1405,7 +1416,7 @@ impl eframe::App for App {
                             btn(
                                 &self.theme,
                                 ui,
-                                include_image!("../assets/shuffle.png"),
+                                include_image!("../assets/shuffle.svg"),
                                 self.config.shuffle,
                                 |_ctx, x| {
                                     self.config.shuffle = x;
@@ -1423,9 +1434,9 @@ impl eframe::App for App {
                             let resp = ui.add(
                                 egui::Button::image(
                                     egui::Image::new(if state.paused() {
-                                        include_image!("../assets/play.png")
+                                        include_image!("../assets/play.svg")
                                     } else {
-                                        include_image!("../assets/pause.png")
+                                        include_image!("../assets/pause.svg")
                                     })
                                     .fit_to_exact_size(Vec2::new(24.0, 24.0)),
                                 )
@@ -1511,7 +1522,7 @@ impl eframe::App for App {
                             btn(
                                 &self.theme,
                                 ui,
-                                include_image!("../assets/forward.png"),
+                                include_image!("../assets/forward.svg"),
                                 false,
                                 |_ctx, _x| {
                                     self.player.next_song();
@@ -1637,6 +1648,117 @@ impl eframe::App for App {
                                                 }
                                             });
                                             ui.ctx().request_repaint();
+                                        }
+
+                                        ui.add_space(10.0);
+                                        let is_timer_active = self.sleep_timer_end.is_some();
+                                        
+                                        let image = if is_timer_active {
+                                            include_image!("../assets/timer-active.svg")
+                                        } else {
+                                            include_image!("../assets/timer-off.svg")
+                                        };
+                                        
+                                        let image_button = egui::Image::new(image)
+                                            .fit_to_exact_size(Vec2::new(24.0, 24.0))
+                                            .tint(if is_timer_active {
+                                                self.theme.accent_light
+                                            } else {
+                                                self.theme.text
+                                            });
+
+                                        let timer_btn_resp = ui.add(image_button)
+                                            .interact(Sense::click())
+                                            .on_hover_cursor(CursorIcon::PointingHand);
+
+                                        if timer_btn_resp.clicked() {
+                                            self.show_timer_menu = !self.show_timer_menu;
+                                        }
+
+                                        if self.show_timer_menu {
+                                            let pos = timer_btn_resp.rect.left_top() - egui::Vec2::new(0.0, 300.0); // Adjust Y offset as needed
+                                            egui::Area::new(egui::Id::new("sleep_timer_area"))
+                                                .fixed_pos(pos)
+                                                .show(ui.ctx(), |ui| {
+                                                    egui::Frame::window(&ui.style()).show(ui, |ui| {
+                                                        ui.set_min_width(150.0);
+                                                        ui.heading("Sleep Timer");
+                                                        
+                                                        let options = [5, 15, 30, 60, 120];
+                                                        for &minutes in &options {
+                                                            if ui.button(format!("{} min", minutes)).clicked() {
+                                                                self.sleep_timer_end = Some(Instant::now() + Duration::from_secs(minutes * 60));
+                                                                self.show_timer_menu = false;
+                                                            }
+                                                        }
+                                                        
+                                                        ui.add_space(5.0);
+                                                        ui.label("Custom (min):");
+                                                        let custom_id = ui.make_persistent_id("custom_timer_input");
+                                                        let mut custom_text: String = ui.data_mut(|d| d.get_temp(custom_id).unwrap_or_default());
+                                                        if ui.text_edit_singleline(&mut custom_text).changed() {
+                                                            ui.data_mut(|d| d.insert_temp(custom_id, custom_text.clone()));
+                                                        }
+                                                        if ui.button("Set Custom").clicked() {
+                                                            if let Ok(minutes) = custom_text.parse::<u64>() {
+                                                                self.sleep_timer_end = Some(Instant::now() + Duration::from_secs(minutes * 60));
+                                                                self.show_timer_menu = false;
+                                                            }
+                                                        }
+                                                        
+                                                        ui.add_space(5.0);
+                                                        ui.label("Shut off at (HH:MM):");
+                                                        let time_id = ui.make_persistent_id("custom_time_input");
+                                                        let mut time_text: String = ui.data_mut(|d| d.get_temp(time_id).unwrap_or_default());
+                                                        if ui.text_edit_singleline(&mut time_text).changed() {
+                                                            ui.data_mut(|d| d.insert_temp(time_id, time_text.clone()));
+                                                        }
+                                                        if ui.button("Set Time").clicked() {
+                                                            let input = time_text.to_lowercase();
+                                                            let is_pm = input.contains("pm");
+                                                            let is_am = input.contains("am");
+                                                            let time_clean = input.replace("am", "").replace("pm", "").trim().to_string();
+                                                            
+                                                            if let Some((h_str, m_str)) = time_clean.split_once(':') {
+                                                                if let (Ok(h_raw), Ok(m)) = (h_str.parse::<u32>(), m_str.parse::<u32>()) {
+                                                                    let mut h = h_raw;
+                                                                    if is_pm && h < 12 { h += 12; }
+                                                                    else if is_am && h == 12 { h = 0; }
+                                                                    
+                                                                    if h < 24 && m < 60 {
+                                                                        let now = chrono::Local::now();
+                                                                        let target = now.date_naive().and_hms_opt(h, m, 0).unwrap();
+                                                                        let target_dt = target.and_local_timezone(chrono::Local).unwrap();
+                                                                        
+                                                                        let target_dt = if target_dt <= now {
+                                                                            target_dt + chrono::Duration::days(1)
+                                                                        } else {
+                                                                            target_dt
+                                                                        };
+                                                                        
+                                                                        let duration = target_dt.signed_duration_since(now);
+                                                                        
+                                                                        self.sleep_timer_end = Some(Instant::now() + Duration::from_secs(duration.num_seconds() as u64));
+                                                                        self.show_timer_menu = false;
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                        
+                                                        ui.separator();
+                                                        if is_timer_active {
+                                                            if ui.button("Cancel Timer").clicked() {
+                                                                self.sleep_timer_end = None;
+                                                                self.show_timer_menu = false;
+                                                            }
+                                                        }
+                                                        
+                                                        ui.separator();
+                                                        if ui.button("Close").clicked() {
+                                                            self.show_timer_menu = false;
+                                                        }
+                                                    });
+                                                });
                                         }
                                     });
                                 }

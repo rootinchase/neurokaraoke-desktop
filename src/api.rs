@@ -576,7 +576,7 @@ impl LazySongDatabase {
         let mut request = self
             .client
             .get("https://api.neurokaraoke.com/api/playlist/public");
-        request = self.apply_auth(request).await; // <-- Inject headers
+        request = self.apply_auth(request).await;
 
         let response = request.send().await?;
         if !response.status().is_success() {

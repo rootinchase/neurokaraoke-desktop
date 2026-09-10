@@ -152,67 +152,67 @@ impl Theme {
 
     pub fn neuro() -> Self {
         Self::new(
-            Color32::from_rgb(0x00, 0xD9, 0xFF),
-            Color32::from_rgb(0x5C, 0xE1, 0xFF),
-            Color32::from_rgb(0x00, 0xB8, 0xD4),
-            Color32::from_rgb(0xFF, 0x6B, 0x9D),
-            Color32::from_rgb(0xFF, 0xB3, 0xD1),
-            Color32::from_rgb(0x0A, 0x0E, 0x1A),
-            Color32::from_rgb(0x14, 0x1B, 0x2D),
-            Color32::from_rgb(0x1E, 0x2A, 0x42),
-            Color32::from_rgb(0x2A, 0x3A, 0x58),
-            Color32::WHITE,
-            Color32::from_rgb(0xA8, 0xB9, 0xD9),
-            Color32::from_rgb(0x6B, 0x7A, 0x98),
-            Color32::from_rgb(0x38, 0x46, 0x5E),
-            Color32::from_rgb(0x00, 0xD9, 0xFF),
-            Color32::from_rgb(0x22, 0xC5, 0x5E),
-            Color32::from_rgb(0xF5, 0x9E, 0x0B),
-            Color32::from_rgb(0xEF, 0x44, 0x44),
+            Color32::from_hex("#00D9FF").unwrap(), // primary
+            Color32::from_hex("#5CE1FF").unwrap(), // primary_light
+            Color32::from_hex("#00B8D4").unwrap(), // primary_dark
+            Color32::from_hex("#FF6B9D").unwrap(), // accent
+            Color32::from_hex("#FFB3D1").unwrap(), // accent_light
+            Color32::from_hex("#0A0E1A").unwrap(), // background
+            Color32::from_hex("#141B2D").unwrap(), // background_elevated
+            Color32::from_hex("#1E2A42").unwrap(), // background_mid
+            Color32::from_hex("#2A3A58").unwrap(), // background_hover
+            Color32::WHITE,                        // text
+            Color32::from_hex("#A8B9D9").unwrap(), // text_secondary
+            Color32::from_hex("#6B7A98").unwrap(), // text_muted
+            Color32::from_hex("#38465E").unwrap(), // border
+            Color32::from_hex("#00D9FF").unwrap(), // border_focus
+            Color32::from_hex("#22C55E").unwrap(), // success
+            Color32::from_hex("#F59E0B").unwrap(), // warning
+            Color32::from_hex("#EF4444").unwrap(), // error
         )
     }
 
     pub fn evil() -> Self {
         Self::new(
-            Color32::from_rgb(0xFF, 0x00, 0x66),
-            Color32::from_rgb(0xFF, 0x33, 0x85),
-            Color32::from_rgb(0xCC, 0x00, 0x52),
-            Color32::from_rgb(0x9D, 0x00, 0xFF),
-            Color32::from_rgb(0xB8, 0x4D, 0xFF),
-            Color32::from_rgb(0x0D, 0x02, 0x08),
-            Color32::from_rgb(0x1A, 0x0B, 0x14),
-            Color32::from_rgb(0x2A, 0x12, 0x20),
-            Color32::from_rgb(0x3D, 0x1A, 0x2E),
-            Color32::WHITE,
-            Color32::from_rgb(0xE0, 0xA3, 0xC7),
-            Color32::from_rgb(0x8A, 0x5A, 0x73),
-            Color32::from_rgb(0x4A, 0x24, 0x38),
-            Color32::from_rgb(0xFF, 0x00, 0x66),
-            Color32::from_rgb(0x22, 0xC5, 0x5E),
-            Color32::from_rgb(0xF5, 0x9E, 0x0B),
-            Color32::from_rgb(0xEF, 0x44, 0x44),
+            Color32::from_hex("#FF0066").unwrap(), // primary
+            Color32::from_hex("#FF3385").unwrap(), // primary_ligh
+            Color32::from_hex("#CC0052").unwrap(), // primary_dark
+            Color32::from_hex("#9D00FF").unwrap(), // accent
+            Color32::from_hex("#B84DFF").unwrap(), // accent_light
+            Color32::from_hex("#0D0208").unwrap(), // background
+            Color32::from_hex("#1A0B14").unwrap(), // background_elevated
+            Color32::from_hex("#2A1220").unwrap(), // background_mid
+            Color32::from_hex("#3D1A2E").unwrap(), // background_hover
+            Color32::WHITE,                              // text
+            Color32::from_hex("#E0A3C7").unwrap(), // text_secondary
+            Color32::from_hex("#8A5A73").unwrap(), // text_muted
+            Color32::from_hex("#4A2438").unwrap(), // border
+            Color32::from_hex("#FF0066").unwrap(), // border_focu
+            Color32::from_hex("#22C55E").unwrap(), // success
+            Color32::from_hex("#F59E0B").unwrap(), // warning
+            Color32::from_hex("#EF4444").unwrap(), // erro
         )
     }
 
     pub fn twins() -> Self {
         Self::new(
-            Color32::from_rgb(0x9D, 0x5C, 0xFF),
-            Color32::from_rgb(0xB9, 0x8A, 0xFF),
-            Color32::from_rgb(0x7A, 0x3F, 0xD9),
-            Color32::from_rgb(0xFF, 0x6B, 0x9D),
-            Color32::from_rgb(0x5C, 0xE1, 0xFF),
-            Color32::from_rgb(0x0A, 0x08, 0x14),
-            Color32::from_rgb(0x15, 0x0F, 0x23),
-            Color32::from_rgb(0x22, 0x1A, 0x35),
-            Color32::from_rgb(0x2F, 0x23, 0x45),
-            Color32::WHITE,
-            Color32::from_rgb(0xC5, 0xB3, 0xE0),
-            Color32::from_rgb(0x7A, 0x6B, 0x98),
-            Color32::from_rgb(0x40, 0x34, 0x5A),
-            Color32::from_rgb(0x9D, 0x5C, 0xFF),
-            Color32::from_rgb(0x22, 0xC5, 0x5E),
-            Color32::from_rgb(0xF5, 0x9E, 0x0B),
-            Color32::from_rgb(0xEF, 0x44, 0x44),
+            Color32::from_hex("#9D5CFF").unwrap(), // primary
+            Color32::from_hex("#B98AFF").unwrap(), // primary_ligh
+            Color32::from_hex("#7A3FD9").unwrap(), // primary_dark
+            Color32::from_hex("#FF6B9D").unwrap(), // accent
+            Color32::from_hex("#5CE1FF").unwrap(), // accent_light
+            Color32::from_hex("#0A0814").unwrap(), // background
+            Color32::from_hex("#150F23").unwrap(), // background_elevated
+            Color32::from_hex("#221A35").unwrap(), // background_mid
+            Color32::from_hex("#2F2345").unwrap(), // background_hover
+            Color32::WHITE,                        // text
+            Color32::from_hex("#C5B3E0").unwrap(), // text_secondary
+            Color32::from_hex("#7A6B98").unwrap(), // text_muted
+            Color32::from_hex("#40345A").unwrap(), // border
+            Color32::from_hex("#9D5CFF").unwrap(), // border_focu
+            Color32::from_hex("#22C55E").unwrap(), // success
+            Color32::from_hex("#F59E0B").unwrap(), // warning
+            Color32::from_hex("#EF4444").unwrap(), // erro
         )
     }
 }
