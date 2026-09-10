@@ -74,6 +74,7 @@ jobs:
 
       - name: Prepare release binary
         id: prepare
+        shell: bash
         run: |
           VERSION="${{ github.event.inputs.tag || github.ref_name }}"
           # Remove 'v' prefix if present
