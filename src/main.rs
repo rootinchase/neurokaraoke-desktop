@@ -97,6 +97,7 @@ pub struct App {
     favorite_songs: Arc<tokio::sync::RwLock<std::collections::HashSet<Uuid>>>,
     sleep_timer_end: Option<Instant>,
     show_timer_menu: bool,
+    show_queue: bool,
 }
 
 impl App {
@@ -318,6 +319,7 @@ impl App {
             cached_avatar_path: None,
             sleep_timer_end: None,
             show_timer_menu: false,
+            show_queue: false,
         };
 
         let songs_clone = app.songs.clone();
@@ -1675,7 +1677,22 @@ impl eframe::App for App {
                                             self.show_timer_menu = !self.show_timer_menu;
                                         }
 
+                                        ui.add_space(10.0);
+
+                                        btn(
+                                            &self.theme,
+                                            ui,
+                                            include_image!("../assets/player-queue.svg"),
+                                            self.show_queue,
+                                            |_ctx, x| {
+                                                self.show_queue = x;
+                                                _ctx.request_repaint();
+                                            },
+                                        );
+
                                         if self.show_timer_menu {
+
+
                                             let pos = timer_btn_resp.rect.left_top() - egui::Vec2::new(0.0, 300.0); // Adjust Y offset as needed
                                             egui::Area::new(egui::Id::new("sleep_timer_area"))
                                                 .fixed_pos(pos)
@@ -1777,7 +1794,56 @@ impl eframe::App for App {
                 .show(ui, |ui| {
                     ui.heading(self.activity.as_str());
                     ui.push_id(self.activity.as_str(), |ui| {
-                        if self.activity == ActivityType::Home {
+                        if self.show_queue {
+                            ui.heading("Queue");
+                            if let Some(pl) = self.player.get_playlist() {
+                                let url_pl = self.player.get_url_playlist();
+                                
+                                use egui_extras::{Column, TableBuilder};
+                                TableBuilder::new(ui)
+                                    .column(Column::remainder()) // Original Artist - Song
+                                    .column(Column::exact(150.0)) // Cover Artist
+                                    .column(Column::exact(60.0))  // Duration
+                                    .header(20.0, |mut header| {
+                                        header.col(|ui| { ui.label("Song"); });
+                                        header.col(|ui| { ui.label("Cover Artist"); });
+                                        header.col(|ui| { ui.label("Duration"); });
+                                    })
+                                    .body(|body| {
+                                        body.rows(20.0, pl.len(), |mut row| {
+                                            let idx = row.index();
+                                            let song_uuid = pl[idx];
+                                            
+                                            // Try to find the song data in the url playlist by UUID
+                                            let song_data = url_pl.as_ref().and_then(|list| {
+                                                list.iter().find(|s| s.id == song_uuid)
+                                            });
+
+                                            let (orig_artists, title, cover_artists, duration) = if let Some(song) = song_data {
+                                                    (song.original_artists.join(" & "), song.title.to_string(), song.cover_artists.join(" & "), song.duration)
+                                            } else {
+                                                match self.songs.get(&song_uuid, |s| (s.original_artists.clone(), s.title.to_string(), s.cover_artists.clone(), None)) {
+                                                    LoadingState::Loaded((oa, t, ca, d)) => (oa.join(" & "), t, ca.join(" & "), d),
+                                                    _ => ("-".to_string(), "Loading...".to_string(), "-".to_string(), None),
+                                                }
+                                            };
+
+                                            row.col(|ui| {
+                                                let display_text = format!("{} - {}", orig_artists, title);
+                                                if ui.selectable_label(self.current_song_uuid == Some(song_uuid), display_text).clicked() {
+                                                    self.player.play_song(song_uuid);
+                                                }
+                                            });
+                                            row.col(|ui| { ui.label(cover_artists); });
+                                            row.col(|ui| {
+                                                if let Some(dur) = duration {
+                                                    ui.label(format!("{}:{:02}", dur / 60, dur % 60));
+                                                } else { ui.label("-"); }
+                                            });
+                                        });
+                                    });
+                            }
+                        } else if self.activity == ActivityType::Home {
                             ui.add(egui::TextEdit::singleline(&mut self.search));
 
                             ui.horizontal(|ui| {

@@ -799,6 +799,25 @@ impl Player {
         self.sender.try_send(PlaybackCommand::NextSong).ok();
     }
 
+    pub fn play_song(&self, uuid: Uuid) {
+        let player_state = self.player_state.lock().unwrap();
+
+        if let Some(playlist) = &player_state.playlist {
+            if let Some(index) = playlist.iter().position(|&id| id == uuid) {
+                if let Some(url_playlist) = &player_state.url_playlist {
+                    if let Some(song_dto) = url_playlist.get(index) {
+                        if song_dto.audio_url.is_some() {
+                            self.url_playback(Some(uuid), song_dto.clone(), Player::play);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        self.song(Some(uuid), Player::play);
+    }
+
     pub fn song(
         &self,
         song: Option<Uuid>,
@@ -815,6 +834,10 @@ impl Player {
 
     pub fn get_playlist(&self) -> Option<Arc<[Uuid]>> {
         self.player_state.lock().unwrap().playlist.clone()
+    }
+
+    pub fn get_url_playlist(&self) -> Option<Arc<[crate::api::SongDTO]>> {
+        self.player_state.lock().unwrap().url_playlist.clone()
     }
 
     fn internal(&mut self) {
