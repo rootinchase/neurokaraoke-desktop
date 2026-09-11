@@ -604,10 +604,9 @@ impl LazySongDatabase {
         Ok(playlists)
     }
 
-    pub async fn get_official_setlists(&self) -> anyhow::Result<Vec<Playlist>> {
-        let mut request = self
-            .client
-            .get("https://api.neurokaraoke.com/api/playlists?isSetlist=True");
+    pub async fn get_official_setlists(&self, year: u32) -> anyhow::Result<Vec<Playlist>> {
+        let url = format!("https://api.neurokaraoke.com/api/playlists?isSetlist=True&year={}", year);
+        let mut request = self.client.get(url);
         request = self.apply_auth(request).await; // <-- Inject headers
 
         let response = request.send().await?;

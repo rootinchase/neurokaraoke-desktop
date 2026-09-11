@@ -2233,7 +2233,15 @@ impl eframe::App for App {
                             });
                         } else if self.activity == ActivityType::Setlists {
                             ui.vertical(|ui| {
-                                ui.label("Official Setlists:");
+                                ui.horizontal(|ui| {
+                                    ui.label("Official Setlists:");
+                                    let current_year = *self.setlist_activity.current_year.blocking_lock();
+                                    for &year in &[0, 2026, 2025, 2024] {
+                                        if ui.selectable_label(current_year == year, if year == 0 { "All".to_string() } else { year.to_string() }).clicked() {
+                                            self.setlist_activity.set_year(year);
+                                        }
+                                    }
+                                });
                                 
                                 // Single lock access per frame
                                 let setlists_lock = self.setlist_activity.setlists.try_lock();
