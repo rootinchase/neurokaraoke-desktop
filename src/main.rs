@@ -957,6 +957,7 @@ impl eframe::App for App {
                     }
                     if resp.clicked() {
                         self.activity = activity;
+                        self.show_queue = false;
                     }
                 };
 
