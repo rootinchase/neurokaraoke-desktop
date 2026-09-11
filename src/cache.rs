@@ -349,4 +349,25 @@ impl Cache {
     pub fn is_online(&self) -> bool {
         self.online.load(Ordering::Acquire)
     }
+
+    pub async fn clear_cache(&self) {
+        crate::debug_log!("Clearing all cached assets.");
+        
+        // Remove all entries from map and delete files from disk
+        for entry in self.entries.iter() {
+            let path = if let Some(ref ext) = entry.value().extension {
+                cache_dir().join(format!("assets/{:016x}.{}", entry.value().id, ext))
+            } else {
+                cache_dir().join(format!("assets/{:016x}", entry.value().id))
+            };
+            let _ = tokio::fs::remove_file(path).await;
+        }
+        self.entries.clear();
+        
+        // Persist the empty cache state
+        let _ = tokio::fs::write(
+            &cache_dir().join(Self::CACHE_FILE_NAME),
+            ron::ser::to_string_pretty(&self, Default::default()).unwrap(),
+        ).await;
+    }
 }

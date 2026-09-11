@@ -880,6 +880,12 @@ impl eframe::App for App {
                     }
                     self.profile_data = None;
                     self.cached_avatar_path = None;
+
+                    // Clear user-specific cache
+                    let cache = self.cache.clone();
+                    tokio::spawn(async move {
+                        cache.clear_cache().await;
+                    });
                 }
                 profile::ProfileMessage::AvatarLoaded(_) => {}
                 profile::ProfileMessage::UserLimitsLoaded(_) => {}
