@@ -40,6 +40,8 @@ pub struct ProfileState {
     pub user_limits: Option<crate::api::UserLimits>,
     pub badges: Vec<crate::api::Badge>,
     pub badge_images: HashMap<String, AvatarState>,
+    pub username_input: String,
+    pub password_input: String,
 }
 
 impl ProfileActivity {
@@ -55,6 +57,8 @@ impl ProfileActivity {
                 user_limits: None,
                 badges: Vec::new(),
                 badge_images: HashMap::new(),
+                username_input: String::new(),
+                password_input: String::new(),
             },
             cache,
         }
@@ -433,6 +437,47 @@ impl ProfileActivity {
                 ui.vertical_centered(|ui| {
                     ui.add_space(40.0);
                     ui.label(RichText::new("Sign in to access your custom user library, playlists, and badges.").color(theme.text_secondary).size(16.0));
+                    ui.add_space(20.0);
+
+                    // --- Username/Password Login Form ---
+                    Frame::new()
+                        .fill(theme.background_elevated)
+                        .corner_radius(8.0)
+                        .inner_margin(15.0)
+                        .show(ui, |ui| {
+                            ui.label("Username");
+                            ui.text_edit_singleline(&mut self.state.username_input);
+                            ui.add_space(10.0);
+                            ui.label("Password");
+                            ui.add(egui::TextEdit::singleline(&mut self.state.password_input).password(true));
+                            ui.add_space(15.0);
+                            if ui.button("Login").clicked() {
+                                let username = self.state.username_input.clone();
+                                let password = self.state.password_input.clone();
+                                let auth_service_worker = auth_service.clone();
+                                let tx_worker = self.tx.clone();
+                                let ctx_clone = self.ctx.clone();
+
+                                rt.spawn(async move {
+                                    let req = crate::api::LoginRequest {
+                                        username: username.into(),
+                                        password: password.into(),
+                                    };
+                                    match auth_service_worker.login(&req).await {
+                                        Ok(auth_context) => {
+                                            let _ = tx_worker.send(ProfileMessage::LoginSuccess(auth_context)).await;
+                                        }
+                                        Err(err) => {
+                                            debug_log!("Login failed: {}", err);
+                                        }
+                                    }
+                                    ctx_clone.request_repaint();
+                                });
+                            }
+                        });
+
+                    ui.add_space(20.0);
+                    ui.label("OR");
                     ui.add_space(20.0);
 
                     let login_btn = egui::Button::new(RichText::new("Log In with Discord").size(16.0).color(Color32::WHITE))

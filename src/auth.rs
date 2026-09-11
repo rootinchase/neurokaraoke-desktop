@@ -22,7 +22,6 @@ impl AuthService {
         }
     }
 
-    /*
     /// Handles standard API errors which arrive as plain text or bare JSON strings.
     async fn handle_error_response(response: reqwest::Response) -> anyhow::Error {
         let status = response.status();
@@ -34,9 +33,7 @@ impl AuthService {
             anyhow!("Auth request failed with network status: {}", status)
         }
     }
-     */
 
-    /*
     /// POST /api/auth/login
     pub async fn login(&self, req: &api::LoginRequest) -> Result<api::AuthContext> {
         let url = format!("{}/api/auth/login", self.auth_host);
@@ -56,7 +53,6 @@ impl AuthService {
             Err(Self::handle_error_response(res).await)
         }
     }
-    */
 
     /// POST /api/auth/discord-token
     pub async fn login_via_discord(&self, access_token: &str) -> Result<api::AuthContext> {

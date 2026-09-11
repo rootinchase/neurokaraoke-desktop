@@ -282,13 +282,13 @@ pub struct UserClaims {
 
 // --- Request Payloads ---
 
-/*
+
 #[derive(Debug, Serialize)]
 pub struct LoginRequest {
     pub username: Arc<str>,
     pub password: Arc<str>,
 }
- */
+
 
 /*
 #[derive(Debug, Serialize)]
