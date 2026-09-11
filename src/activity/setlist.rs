@@ -56,9 +56,10 @@ impl SetlistActivity {
         let selected = self.selected_setlist.clone();
         let songs = self.songs.clone();
 
-        *selected.blocking_lock() = Some(LoadingState::Loading);
-
+        // Spawn a task to update the state asynchronously, avoiding blocking the UI thread.
         tokio::spawn(async move {
+            *selected.lock().await = Some(LoadingState::Loading);
+            
             match songs.get_playlist_details(id).await {
                 Ok(data) => {
                     *selected.lock().await = Some(LoadingState::Loaded(data));

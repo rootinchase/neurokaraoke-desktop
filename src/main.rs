@@ -1927,94 +1927,127 @@ impl eframe::App for App {
                         } else if self.activity == ActivityType::Playlists {
                             ui.vertical(|ui| {
                                 ui.label("Public Playlists:");
-                                let playlists = self.playlist_activity.playlists.blocking_lock();
+                                
+                                // Single lock access per frame
+                                let playlists_lock = self.playlist_activity.playlists.try_lock();
+                                let selected_lock = self.playlist_activity.selected_playlist.try_lock().ok();
+                                
+                                match playlists_lock {
+                                    Ok(playlists) => {
+                                        let is_selected = selected_lock.as_ref().and_then(|s| s.as_ref()).is_some();
+                                        let scroll_area = if is_selected {
+                                            egui::ScrollArea::vertical().max_height(200.0)
+                                        } else {
+                                            egui::ScrollArea::vertical().max_height(600.0)
+                                        };
 
-                                match &*playlists {
-                                    LoadingState::Loaded(playlists) => {
-                                        render_list_table(
-                                            ui,
-                                            "public_playlists_table",
-                                            playlists,
-                                            |p| p.name.to_string(),
-                                            |p| p.song_count.to_string(),
-                                            |p| p.play_count.to_string(),
-                                            |p| p.creator.to_string(),
-                                            |idx| {
-                                                self.playlist_activity
-                                                    .select_playlist(playlists[idx].id)
-                                            },
-                                        );
+                                        match &*playlists {
+                                            LoadingState::Loaded(playlists) => {
+                                                scroll_area.show(ui, |ui| {
+                                                    render_list_table(
+                                                        ui,
+                                                        "public_playlists_table",
+                                                        playlists,
+                                                        |p| p.name.to_string(),
+                                                        |p| p.song_count.to_string(),
+                                                        |p| p.play_count.to_string(),
+                                                        |p| p.creator.to_string(),
+                                                        |idx| {
+                                                            self.playlist_activity
+                                                                .select_playlist(playlists[idx].id)
+                                                        },
+                                                    );
+                                                });
 
-                                        if let Some(selected) = &*self
-                                            .playlist_activity
-                                            .selected_playlist
-                                            .blocking_lock()
-                                        {
-                                            render_playlist_details(ui, selected, |detail| {
-                                                play_playlist(
-                                                    &mut self.player,
-                                                    &detail.songs,
-                                                    &detail.name,
-                                                );
-                                            });
+                                                if let Some(selected_ref) = selected_lock.as_ref().and_then(|s| s.as_ref()) {
+                                                    render_playlist_details(ui, selected_ref, |detail| {
+                                                        play_playlist(
+                                                            &mut self.player,
+                                                            &detail.songs,
+                                                            &detail.name,
+                                                        );
+                                                    });
+                                                }
+                                            }
+                                            LoadingState::Loading => {
+                                                ui.label("Loading...");
+                                            }
+                                            LoadingState::Failed(err) => {
+                                                ui.label(format!("Error loading playlists: {}", err));
+                                            }
                                         }
                                     }
-                                    LoadingState::Loading => {
+                                    Err(_) => {
                                         ui.label("Loading...");
-                                    }
-                                    LoadingState::Failed(err) => {
-                                        ui.label(format!("Error loading playlists: {}", err));
                                     }
                                 }
                             });
                         } else if self.activity == ActivityType::MyPlaylists {
                             ui.vertical(|ui| {
                                 ui.label("My Playlists:");
-                                let playlists = self.my_playlist_activity.playlists.blocking_lock();
+                                
+                                // Single lock access per frame
+                                let playlists_lock = self.my_playlist_activity.playlists.try_lock();
+                                let selected_lock = self.my_playlist_activity.selected_playlist.try_lock().ok();
+                                
+                                match playlists_lock {
+                                    Ok(playlists) => {
+                                        let is_selected = selected_lock.as_ref().and_then(|s| s.as_ref()).is_some();
+                                        let scroll_area = if is_selected {
+                                            egui::ScrollArea::vertical().max_height(200.0)
+                                        } else {
+                                            egui::ScrollArea::vertical().max_height(600.0)
+                                        };
+                                        
+                                        match &*playlists {
+                                            LoadingState::Loaded(playlists) => {
+                                                scroll_area.show(ui, |ui| {
+                                                    render_list_table(
+                                                        ui,
+                                                        "my_playlists_table",
+                                                        playlists,
+                                                        |p| p.name.to_string(),
+                                                        |p| p.song_count.to_string(),
+                                                        |p| p.play_count.to_string(),
+                                                        |p| {
+                                                            self.config
+                                                                .auth
+                                                                .as_ref()
+                                                                .map(|a| a.user.username.to_string())
+                                                                .unwrap_or_else(|| p.creator.to_string())
+                                                        },
+                                                        |idx| {
+                                                            self.my_playlist_activity
+                                                                .select_playlist(playlists[idx].id)
+                                                        },
+                                                    );
+                                                });
+                                                
+                                                if let Some(selected_ref) = selected_lock.as_ref().and_then(|s| s.as_ref()) {
+                                                    render_playlist_details(ui, selected_ref, |detail| {
+                                                        play_playlist(
+                                                            &mut self.player,
+                                                            &detail.songs,
+                                                            &detail.name,
+                                                        );
+                                                    });
+                                                }
+                                            }
 
-                                match &*playlists {
-                                    LoadingState::Loaded(playlists) => {
-                                        render_list_table(
-                                            ui,
-                                            "my_playlists_table",
-                                            playlists,
-                                            |p| p.name.to_string(),
-                                            |p| p.song_count.to_string(),
-                                            |p| p.play_count.to_string(),
-                                            |p| {
-                                                self.config
-                                                    .auth
-                                                    .as_ref()
-                                                    .map(|a| a.user.username.to_string())
-                                                    .unwrap_or_else(|| p.creator.to_string())
-                                            },
-                                            |idx| {
-                                                self.my_playlist_activity
-                                                    .select_playlist(playlists[idx].id)
-                                            },
-                                        );
+                                            LoadingState::Loading => {
+                                                ui.label("Loading...");
+                                            }
+                                            LoadingState::Failed(err) => {
+                                                ui.label(format!("Error loading playlists: {}", err));
+                                            }
+                                        }
                                     }
-
-                                    LoadingState::Loading => {
+                                    Err(_) => {
                                         ui.label("Loading...");
                                     }
-                                    LoadingState::Failed(err) => {
-                                        ui.label(format!("Error loading playlists: {}", err));
-                                    }
-                                }
-
-                                if let Some(selected) =
-                                    &*self.my_playlist_activity.selected_playlist.blocking_lock()
-                                {
-                                    render_playlist_details(ui, selected, |detail| {
-                                        play_playlist(
-                                            &mut self.player,
-                                            &detail.songs,
-                                            &detail.name,
-                                        );
-                                    });
                                 }
                             });
+
                         } else if self.activity == ActivityType::Favorites {
                             let should_fetch = {
                                 let favorites = self.favorites_activity.playlists.blocking_lock();
@@ -2201,80 +2234,65 @@ impl eframe::App for App {
                         } else if self.activity == ActivityType::Setlists {
                             ui.vertical(|ui| {
                                 ui.label("Official Setlists:");
-                                let setlists = self.setlist_activity.setlists.blocking_lock();
-
-                                match &*setlists {
-                                    LoadingState::Loaded(setlists) => {
-                                        render_list_table(
-                                            ui,
-                                            "setlists_table",
-                                            setlists,
-                                            |s| s.name.to_string(),
-                                            |s| s.song_count.to_string(),
-                                            |s| s.play_count.to_string(),
-                                            |s| {
-                                                s.set_list_date
-                                                    .as_deref()
-                                                    .map(|d| d.split('T').next().unwrap_or(d))
-                                                    .unwrap_or("N/A")
-                                                    .to_string()
-                                            },
-                                            |idx| {
-                                                self.setlist_activity
-                                                    .select_setlist(setlists[idx].id)
-                                            },
-                                        );
-                                    }
-
-                                    LoadingState::Loading => {
-                                        ui.label("Loading...");
-                                    }
-                                    LoadingState::Failed(err) => {
-                                        ui.label(format!("Error loading setlists: {}", err));
-                                    }
-                                }
-
-                                if let Some(selected) =
-                                    &*self.setlist_activity.selected_setlist.blocking_lock()
-                                {
-                                    ui.separator();
-                                    match selected {
-                                        LoadingState::Loaded(detail) => {
-                                            ui.label(format!("Setlist: {}", detail.name));
-                                            if ui.button("Play Setlist").clicked() {
-                                                let songs = &detail.songs;
-                                                debug_log!(
-                                                    "Setlist '{}' has {} songs.",
-                                                    detail.name,
-                                                    songs.len()
-                                                );
-                                                // Restore playlist for Player logic
-                                                let pl: Vec<Uuid> =
-                                                    songs.iter().map(|s| s.id).collect();
-                                                self.player.clear_playlist();
-                                                self.player.playlist(Some(pl.clone().into()));
-                                                self.player
-                                                    .url_playlist(Some(songs.clone().into()));
-
-                                                if let Some(first_song) = songs.first() {
-                                                    self.player.url_playback(
-                                                        Some(pl[0]),
-                                                        first_song.clone(),
-                                                        Player::play,
+                                
+                                // Single lock access per frame
+                                let setlists_lock = self.setlist_activity.setlists.try_lock();
+                                let selected_lock = self.setlist_activity.selected_setlist.try_lock().ok();
+                                
+                                match setlists_lock {
+                                    Ok(setlists) => {
+                                        let is_selected = selected_lock.as_ref().and_then(|s| s.as_ref()).is_some();
+                                        let scroll_area = if is_selected {
+                                            egui::ScrollArea::vertical().max_height(200.0)
+                                        } else {
+                                            egui::ScrollArea::vertical().max_height(600.0)
+                                        };
+                                        
+                                        match &*setlists {
+                                            LoadingState::Loaded(setlists) => {
+                                                scroll_area.show(ui, |ui| {
+                                                    render_list_table(
+                                                        ui,
+                                                        "setlists_table",
+                                                        setlists,
+                                                        |s| s.name.to_string(),
+                                                        |s| s.song_count.to_string(),
+                                                        |s| s.play_count.to_string(),
+                                                        |s| {
+                                                            s.set_list_date
+                                                                .as_deref()
+                                                                .map(|d| d.split('T').next().unwrap_or(d))
+                                                                .unwrap_or("N/A")
+                                                                .to_string()
+                                                        },
+                                                        |idx| {
+                                                            self.setlist_activity
+                                                                .select_setlist(setlists[idx].id)
+                                                        },
                                                     );
+                                                });
+                                                
+                                                if let Some(selected_ref) = selected_lock.as_ref().and_then(|s| s.as_ref()) {
+                                                    render_playlist_details(ui, selected_ref, |detail| {
+                                                        play_playlist(
+                                                            &mut self.player,
+                                                            &detail.songs,
+                                                            &detail.name,
+                                                        );
+                                                    });
                                                 }
                                             }
-                                            render_song_table(ui, &detail.songs);
+
+                                            LoadingState::Loading => {
+                                                ui.label("Loading...");
+                                            }
+                                            LoadingState::Failed(err) => {
+                                                ui.label(format!("Error loading setlists: {}", err));
+                                            }
                                         }
-                                        LoadingState::Loading => {
-                                            ui.label("Loading setlist details...");
-                                        }
-                                        LoadingState::Failed(err) => {
-                                            ui.label(format!(
-                                                "Error loading setlist details: {}",
-                                                err
-                                            ));
-                                        }
+                                    }
+                                    Err(_) => {
+                                        ui.label("Loading...");
                                     }
                                 }
                             });
