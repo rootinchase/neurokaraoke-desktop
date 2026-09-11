@@ -1938,7 +1938,7 @@ impl eframe::App for App {
                                         let scroll_area = if is_selected {
                                             egui::ScrollArea::vertical().max_height(200.0)
                                         } else {
-                                            egui::ScrollArea::vertical().max_height(600.0)
+                                            egui::ScrollArea::vertical().max_height(1000.0)
                                         };
 
                                         match &*playlists {
@@ -1996,7 +1996,7 @@ impl eframe::App for App {
                                         let scroll_area = if is_selected {
                                             egui::ScrollArea::vertical().max_height(200.0)
                                         } else {
-                                            egui::ScrollArea::vertical().max_height(600.0)
+                                            egui::ScrollArea::vertical().max_height(1000.0)
                                         };
                                         
                                         match &*playlists {
@@ -2253,7 +2253,7 @@ impl eframe::App for App {
                                         let scroll_area = if is_selected {
                                             egui::ScrollArea::vertical().max_height(200.0)
                                         } else {
-                                            egui::ScrollArea::vertical().max_height(600.0)
+                                            egui::ScrollArea::vertical().max_height(1000.0)
                                         };
                                         
                                         match &*setlists {
