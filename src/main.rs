@@ -461,11 +461,28 @@ impl App {
 
     pub fn update_os_metadata(
         &mut self,
+        ctx: &egui::Context,
         title: &str,
         artist: &str,
         _duration_secs: u64,
         cover_url: &str,
     ) {
+        let artwork_path = self.current_song_uuid
+            .and_then(|id| {
+                if let LoadingState::Loaded(song) = self.songs.get(&id, |s| s.cover_art.clone()) {
+                    if let Some(art) = song {
+                        // Use resolve_artwork_uri to get the correct cached file path or URL
+                        return self.resolve_artwork_uri(
+                            ctx,
+                            art.cloudflare_id.clone(),
+                            art.absolute_path.clone()
+                        );
+                    }
+                }
+                None
+            })
+            .unwrap_or_else(|| cover_url.to_string());
+
         self.current_track = Some(playwire::Track {
             id: self
                 .current_song_uuid
@@ -474,7 +491,7 @@ impl App {
             title: title.to_string(),
             artists: vec![artist.to_string()],
             album: "NeuroKaraoke Live".to_string(),
-            artwork_url: cover_url.to_string(),
+            artwork_url: artwork_path,
             url: String::new(),
         });
         self.update_os_playback();
@@ -1231,12 +1248,18 @@ impl eframe::App for App {
                             .and_then(|a| a.cloudflare_id.as_ref())
                             .map(|id| id.to_string())
                     });
+                    
+                    let _absolute_path = s.cover_art
+                        .as_ref()
+                        .map(|a| a.absolute_path.clone());
 
                     let cover_art_url = cloudflare_id
+                        .clone()
                         .map(|id| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=512,h=512,fit=cover,quality=90", id))
                         .unwrap_or_else(|| "".to_string());
 
                     self.update_os_metadata(
+                        ui.ctx(),
                         &s.title,
                         &format!(
                             "{} (feat. {})",
@@ -1246,6 +1269,30 @@ impl eframe::App for App {
                         state.duration().as_secs(),
                         &cover_art_url,
                     );
+                } else if let Some(track) = &self.current_track {
+                    let track_clone = track.clone();
+                    // Check if artwork for the currently playing song is now cached
+                    if let Some(id) = self.current_song_uuid {
+                         if let LoadingState::Loaded(song_art) = self.songs.get(&id, |s| s.cover_art.clone()) {
+                             if let Some(art) = song_art {
+                                 if let Some(new_artwork_path) = self.resolve_artwork_uri(ui.ctx(), art.cloudflare_id.clone(), art.absolute_path.clone()) {
+                                     if track_clone.artwork_url != new_artwork_path {
+                                         // Artwork updated, re-sync metadata
+                                         let cover_art_url = art.cloudflare_id
+                                            .map(|id| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=512,h=512,fit=cover,quality=90", id))
+                                            .unwrap_or_else(|| "".to_string());
+                                         self.update_os_metadata(
+                                            ui.ctx(),
+                                            &track_clone.title,
+                                            &track_clone.artists.join(", "),
+                                            state.duration().as_secs(),
+                                            &cover_art_url,
+                                        );
+                                     }
+                                 }
+                             }
+                         }
+                    }
                 } else if let Some(start) = self.last_song_playback_start {
                     if start.elapsed() >= Duration::from_secs(30) {
                         let uuid = state.song();
@@ -2019,10 +2066,20 @@ impl eframe::App for App {
                                                     } else {
                                                         sorted_playlists.sort_by(|a, b| a.play_count.cmp(&b.play_count))
                                                     },
-                                                    SortOption::Date => if self.current_playlist_sort_desc {
-                                                        sorted_playlists.sort_by(|a, b| b.updated_at.cmp(&a.updated_at))
-                                                    } else {
-                                                        sorted_playlists.sort_by(|a, b| a.updated_at.cmp(&b.updated_at))
+                                                    SortOption::Date => {
+                                                        if self.current_playlist_sort_desc {
+                                                            sorted_playlists.sort_by(|a, b| {
+                                                                let a_date = a.updated_at.as_ref().or(a.created_at.as_ref());
+                                                                let b_date = b.updated_at.as_ref().or(b.created_at.as_ref());
+                                                                b_date.cmp(&a_date)
+                                                            })
+                                                        } else {
+                                                            sorted_playlists.sort_by(|a, b| {
+                                                                let a_date = a.updated_at.as_ref().or(a.created_at.as_ref());
+                                                                let b_date = b.updated_at.as_ref().or(b.created_at.as_ref());
+                                                                a_date.cmp(&b_date)
+                                                            })
+                                                        }
                                                     },
                                                 }
 
@@ -2036,7 +2093,7 @@ impl eframe::App for App {
                                                         |p| p.play_count.to_string(),
                                                         |p| p.creator.to_string(),
                                                         |p| p.created_at.as_deref().unwrap_or("-").split('T').next().unwrap_or("-").to_string(),
-                                                        |p| p.updated_at.as_deref().unwrap_or("-").split('T').next().unwrap_or("-").to_string(),
+                                                        |p| p.updated_at.as_deref().or(p.created_at.as_deref()).unwrap_or("-").split('T').next().unwrap_or("-").to_string(),
                                                         |idx| {
                                                             self.playlist_activity
                                                                 .select_playlist(sorted_playlists[idx].id)
@@ -2118,10 +2175,20 @@ impl eframe::App for App {
                                                     } else {
                                                         sorted_playlists.sort_by(|a, b| a.play_count.cmp(&b.play_count))
                                                     },
-                                                    SortOption::Date => if self.current_playlist_sort_desc {
-                                                        sorted_playlists.sort_by(|a, b| b.updated_at.cmp(&a.updated_at))
-                                                    } else {
-                                                        sorted_playlists.sort_by(|a, b| a.updated_at.cmp(&b.updated_at))
+                                                    SortOption::Date => {
+                                                        if self.current_playlist_sort_desc {
+                                                            sorted_playlists.sort_by(|a, b| {
+                                                                let a_date = a.updated_at.as_ref().or(a.created_at.as_ref());
+                                                                let b_date = b.updated_at.as_ref().or(b.created_at.as_ref());
+                                                                b_date.cmp(&a_date)
+                                                            })
+                                                        } else {
+                                                            sorted_playlists.sort_by(|a, b| {
+                                                                let a_date = a.updated_at.as_ref().or(a.created_at.as_ref());
+                                                                let b_date = b.updated_at.as_ref().or(b.created_at.as_ref());
+                                                                a_date.cmp(&b_date)
+                                                            })
+                                                        }
                                                     },
                                                 }
 
@@ -2141,7 +2208,7 @@ impl eframe::App for App {
                                                                 .unwrap_or_else(|| p.creator.to_string())
                                                         },
                                                         |p| p.created_at.as_deref().unwrap_or("-").split('T').next().unwrap_or("-").to_string(),
-                                                        |p| p.updated_at.as_deref().unwrap_or("-").split('T').next().unwrap_or("-").to_string(),
+                                                        |p| p.updated_at.as_deref().or(p.created_at.as_deref()).unwrap_or("-").split('T').next().unwrap_or("-").to_string(),
                                                         |idx| {
                                                             self.my_playlist_activity
                                                                 .select_playlist(sorted_playlists[idx].id)
