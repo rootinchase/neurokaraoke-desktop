@@ -3,11 +3,13 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+
 pub struct PlaylistActivity {
     pub playlists: Arc<Mutex<LoadingState<Vec<Playlist>>>>,
     pub selected_playlist: Arc<Mutex<Option<LoadingState<PlaylistDetail>>>>,
     pub songs: LazySongDatabase,
 }
+
 
 impl PlaylistActivity {
     pub fn new(songs: LazySongDatabase, is_personal: bool) -> Self {
@@ -33,7 +35,7 @@ impl PlaylistActivity {
             let result = if is_personal {
                 songs_clone.get_user_playlists().await
             } else {
-                songs_clone.get_public_playlists().await
+                Self::fetch_all_public_playlists(&songs_clone).await
             };
 
             match result {
@@ -61,7 +63,43 @@ impl PlaylistActivity {
             songs,
         }
     }
-    // ...
+
+
+    async fn fetch_all_public_playlists(songs: &LazySongDatabase) -> anyhow::Result<Vec<Playlist>> {
+        let mut all_playlists = Vec::new();
+        let mut start_index = 0;
+        let page_size = 30;
+
+        loop {
+            let batch = songs.get_public_playlists(None, false, start_index, page_size).await?;
+            if batch.is_empty() {
+                break;
+            }
+            all_playlists.extend(batch);
+            start_index += page_size;
+        }
+
+        Ok(all_playlists)
+    }
+
+    #[allow(dead_code)]
+    pub fn fetch_public_playlists(&self) {
+        let p = self.playlists.clone();
+        let songs = self.songs.clone();
+
+        tokio::spawn(async move {
+            *p.lock().await = LoadingState::Loading;
+            
+            match Self::fetch_all_public_playlists(&songs).await {
+                Ok(data) => {
+                    *p.lock().await = LoadingState::Loaded(data);
+                }
+                Err(err) => {
+                    *p.lock().await = LoadingState::Failed(Arc::new(err));
+                }
+            }
+        });
+    }
 
     pub fn select_playlist(&self, id: Uuid) {
         let selected = self.selected_playlist.clone();

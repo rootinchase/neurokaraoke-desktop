@@ -55,6 +55,14 @@ fn main() -> eframe::Result<()> {
     App::run(runtime)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortOption {
+    Name,
+    Songs,
+    Plays,
+    Date,
+}
+
 pub struct App {
     cache: Arc<Cache>,
     songs: LazySongDatabase,
@@ -76,6 +84,9 @@ pub struct App {
     setlist_activity: SetlistActivity,
     favorites_activity: FavoritesActivity,
     profile_activity: profile::ProfileActivity,
+    
+    current_playlist_sort: SortOption,
+    current_playlist_sort_desc: bool,
 
     current_song_uuid: Option<Uuid>,
     last_song_playback_start: Option<Instant>,
@@ -115,6 +126,14 @@ impl App {
         );
 
         fonts.font_data.insert(
+            "noto-sans-cuneiform".to_string(),
+            egui::FontData::from_static(include_bytes!(
+                "../assets/fonts/NotoSansCuneiform-Regular.ttf"
+            ))
+            .into(),
+        );
+
+        fonts.font_data.insert(
             "Roboto".to_string(),
             egui::FontData::from_static(include_bytes!(
                 "../assets/fonts/Roboto-VariableFont_wdth,wght.ttf"
@@ -127,6 +146,12 @@ impl App {
             .entry(egui::FontFamily::Proportional)
             .or_default()
             .insert(0, "noto-sans-jp".to_owned());
+
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .insert(0, "noto-sans-cuneiform".to_owned());
 
         fonts
             .families
@@ -189,9 +214,9 @@ impl App {
                                     // Fetch and send user limits on startup
                                     let limits_client = client_clone.clone();
                                     let limits_tx = startup_tx.clone();
-                                    let db = api::LazySongDatabase::new(
+                                    let db = LazySongDatabase::new(
                                         limits_client,
-                                        Arc::new(dashmap::DashMap::new()),
+                                        Arc::new(DashMap::new()),
                                         "".into(),
                                         shared_config,
                                     );
@@ -301,6 +326,9 @@ impl App {
             setlist_activity: SetlistActivity::new(songs.clone()),
             favorites_activity: FavoritesActivity::new(ctx.clone()),
             profile_activity,
+            
+            current_playlist_sort: SortOption::Name,
+            current_playlist_sort_desc: false,
 
             current_song_uuid: None,
             last_song_playback_start: None,
@@ -655,7 +683,7 @@ fn render_song_table(ui: &mut Ui, songs: &[api::SongDTO]) {
                 ui.label("Plays");
             });
             header.col(|ui| {
-                ui.label("Date");
+                ui.label("Stream Date");
             });
             header.col(|ui| {
                 ui.label("Duration");
@@ -705,7 +733,10 @@ fn render_list_table<T>(
     song_count: impl Fn(&T) -> String,
     play_count: impl Fn(&T) -> String,
     metadata: impl Fn(&T) -> String,
-    on_click: impl Fn(usize),
+    created_at: impl Fn(&T) -> String,
+    updated_at: impl Fn(&T) -> String,
+    mut on_click: impl FnMut(usize),
+    mut on_header_click: impl FnMut(usize),
 ) {
     use egui_extras::{Column, TableBuilder};
 
@@ -714,19 +745,39 @@ fn render_list_table<T>(
             .column(Column::remainder())
             .column(Column::exact(60.0))
             .column(Column::exact(80.0))
-            .column(Column::exact(120.0))
+            .column(Column::exact(100.0))
+            .column(Column::exact(80.0))
+            .column(Column::exact(80.0))
             .header(20.0, |mut header| {
                 header.col(|ui| {
-                    ui.label("Name");
+                    if ui.selectable_label(false, "Name").clicked() {
+                        on_header_click(0);
+                    }
                 });
                 header.col(|ui| {
-                    ui.label("Songs");
+                    if ui.selectable_label(false, "Songs").clicked() {
+                        on_header_click(1);
+                    }
                 });
                 header.col(|ui| {
-                    ui.label("Plays");
+                    if ui.selectable_label(false, "Plays").clicked() {
+                        on_header_click(2);
+                    }
                 });
                 header.col(|ui| {
-                    ui.label("Creator/Date");
+                    if ui.selectable_label(false, "Creator").clicked() {
+                        on_header_click(3);
+                    }
+                });
+                header.col(|ui| {
+                    if ui.selectable_label(false, "Created").clicked() {
+                        on_header_click(4);
+                    }
+                });
+                header.col(|ui| {
+                    if ui.selectable_label(false, "Updated").clicked() {
+                        on_header_click(5);
+                    }
                 });
             })
             .body(|body| {
@@ -749,6 +800,12 @@ fn render_list_table<T>(
                     });
                     row.col(|ui| {
                         ui.label(metadata(item));
+                    });
+                    row.col(|ui| {
+                        ui.label(created_at(item));
+                    });
+                    row.col(|ui| {
+                        ui.label(updated_at(item));
                     });
                 });
             });
@@ -841,7 +898,7 @@ impl eframe::App for App {
                                             // Fetch and send user limits
                                             let limits_client = client_clone.clone();
                                             let limits_tx = tx_channel.clone();
-                                            let db = api::LazySongDatabase::new(limits_client, Arc::new(dashmap::DashMap::new()), "".into(), shared_config);
+                                            let db = LazySongDatabase::new(limits_client, Arc::new(DashMap::new()), "".into(), shared_config);
                                             
                                             match db.get_user_limits().await {
                                                 Ok(limits) => {
@@ -1700,7 +1757,7 @@ impl eframe::App for App {
                                         if self.show_timer_menu {
 
 
-                                            let pos = timer_btn_resp.rect.left_top() - egui::Vec2::new(0.0, 300.0); // Adjust Y offset as needed
+                                            let pos = timer_btn_resp.rect.left_top() - Vec2::new(0.0, 300.0); // Adjust Y offset as needed
                                             egui::Area::new(egui::Id::new("sleep_timer_area"))
                                                 .fixed_pos(pos)
                                                 .show(ui.ctx(), |ui| {
@@ -1926,7 +1983,9 @@ impl eframe::App for App {
                             }
                         } else if self.activity == ActivityType::Playlists {
                             ui.vertical(|ui| {
-                                ui.label("Public Playlists:");
+                                ui.horizontal(|ui| {
+                                    ui.label("Public Playlists:");
+                                });
                                 
                                 // Single lock access per frame
                                 let playlists_lock = self.playlist_activity.playlists.try_lock();
@@ -1943,18 +2002,59 @@ impl eframe::App for App {
 
                                         match &*playlists {
                                             LoadingState::Loaded(playlists) => {
+                                                let mut sorted_playlists = playlists.clone();
+                                                match self.current_playlist_sort {
+                                                    SortOption::Name => if self.current_playlist_sort_desc {
+                                                        sorted_playlists.sort_by(|a, b| b.name.to_lowercase().cmp(&a.name.to_lowercase()))
+                                                    } else {
+                                                        sorted_playlists.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+                                                    },
+                                                    SortOption::Songs => if self.current_playlist_sort_desc {
+                                                        sorted_playlists.sort_by(|a, b| b.song_count.cmp(&a.song_count))
+                                                    } else {
+                                                        sorted_playlists.sort_by(|a, b| a.song_count.cmp(&b.song_count))
+                                                    },
+                                                    SortOption::Plays => if self.current_playlist_sort_desc {
+                                                        sorted_playlists.sort_by(|a, b| b.play_count.cmp(&a.play_count))
+                                                    } else {
+                                                        sorted_playlists.sort_by(|a, b| a.play_count.cmp(&b.play_count))
+                                                    },
+                                                    SortOption::Date => if self.current_playlist_sort_desc {
+                                                        sorted_playlists.sort_by(|a, b| b.updated_at.cmp(&a.updated_at))
+                                                    } else {
+                                                        sorted_playlists.sort_by(|a, b| a.updated_at.cmp(&b.updated_at))
+                                                    },
+                                                }
+
                                                 scroll_area.show(ui, |ui| {
                                                     render_list_table(
                                                         ui,
                                                         "public_playlists_table",
-                                                        playlists,
-                                                        |p| p.name.to_string(),
+                                                        &sorted_playlists,
+                                                        |p| p.name.to_string().chars().take(100).collect::<String>(),
                                                         |p| p.song_count.to_string(),
                                                         |p| p.play_count.to_string(),
                                                         |p| p.creator.to_string(),
+                                                        |p| p.created_at.as_deref().unwrap_or("-").split('T').next().unwrap_or("-").to_string(),
+                                                        |p| p.updated_at.as_deref().unwrap_or("-").split('T').next().unwrap_or("-").to_string(),
                                                         |idx| {
                                                             self.playlist_activity
-                                                                .select_playlist(playlists[idx].id)
+                                                                .select_playlist(sorted_playlists[idx].id)
+                                                        },
+                                                        |idx| {
+                                                            let new_sort = match idx {
+                                                                0 => SortOption::Name,
+                                                                1 => SortOption::Songs,
+                                                                2 => SortOption::Plays,
+                                                                5 => SortOption::Date,
+                                                                _ => return,
+                                                            };
+                                                            if self.current_playlist_sort == new_sort {
+                                                                self.current_playlist_sort_desc = !self.current_playlist_sort_desc;
+                                                            } else {
+                                                                self.current_playlist_sort = new_sort;
+                                                                self.current_playlist_sort_desc = false;
+                                                            }
                                                         },
                                                     );
                                                 });
@@ -2001,11 +2101,35 @@ impl eframe::App for App {
                                         
                                         match &*playlists {
                                             LoadingState::Loaded(playlists) => {
+                                                let mut sorted_playlists = playlists.clone();
+                                                match self.current_playlist_sort {
+                                                    SortOption::Name => if self.current_playlist_sort_desc {
+                                                        sorted_playlists.sort_by(|a, b| b.name.to_lowercase().cmp(&a.name.to_lowercase()))
+                                                    } else {
+                                                        sorted_playlists.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+                                                    },
+                                                    SortOption::Songs => if self.current_playlist_sort_desc {
+                                                        sorted_playlists.sort_by(|a, b| b.song_count.cmp(&a.song_count))
+                                                    } else {
+                                                        sorted_playlists.sort_by(|a, b| a.song_count.cmp(&b.song_count))
+                                                    },
+                                                    SortOption::Plays => if self.current_playlist_sort_desc {
+                                                        sorted_playlists.sort_by(|a, b| b.play_count.cmp(&a.play_count))
+                                                    } else {
+                                                        sorted_playlists.sort_by(|a, b| a.play_count.cmp(&b.play_count))
+                                                    },
+                                                    SortOption::Date => if self.current_playlist_sort_desc {
+                                                        sorted_playlists.sort_by(|a, b| b.updated_at.cmp(&a.updated_at))
+                                                    } else {
+                                                        sorted_playlists.sort_by(|a, b| a.updated_at.cmp(&b.updated_at))
+                                                    },
+                                                }
+
                                                 scroll_area.show(ui, |ui| {
                                                     render_list_table(
                                                         ui,
                                                         "my_playlists_table",
-                                                        playlists,
+                                                        &sorted_playlists,
                                                         |p| p.name.to_string(),
                                                         |p| p.song_count.to_string(),
                                                         |p| p.play_count.to_string(),
@@ -2016,9 +2140,26 @@ impl eframe::App for App {
                                                                 .map(|a| a.user.username.to_string())
                                                                 .unwrap_or_else(|| p.creator.to_string())
                                                         },
+                                                        |p| p.created_at.as_deref().unwrap_or("-").split('T').next().unwrap_or("-").to_string(),
+                                                        |p| p.updated_at.as_deref().unwrap_or("-").split('T').next().unwrap_or("-").to_string(),
                                                         |idx| {
                                                             self.my_playlist_activity
-                                                                .select_playlist(playlists[idx].id)
+                                                                .select_playlist(sorted_playlists[idx].id)
+                                                        },
+                                                        |idx| {
+                                                            let new_sort = match idx {
+                                                                0 => SortOption::Name,
+                                                                1 => SortOption::Songs,
+                                                                2 => SortOption::Plays,
+                                                                5 => SortOption::Date,
+                                                                _ => return,
+                                                            };
+                                                            if self.current_playlist_sort == new_sort {
+                                                                self.current_playlist_sort_desc = !self.current_playlist_sort_desc;
+                                                            } else {
+                                                                self.current_playlist_sort = new_sort;
+                                                                self.current_playlist_sort_desc = false;
+                                                            }
                                                         },
                                                     );
                                                 });
@@ -2266,6 +2407,7 @@ impl eframe::App for App {
                                                         |s| s.name.to_string(),
                                                         |s| s.song_count.to_string(),
                                                         |s| s.play_count.to_string(),
+                                                        |_| "-".to_string(),
                                                         |s| {
                                                             s.set_list_date
                                                                 .as_deref()
@@ -2273,10 +2415,12 @@ impl eframe::App for App {
                                                                 .unwrap_or("N/A")
                                                                 .to_string()
                                                         },
+                                                        |_| "-".to_string(),
                                                         |idx| {
                                                             self.setlist_activity
                                                                 .select_setlist(setlists[idx].id)
                                                         },
+                                                        |_| {},
                                                     );
                                                 });
                                                 

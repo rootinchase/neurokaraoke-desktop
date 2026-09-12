@@ -155,6 +155,10 @@ pub struct Playlist {
     pub play_count: u64,
     #[serde(alias = "setListDate")]
     pub set_list_date: Option<String>,
+    #[serde(alias = "createdAt")]
+    pub created_at: Option<String>,
+    #[serde(alias = "updatedAt")]
+    pub updated_at: Option<String>,
 }
 
 #[serde_as]
@@ -282,13 +286,11 @@ pub struct UserClaims {
 
 // --- Request Payloads ---
 
-
 #[derive(Debug, Serialize)]
 pub struct LoginRequest {
     pub username: Arc<str>,
     pub password: Arc<str>,
 }
-
 
 /*
 #[derive(Debug, Serialize)]
@@ -470,6 +472,7 @@ pub struct LazySongDatabase {
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub struct UploadSong {
     pub url: String,
     pub playlist_url: String,
@@ -572,10 +575,22 @@ impl LazySongDatabase {
         req_builder
     }
 
-    pub async fn get_public_playlists(&self) -> anyhow::Result<Vec<Playlist>> {
-        let mut request = self
-            .client
-            .get("https://api.neurokaraoke.com/api/playlist/public");
+    pub async fn get_public_playlists(
+        &self,
+        sort_by: Option<&str>,
+        sort_desc: bool,
+        start_index: u64,
+        page_size: u64,
+    ) -> anyhow::Result<Vec<Playlist>> {
+        let mut url = format!(
+            "https://api.neurokaraoke.com/api/playlist/public?startIndex={}&pageSize={}",
+            start_index, page_size
+        );
+        if let Some(sort) = sort_by {
+            url.push_str(&format!("&sortBy={}&sortDescending={}", sort, sort_desc));
+        }
+
+        let mut request = self.client.get(url);
         request = self.apply_auth(request).await;
 
         let response = request.send().await?;
@@ -605,7 +620,10 @@ impl LazySongDatabase {
     }
 
     pub async fn get_official_setlists(&self, year: u32) -> anyhow::Result<Vec<Playlist>> {
-        let url = format!("https://api.neurokaraoke.com/api/playlists?isSetlist=True&year={}", year);
+        let url = format!(
+            "https://api.neurokaraoke.com/api/playlists?isSetlist=True&year={}",
+            year
+        );
         let mut request = self.client.get(url);
         request = self.apply_auth(request).await; // <-- Inject headers
 
@@ -635,6 +653,7 @@ impl LazySongDatabase {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub async fn upload_song(&self, upload: UploadSong) -> anyhow::Result<()> {
         debug_log!("Adding song to favorites: {}", upload.url);
         let url = "https://idk.neurokaraoke.com/api/user/song/download-from-url";
