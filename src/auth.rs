@@ -6,6 +6,8 @@ use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use reqwest::Client;
 use std::sync::Arc;
+use uuid::Uuid;
+use crate::api::API_URLS;
 // Pulling definitions from section above
 
 #[derive(Clone)]
@@ -18,7 +20,7 @@ impl AuthService {
     pub fn new(client: Client) -> Self {
         Self {
             client,
-            auth_host: "https://idk.neurokaraoke.com".into(),
+            auth_host: API_URLS.idk.into(),
         }
     }
 
@@ -100,9 +102,10 @@ impl AuthService {
         }
     }
 
-    /*
+
     /// GET /api/auth/me
     /// Verifies an active JWT structure against the core validation gate.
+    #[allow(dead_code)]
     pub async fn verify_token(&self, token: &str) -> Result<api::UserClaims> {
         let url = format!("{}/api/auth/me", self.auth_host);
         let res = self.client.get(&url)
@@ -116,11 +119,12 @@ impl AuthService {
             Err(Self::handle_error_response(res).await)
         }
     }
-     */
 
-    /*
+
+
     /// POST /api/auth/qr-session
     /// Allocates an unlinked identity synchronization state for hardware logins (e.g., TV/Car clients).
+    #[allow(dead_code)]
     pub async fn initialize_qr_session(&self) -> Result<api::QrSession> {
         let url = format!("{}/api/auth/qr-session", self.auth_host);
         let res = self.client.post(&url).send().await?;
@@ -131,11 +135,12 @@ impl AuthService {
             Err(Self::handle_error_response(res).await)
         }
     }
-     */
 
-    /*
+
+
     /// GET /api/auth/qr-session/{sessionId}
     /// Polls the allocation loop to detect if a mobile/desktop controller has signed the session.
+    #[allow(dead_code)]
     pub async fn poll_qr_session(&self, session_id: Uuid) -> Result<Option<api::AuthContext>> {
         let url = format!("{}/api/auth/qr-session/{}", self.auth_host, session_id);
         let res = self.client.get(&url).send().await?;
@@ -152,11 +157,12 @@ impl AuthService {
             Err(Self::handle_error_response(res).await)
         }
     }
-     */
 
-    /*
+
+
     /// POST /api/auth/pairing-code
     /// Generates a human-readable linking identifier to connect target hardware platforms.
+    #[allow(dead_code)]
     pub async fn generate_pairing_code(&self, token: &str) -> Result<String> {
         let url = format!("{}/api/auth/pairing-code", self.auth_host);
         let res = self.client.post(&url)
@@ -171,11 +177,11 @@ impl AuthService {
             Err(Self::handle_error_response(res).await)
         }
     }
-     */
 
-    /*
-    pub async fn get_user_profile(&self, token: &str) -> anyhow::Result<crate::api::ProfileResponse> {
-        let url = "https://api.neurokaraoke.com/api/badge/profile";
+
+    #[allow(dead_code)]
+    pub async fn get_user_profile(&self, token: &str) -> Result<api::ProfileResponse> {
+        let url = format!("{}/api/badge/profile", API_URLS.api);
         let res = self.client.get(url)
             .bearer_auth(token)
             .send()
@@ -187,8 +193,6 @@ impl AuthService {
             Err(Self::handle_error_response(res).await)
         }
     }
-
-     */
 }
 
 fn extract_claims_from_jwt(token: &str) -> Result<api::UserClaims> {
@@ -208,9 +212,9 @@ fn extract_claims_from_jwt(token: &str) -> Result<api::UserClaims> {
 
     // Attempt to parse out the identity string. If the server passes a non-standard numeric string,
     // or string literal, we handle fallback mappings or map it safely to a Uuid:
-    let user_uuid = uuid::Uuid::parse_str(&raw_payload.id).unwrap_or_else(|_| {
+    let user_uuid = Uuid::parse_str(&raw_payload.id).unwrap_or_else(|_| {
         // Fallback generation for numeric/non-standard string IDs
-        uuid::Uuid::new_v4()
+        Uuid::new_v4()
     });
 
     Ok(api::UserClaims {

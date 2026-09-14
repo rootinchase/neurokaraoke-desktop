@@ -1,4 +1,4 @@
-use crate::api::{LazySongDatabase, LoadingState};
+use crate::api::{LazySongDatabase, LoadingState, API_URLS};
 use crate::cache::Cache;
 use crate::debug_log;
 use eframe::egui;
@@ -574,14 +574,14 @@ impl Player {
                                     audio_url.to_string()
                                 } else {
                                     let clean_path = audio_url.trim_start_matches('/');
-                                    format!("https://storage.neurokaraoke.com/{}", clean_path)
+                                    format!("{}/{}", API_URLS.storage, clean_path)
                                 };
 
                                 // Fix absolute path base mismatches if the API returned neurokaraoke.com directly
-                                let url = if url.contains("https://neurokaraoke.com/") {
+                                let url = if url.contains(API_URLS.base) {
                                     url.replace(
-                                        "https://neurokaraoke.com/",
-                                        "https://storage.neurokaraoke.com/",
+                                        API_URLS.base,
+                                        API_URLS.storage,
                                     )
                                 } else {
                                     url

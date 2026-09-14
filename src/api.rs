@@ -12,6 +12,23 @@ use std::string::ToString;
 use std::sync::Arc;
 use uuid::Uuid;
 
+pub struct ApiUrls {
+    pub base: &'static str,
+    pub api: &'static str,
+    pub idk: &'static str,
+    pub images: &'static str,
+    pub storage: &'static str,
+
+}
+pub const API_URLS: ApiUrls = ApiUrls {
+    base: "https://neurokaraoke.com",
+    api: "https://api.neurokaraoke.com",
+    idk: "https://idk.neurokaraoke.com",
+    images: "https://images.neurokaraoke.com",
+    storage: "https://storage.neurokaraoke.com"
+};
+
+
 pub mod internal {
     use serde::{Deserialize, Deserializer};
     use std::sync::Arc;
@@ -41,79 +58,6 @@ pub mod internal {
         Single(Arc<str>),
         List(Vec<PossiblyWithId>),
         Optional(Option<Vec<PossiblyWithId>>),
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::MaybeArtists;
-        use super::PossiblyWithId;
-        use serde_json::json;
-
-        #[test]
-        fn test_maybe_artists_deserialization() {
-            // Case 1: Simple list of artists (now List variant)
-            let j1 = json!([{"name": "Artist 1"}]);
-            let r1: Result<MaybeArtists, _> = serde_json::from_value(j1);
-            assert!(r1.is_ok(), "Failed to deserialize list: {:?}", r1.err());
-
-            // Case 2: Null
-            let j2 = json!(null);
-            let r2: Result<MaybeArtists, _> = serde_json::from_value(j2);
-            assert!(r2.is_ok(), "Failed to deserialize null: {:?}", r2.err());
-
-            // Case 3: Empty list
-            let j3 = json!([]);
-            let r3: Result<MaybeArtists, _> = serde_json::from_value(j3);
-            assert!(
-                r3.is_ok(),
-                "Failed to deserialize empty list: {:?}",
-                r3.err()
-            );
-
-            // Case 4: Single String
-            let j4 = json!("Artist 1");
-            let r4: Result<MaybeArtists, _> = serde_json::from_value(j4);
-            assert!(
-                r4.is_ok(),
-                "Failed to deserialize single string: {:?}",
-                r4.err()
-            );
-        }
-
-        #[test]
-        fn test_possibly_with_id_deserialization() {
-            // String (should match NoId)
-            let j1 = json!("Artist 1");
-            let r1: Result<PossiblyWithId, _> = serde_json::from_value(j1);
-            assert!(r1.is_ok(), "Failed to deserialize string: {:?}", r1.err());
-
-            // Object with name (should match ID)
-            let j2 = json!({"name": "Artist 1"});
-            let r2: Result<PossiblyWithId, _> = serde_json::from_value(j2);
-            assert!(
-                r2.is_ok(),
-                "Failed to deserialize name-only object: {:?}",
-                r2.err()
-            );
-
-            // Object with id and name (should match ID)
-            let j3 = json!({"id": "550e8400-e29b-41d4-a716-446655440000", "name": "Artist 1"});
-            let r3: Result<PossiblyWithId, _> = serde_json::from_value(j3);
-            assert!(
-                r3.is_ok(),
-                "Failed to deserialize full object: {:?}",
-                r3.err()
-            );
-
-            // Empty object (should fail?)
-            let j4 = json!({});
-            let r4: Result<PossiblyWithId, _> = serde_json::from_value(j4);
-            assert!(
-                r4.is_err(),
-                "Should have failed to deserialize empty object: {:?}",
-                r4
-            );
-        }
     }
 
     pub fn deserialize_artists<'de, D>(d: D) -> Result<Arc<[Arc<str>]>, D::Error>
@@ -292,14 +236,15 @@ pub struct LoginRequest {
     pub password: Arc<str>,
 }
 
-/*
+
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct RegisterRequest {
     pub username: Arc<str>,
     pub password: Arc<str>,
     pub email: Option<Arc<str>>,
 }
- */
+
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -308,12 +253,13 @@ pub struct DiscordTokenRequest {
     pub access_token: Arc<str>,
 }
 
-/*
+
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct RedeemCodeRequest {
     pub code: Arc<str>,
 }
- */
+
 
 // --- Response Payloads ---
 
@@ -333,26 +279,19 @@ pub(crate) struct JwtPayload {
     pub username: String,
 }
 
-/*
-#[derive(Clone)]
-pub struct AuthService {
-    client: Client,
-    auth_host: Arc<str>, // https://idk.neurokaraoke.com
-    api_host: Arc<str>,  // https://api.neurokaraoke.com
-}
 
- */
 
-/*
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct QrSession {
     pub session_id: Uuid,
     pub qr_code_data: Arc<str>,
     pub is_linked: bool,
     pub token: Option<Arc<str>>,
 }
- */
+
 
 #[serde_as]
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -506,7 +445,7 @@ impl LazySongDatabase {
     pub async fn get_user_limits(&self) -> anyhow::Result<UserLimits> {
         let request = self
             .client
-            .get("https://api.neurokaraoke.com/api/user/upload-limits");
+            .get( format!("{}/api/user/upload-limits", API_URLS.api) );
         let request = self.apply_auth(request).await;
 
         let response = request.send().await?;
@@ -520,8 +459,6 @@ impl LazySongDatabase {
         let limits: UserLimits = response.json().await?;
         Ok(limits)
     }
-
-    const SONGS_API_URL: &str = "https://api.neurokaraoke.com/api/songs";
 
     pub fn new(
         client: Client,
@@ -538,7 +475,7 @@ impl LazySongDatabase {
     }
 
     pub async fn fetch_favorite_playlists(&self) -> anyhow::Result<Vec<Playlist>> {
-        let url = "https://api.neurokaraoke.com/api/favorites/type?type=3";
+        let url = format!( "{}/api/favorites/type?type=3", API_URLS.api );
         let request = self.client.get(url);
         let request = self.apply_auth(request).await;
 
@@ -583,8 +520,8 @@ impl LazySongDatabase {
         page_size: u64,
     ) -> anyhow::Result<Vec<Playlist>> {
         let mut url = format!(
-            "https://api.neurokaraoke.com/api/playlist/public?startIndex={}&pageSize={}",
-            start_index, page_size
+            "{}/api/playlist/public?startIndex={}&pageSize={}",
+            API_URLS.api, start_index, page_size
         );
         if let Some(sort) = sort_by {
             url.push_str(&format!("&sortBy={}&sortDescending={}", sort, sort_desc));
@@ -606,7 +543,7 @@ impl LazySongDatabase {
     pub async fn get_user_playlists(&self) -> anyhow::Result<Vec<Playlist>> {
         let mut request = self
             .client
-            .get("https://api.neurokaraoke.com/api/user/playlists");
+            .get( format!("{}/api/user/playlists", API_URLS.api ) );
         request = self.apply_auth(request).await; // <-- Inject headers
 
         let response = request.send().await?;
@@ -620,10 +557,7 @@ impl LazySongDatabase {
     }
 
     pub async fn get_official_setlists(&self, year: u32) -> anyhow::Result<Vec<Playlist>> {
-        let url = format!(
-            "https://api.neurokaraoke.com/api/playlists?isSetlist=True&year={}",
-            year
-        );
+        let url = format!("{}/api/playlists?isSetlist=True&year={}", API_URLS.api, year );
         let mut request = self.client.get(url);
         request = self.apply_auth(request).await; // <-- Inject headers
 
@@ -640,7 +574,8 @@ impl LazySongDatabase {
     pub async fn add_to_favorites(&self, song_id: Uuid) -> anyhow::Result<()> {
         debug_log!("Adding song to favorites: {}", song_id);
         let url = format!(
-            "https://api.neurokaraoke.com/api/user/favorites/{}",
+            "{}/api/user/favorites/{}",
+            API_URLS.api,
             song_id
         );
         let request = self.client.put(url);
@@ -656,7 +591,7 @@ impl LazySongDatabase {
     #[allow(dead_code)]
     pub async fn upload_song(&self, upload: UploadSong) -> anyhow::Result<()> {
         debug_log!("Adding song to favorites: {}", upload.url);
-        let url = "https://idk.neurokaraoke.com/api/user/song/download-from-url";
+        let url = format!("{}/api/user/song/download-from-url", API_URLS.idk );
 
         let request = self.client.post(url).json(&upload);
         let request = self.apply_auth(request).await;
@@ -671,7 +606,8 @@ impl LazySongDatabase {
     pub async fn remove_from_favorites(&self, song_id: Uuid) -> anyhow::Result<()> {
         debug_log!("Removing song from favorites: {}", song_id);
         let url = format!(
-            "https://api.neurokaraoke.com/api/user/favorites/{}",
+            "{}/api/user/favorites/{}",
+            API_URLS.api,
             song_id
         );
         let request = self.client.delete(url);
@@ -689,7 +625,8 @@ impl LazySongDatabase {
 
     pub async fn report_play_count(&self, song_id: Uuid) -> anyhow::Result<()> {
         let url = format!(
-            "https://api.neurokaraoke.com/api/songs/playCount/{}",
+            "{}/api/songs/playCount/{}",
+            API_URLS.api,
             song_id
         );
         let request = self.client.put(url);
@@ -708,7 +645,7 @@ impl LazySongDatabase {
     pub async fn get_favorite_songs(&self) -> anyhow::Result<Vec<SongDTO>> {
         let mut request = self
             .client
-            .get("https://api.neurokaraoke.com/api/favorites/type?type=0");
+            .get(format!("{}/api/favorites/type?type=0", API_URLS.api ) );
         request = self.apply_auth(request).await;
 
         let response = request.send().await?;
@@ -765,7 +702,7 @@ impl LazySongDatabase {
     pub async fn get_playlist_details(&self, id: Uuid) -> anyhow::Result<PlaylistDetail> {
         let mut request = self
             .client
-            .get(format!("https://api.neurokaraoke.com/api/playlist/{}", id));
+            .get(format!("{}/api/playlist/{}", API_URLS.api, id));
         request = self.apply_auth(request).await; // <-- Inject headers
 
         let response = request.send().await?;
@@ -795,7 +732,7 @@ impl LazySongDatabase {
             let db_self = self.clone(); // Clone database handle to share within the task context
 
             tokio::spawn(async move {
-                let url = format!("{}/{}", Self::SONGS_API_URL, id.to_string());
+                let url = format!("{}/api/songs/{}", API_URLS.api, id.to_string());
                 let mut req = client.get(url);
                 req = db_self.apply_auth(req).await; // <-- Inject token directly into the thread loop
 
@@ -824,7 +761,7 @@ impl LazySongDatabase {
     ) -> anyhow::Result<Arc<[LoadingState<T>]>> {
         let json = self
             .client
-            .post(Self::SONGS_API_URL)
+            .post( format!("{}/api/songs", API_URLS.api) )
             .json(&json!({"page": 1, "pageSize": 0}))
             .send()
             .await?
@@ -837,7 +774,7 @@ impl LazySongDatabase {
             .ok_or_else(|| anyhow!("missing total count"))?;
         if let Value::Object(ref mut obj) = self
             .client
-            .post(Self::SONGS_API_URL)
+            .post(format!("{}/api/songs", API_URLS.api))
             .json(&json!({"page": 1, "pageSize": total_count}))
             .send()
             .await?

@@ -1,4 +1,4 @@
-use crate::api::AuthContext;
+use crate::api::{AuthContext, API_URLS};
 use crate::auth::AuthService;
 use crate::auth::discord::{NEURO_KARAOKE_DISCORD, capture_discord_token};
 use crate::cache::Cache;
@@ -126,7 +126,7 @@ impl ProfileActivity {
             .badge_images
             .insert(badge_id.to_string(), AvatarState::Downloading);
 
-        let final_url = format!("https://images.neurokaraoke.com/{}/public", image_path);
+        let final_url = format!("{}/{}/public", API_URLS.images, image_path);
 
         let tx = self.tx.clone();
         let ctx_clone = ctx.clone();

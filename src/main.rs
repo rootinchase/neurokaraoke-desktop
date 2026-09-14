@@ -11,13 +11,15 @@ use crate::activity::{
     ActivityType, favorites::FavoritesActivity, playlist::PlaylistActivity, profile,
     setlist::SetlistActivity,
 };
-// RustRover is stupid and wants to get rid of this crate... that's needed by egui_extras
-use crate::api::{LazySongDatabase, LoadingState, PlaylistDetail, Song};
+use crate::api::{LazySongDatabase, LoadingState, PlaylistDetail, Song, API_URLS};
 use crate::audio::{LoopMode, PlaybackState, Player};
+use crate::auth::discord::NEURO_KARAOKE_DISCORD;
 use crate::cache::Cache;
 use crate::config::{Config, SharedConfig};
 use crate::theme::{SelectableTheme, ThemeManager};
+// RustRover is stupid and wants to get rid of this crate... that's needed by egui_extras
 use image as _;
+
 
 use dashmap::DashMap;
 use eframe::egui::{
@@ -35,6 +37,10 @@ use uuid::Uuid;
 
 // For media controls on Linux, macOS, and Windows
 use playwire::MediaControls;
+
+// For Discord RPC
+use presenceforge::ActivityBuilder;
+use presenceforge::async_io::tokio::TokioDiscordIpcClient;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -109,6 +115,18 @@ pub struct App {
     sleep_timer_end: Option<Instant>,
     show_timer_menu: bool,
     show_queue: bool,
+
+    //discord RPC
+    discord_tx: tokio::sync::mpsc::UnboundedSender<DiscordPresencePayload>,
+}
+
+pub struct DiscordPresencePayload {
+    pub title: String,
+    pub artist_line: String,
+    pub is_playing: bool,
+    pub position_secs: u64,
+    pub duration_secs: Option<u64>,
+    pub cover_url: Option<String>
 }
 
 impl App {
@@ -162,7 +180,7 @@ impl App {
         ctx.set_fonts(fonts);
 
         #[cfg(debug_assertions)]
-        ctx.global_style_mut(|s| s.debug.warn_if_rect_changes_id = false); // workaround for https://github.com
+        ctx.global_style_mut(|s| s.debug.warn_if_rect_changes_id = false);
 
         let config = Config::read().unwrap_or_default();
         let shared_config = config.to_shared();
@@ -184,8 +202,9 @@ impl App {
             let shared_config = shared_config.clone();
 
             rt.spawn(async move {
-                // FIX: Directly fetch profile, removing redundant verification call
-                let profile_url = "https://api.neurokaraoke.com/api/badge/profile";
+                let profile_url = format!("{}/api/badge/profile",
+                                          API_URLS.api
+                );
                 match client_clone
                     .get(profile_url)
                     .bearer_auth(&stored_token)
@@ -308,11 +327,17 @@ impl App {
         let cached_art_paths = Arc::new(DashMap::new());
         let active_art_downloads = Arc::new(dashmap::DashSet::new());
 
+        let (discord_tx, discord_rx) = tokio::sync::mpsc::unbounded_channel::<DiscordPresencePayload>();
+        rt.spawn(async move {
+            spawn_discord_worker(discord_rx).await;
+        });
+
         let app = Self {
             cache,
             songs: songs.clone(),
             player,
             media_controls,
+            discord_tx,
             current_track: None,
             search: "".to_string(),
             dragging_seeker: false,
@@ -412,16 +437,15 @@ impl App {
             let id_worker = key.clone();
 
             // Use cloudflare_id if available, otherwise construct URL from absolute_path if it's a relative path on the image server
-            let image_base = "https://images.neurokaraoke.com";
             let url = if let Some(id) = cloudflare_id {
                 format!(
                     "{}/WxURxyML82UkE7gY-PiBKw/{}/w=512,h=512,fit=crop,gravity=auto ",
-                    image_base, id
+                    API_URLS.images, id
                 )
             } else {
                 format!(
                     "{}/{}/{}",
-                    image_base,
+                    API_URLS.images,
                     absolute_path.trim_start_matches('/'),
                     "/width=512,height=512,fit=crop,gravity=auto"
                 )
@@ -508,6 +532,43 @@ impl App {
                 let shuffle = self.player.get_shuffle();
                 let volume = self.player.get_volume() as f64;
 
+                if let Some(track) = &self.current_track {
+                    // ─── REGENERATE REMOTE HTTP URL FOR DISCORD RPC ───
+                    let cloudflare_id = if let Some(id) = self.current_song_uuid {
+                        if let LoadingState::Loaded(song) = self.songs.get(&id, |s| s.cover_art.clone()) {
+                            // ✨ FIXED: Now correctly extracts and passes `cid` instead of `id`
+                            song.and_then(|art| art.cloudflare_id.map(|cid| cid.to_string()))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                        .or_else(|| {
+                            let guard = self.player.current_url_metadata.lock().unwrap();
+                            guard.as_ref()
+                                .and_then(|m| m.cover_art.as_ref())
+                                .and_then(|a| a.cloudflare_id.as_ref())
+                                .map(|id| id.to_string())
+                        });
+
+                    let external_cover_url = cloudflare_id.map(|id| {
+                        format!("{}/WxURxyML82UkE7gY-PiBKw/{}/w=512,h=512,fit=crop,gravity=auto",
+                                API_URLS.images,
+                                id
+                        )
+                    });
+
+                    let _ = self.discord_tx.send(DiscordPresencePayload {
+                        title: track.title.clone(),
+                        artist_line: track.artists.join(""),
+                        is_playing: !state.paused(),
+                        position_secs: state.position().as_secs(),
+                        duration_secs: Some(state.duration().as_secs()),
+                        cover_url: external_cover_url,
+                    });
+                }
+
                 let _ = controls.set_state(&playwire::PlaybackState {
                     track: self.current_track.clone(),
                     playing: !state.paused(),
@@ -521,6 +582,7 @@ impl App {
             }
         }
     }
+
     fn run(rt: Arc<tokio::runtime::Runtime>) -> eframe::Result<()> {
         let icon = eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png"))
             .expect("Invalid icon");
@@ -890,7 +952,7 @@ impl eframe::App for App {
 
                     rt.spawn(async move {
                         // FIX: Directly fetch profile, removing redundant UserClaims check
-                        let profile_url = "https://api.neurokaraoke.com/api/badge/profile";
+                        let profile_url = format!("{}/api/badge/profile", API_URLS.api);
                         match client_clone
                             .get(profile_url)
                             .bearer_auth(&stored_token)
@@ -1255,7 +1317,7 @@ impl eframe::App for App {
 
                     let cover_art_url = cloudflare_id
                         .clone()
-                        .map(|id| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=512,h=512,fit=cover,quality=90", id))
+                        .map(|id| format!("{}/WxURxyML82UkE7gY-PiBKw/{}/w=512,h=512,fit=cover,quality=90", API_URLS.images ,id))
                         .unwrap_or_else(|| "".to_string());
 
                     self.update_os_metadata(
@@ -1279,7 +1341,10 @@ impl eframe::App for App {
                                      if track_clone.artwork_url != new_artwork_path {
                                          // Artwork updated, re-sync metadata
                                          let cover_art_url = art.cloudflare_id
-                                            .map(|id| format!("https://images.neurokaraoke.com/WxURxyML82UkE7gY-PiBKw/{}/w=512,h=512,fit=cover,quality=90", id))
+                                            .map(|id| format!("{}/WxURxyML82UkE7gY-PiBKw/{}/w=512,h=512,fit=cover,quality=90",
+                                                              API_URLS.images,
+                                                              id
+                                            ))
                                             .unwrap_or_else(|| "".to_string());
                                          self.update_os_metadata(
                                             ui.ctx(),
@@ -2560,3 +2625,73 @@ impl Drop for App {
         }
     }
 }
+
+
+pub async fn spawn_discord_worker(mut rx: tokio::sync::mpsc::UnboundedReceiver<DiscordPresencePayload>) {
+    // FIX: In presenceforge 0.3.0, the constructor itself is an async function taking only a single String argument
+    let mut client = match TokioDiscordIpcClient::new( NEURO_KARAOKE_DISCORD.client_id.to_string() ).await {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("spawn_discord_worker: Failed to create Discord structure: {:?}", e);
+            return;
+        }
+    };
+
+    let mut connected = false;
+
+    while let Some(payload) = rx.recv().await {
+        // Dynamic lazy reconnection verification
+        if !connected {
+            if client.connect().await.is_ok() {
+                connected = true;
+                debug_log!("spawn_discord_worker: Connected to local Discord pipe!");
+            } else {
+                continue;
+            }
+        }
+
+        // Updated for presenceforge 0.3.0 builder specifications
+        let mut activity = ActivityBuilder::new()
+            .details(payload.title)
+            .large_text("NeuroKaraoke");
+
+        if let Some(ref image_url) = payload.cover_url && !image_url.is_empty() {
+            activity = activity.large_image(image_url.trim());
+        } else {
+            activity = activity.large_image("app_icon"); // Default pre-uploaded asset panel graphic
+        }
+
+
+        if !payload.is_playing {
+            activity = activity.state("Paused ⏸");
+        } else {
+            activity = activity.state(payload.artist_line);
+
+            if let Some(dur) = payload.duration_secs {
+                let now = std::time::SystemTime::now();
+                // Subtraction protects correctness if egui loop lags slightly behind decoding frames
+                let start_time = now.checked_sub(Duration::from_secs(payload.position_secs))
+                    .unwrap_or(now);
+                let end_time = start_time + Duration::from_secs(dur);
+
+                // Convert SystemTime into raw epoch seconds integers required by the builder API
+                if let (Ok(start_unix), Ok(end_unix)) = (
+                    start_time.duration_since(std::time::SystemTime::UNIX_EPOCH),
+                    end_time.duration_since(std::time::SystemTime::UNIX_EPOCH)
+                ) {
+                    activity = activity
+                        .start_timestamp(start_unix.as_secs())
+                        .end_timestamp(end_unix.as_secs() as i64);
+                }
+            }
+        }
+
+        if let Err(e) = client.set_activity(&activity.build()).await {
+            eprintln!("spawn_discord_worker: Communication error - dropping client connection state: {:?}", e);
+            // FIX: Clear the activity layout state. The socket cleans up natively when disconnected or reassigned.
+            let _ = client.clear_activity().await;
+            connected = false; // Flag to attempt reconnection on next track update loop pass
+        }
+    }
+}
+

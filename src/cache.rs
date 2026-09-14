@@ -10,6 +10,7 @@ use std::time::{Duration, SystemTime};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 use uuid::Uuid;
+use crate::api::API_URLS;
 
 static CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -88,7 +89,7 @@ impl Cache {
         // don't clean cache if you are offline as you won't be able to re-download what gets deleted
         if async {
             client
-                .get("https://api.neurokaraoke.com/healthz")
+                .get(format!("{}/healthz", API_URLS.api))
                 .timeout(Duration::from_secs(5))
                 .send()
                 .await?
