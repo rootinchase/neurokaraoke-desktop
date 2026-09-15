@@ -2019,7 +2019,7 @@ impl eframe::App for App {
                                         });
                                     });
                             }
-                        } else if self.activity == ActivityType::Home {
+                        } else if self.activity == ActivityType::Search {
                             ui.add(egui::TextEdit::singleline(&mut self.search));
 
                             ui.horizontal(|ui| {
@@ -2069,7 +2069,12 @@ impl eframe::App for App {
                                             .map(|x| *x.key())
                                             .collect::<Vec<Uuid>>(),
                                     );
-                                    self.player.playlist(Some(pl.into()));
+                                    let playlist_arc: Arc<[Uuid]> = pl.clone().into();
+                                    self.player.playlist(Some(playlist_arc));
+                                    if self.player.get_playback_state().is_none() && !pl.is_empty() {
+                                        self.player.play_song(pl[0]);
+                                        debug_log!("Now playing")
+                                    }
                                 }
 
                                 if ui.button("delete playlist").clicked() {

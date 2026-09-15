@@ -187,16 +187,27 @@ impl Cache {
         } {
             Some(id) => {
                 let path = cache_dir().join(format!("assets/{:016x}", id));
+                crate::debug_log!("🔍 [Cache API] Checking cache for key: {:?}, id: {:?}, expected path: {:?}", key, id, path);
                 match tokio::fs::File::open(&path).await {
-                    Ok(f) => Some(f),
+                    Ok(f) => {
+                        crate::debug_log!("✅ [Cache API] Cache file found and opened: {:?}", path);
+                        Some(f)
+                    }
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        crate::debug_log!("⚠️ [Cache API] Cache file not found at: {:?}", path);
                         self.entries.remove(key);
                         None
                     }
-                    Err(e) => panic!("Failed to read this cache file: {}\n{e}", path.display()),
+                    Err(e) => {
+                        crate::debug_log!("🔴 [Cache API] Error opening cache file: {:?}, error: {:?}", path, e);
+                        panic!("Failed to read this cache file: {}\n{e}", path.display())
+                    },
                 }
             }
-            None => None,
+            None => {
+                crate::debug_log!("⚠️ [Cache API] No cache entry found for key: {:?}", key);
+                None
+            },
         }
     }
 

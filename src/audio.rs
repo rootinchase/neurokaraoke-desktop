@@ -512,9 +512,37 @@ impl Player {
                                     match database.get(&uuid, |s| {
                                         s.opus.clone().or_else(|| s.absolute_path.clone())
                                     }) {
-                                        LoadingState::Loaded(_path) => {}
-                                        LoadingState::Loading => {}
-                                        LoadingState::Failed(_) => {
+                                        LoadingState::Loaded(path) => {
+                                            debug_log!("🟢 [Audio API] Song loaded: {:?}", path);
+                                            if let Some(path_str) = path {
+                                                let handle = player.clone();
+                                                let cache_worker = cache.clone();
+                                                let client_worker = client.clone(); // `client` is available in `internal` scope
+                                                let cb_worker = cb;
+                                                let url = format!("{}/{}", API_URLS.storage, path_str.as_ref() as &str); // Construct URL
+
+                                                rt.spawn(async move {
+                                                    match cache_worker.get_or_download_audio(&client_worker, uuid, url).await {
+                                                        Ok(tokio_file) => {
+                                                            let std_file = tokio_file.into_std().await;
+                                                            handle.sender.try_send(PlaybackCommand::SongReady(Some(uuid), std_file, Some(cb_worker))).ok();
+                                                            debug_log!("🟢 [Audio API] Song ready after cache resolution");
+                                                        }
+                                                        Err(e) => {
+                                                            debug_log!("🔴 [Audio API] Song resolution error: {:?}", e);
+                                                        }
+                                                    }
+                                                });
+                                            } else {
+                                                debug_log!("🔴 [Audio API] Song path is empty");
+                                            }
+                                        }
+                                        LoadingState::Loading => {
+                                            debug_log!("🟡 [Audio API] Song loading: {:?}", uuid);
+                                            continue;
+                                        }
+                                        LoadingState::Failed(e) => {
+                                            debug_log!("🔴 [Audio API] Song load failed: {:?}, error: {:?}", uuid, e);
                                             continue;
                                         }
                                     }
@@ -646,27 +674,27 @@ impl Player {
 
                                 mixer.pause();
                                 mixer.clear();
-                                drop(mixer);
-
-                                mixer = rodio::Player::connect_new(&handle.mixer());
 
                                 let current_vol = player.player_state.lock().unwrap().volume;
                                 mixer.set_volume(current_vol);
+                                debug_log!("🟢 [Audio API] Volume set to: {}", current_vol);
 
                                 let duration =
                                     decoder.total_duration().unwrap_or_else(Duration::default);
                                 let target_uuid = uuid.unwrap_or_else(Uuid::new_v4);
 
                                 debug_log!(
-                                    "🟢 [Audio API] SUCCESS: Playing fresh mixer instance. UUID: {}, Duration: {}s",
+                                    "🟢 [Audio API] SUCCESS: Reusing mixer instance. UUID: {}, Duration: {}s",
                                     target_uuid,
                                     duration.as_secs()
                                 );
 
                                 *lock = Some(PlaybackState::new(duration, target_uuid, true));
                                 mixer.append(decoder);
+                                debug_log!("🟢 [Audio API] Decoder appended to mixer.");
 
                                 mixer.play();
+                                debug_log!("🟢 [Audio API] Mixer play command issued.");
 
                                 if let Some(cb) = cb {
                                     cb(&player);
