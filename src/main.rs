@@ -173,7 +173,13 @@ impl App {
 
         fonts.font_data.insert(
             "noto-sans-kr".to_string(),
-            egui::FontData::from_static(include_bytes!("../assets/fonts/NotoSansKR-VariableFont_wght.ttf"))
+            egui::FontData::from_static(include_bytes!("../assets/fonts/NotoSansKR-Regular.ttf"))
+                .into(),
+        );
+
+        fonts.font_data.insert(
+            "noto-sans-sc".to_string(),
+            egui::FontData::from_static(include_bytes!("../assets/fonts/NotoSansSC-Regular.ttf"))
                 .into(),
         );
 
@@ -182,6 +188,12 @@ impl App {
             .entry(egui::FontFamily::Proportional)
             .or_default()
             .insert(0, "noto-sans-jp".to_owned());
+
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .insert(0, "noto-sans-sc".to_owned());
 
         fonts
             .families
