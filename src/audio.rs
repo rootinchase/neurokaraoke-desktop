@@ -454,6 +454,7 @@ impl Player {
 
                             mixer.pause();
                             mixer.clear();
+                            // Safely clear metadata when switching playlists
                             *player.current_url_metadata.lock().unwrap() = None;
 
                             let vol = player.player_state.lock().unwrap().volume;
@@ -549,7 +550,16 @@ impl Player {
                             }
 
                             if let Some((opt_uuid, opt_dto)) = next_song_to_play {
-                                *player.current_url_metadata.lock().unwrap() = None;
+                                // Safely clear metadata if the new song isn't the one we are transitioning to
+                                let mut meta_lock = player.current_url_metadata.lock().unwrap();
+                                if let Some(meta) = &*meta_lock {
+                                    if opt_uuid.is_none() || Some(meta.id) != opt_uuid {
+                                        *meta_lock = None;
+                                    }
+                                } else {
+                                    *meta_lock = None;
+                                }
+
                                 if let Some(dto) = opt_dto {
                                     debug_log!("NextSong: Loading URL song transition");
                                     player.url_playback(opt_uuid, dto, Player::play);
@@ -599,7 +609,15 @@ impl Player {
                                     mixer.pause();
                                     mixer.clear();
                                     *lock = Some(PlaybackState::new_loading(uuid));
-                                    *player.current_url_metadata.lock().unwrap() = None; // FIX: Clear stale URL metadata
+                                    // Helper to safely clear metadata if the ID doesn't match
+                                let mut meta_lock = player.current_url_metadata.lock().unwrap();
+                                if let Some(meta) = &*meta_lock {
+                                    if Some(meta.id) != Some(uuid) {
+                                        *meta_lock = None;
+                                    }
+                                } else {
+                                    *meta_lock = None;
+                                }
                                     drop(lock);
                                     match database.get(&uuid, |s| {
                                         s.opus.clone().or_else(|| s.absolute_path.clone())
@@ -762,7 +780,16 @@ impl Player {
 
                                 mixer.pause();
                                 mixer.clear();
-                                *player.current_url_metadata.lock().unwrap() = None;
+                                {
+                                    let mut meta_lock = player.current_url_metadata.lock().unwrap();
+                                    if let Some(meta) = &*meta_lock {
+                                        if uuid.is_none() || Some(meta.id) != uuid {
+                                            *meta_lock = None;
+                                        }
+                                    } else {
+                                        *meta_lock = None;
+                                    }
+                                }
 
                                 let current_vol = player.player_state.lock().unwrap().volume;
                                 mixer.set_volume(current_vol);
@@ -778,6 +805,7 @@ impl Player {
                                     duration.as_secs()
                                 );
 
+                                // Correctly set start to now so that position() = Instant::now() - start = 0
                                 *lock = Some(PlaybackState {
                                     start: Instant::now(),
                                     paused: None,
@@ -785,10 +813,15 @@ impl Player {
                                     song: target_uuid,
                                     loading: false,
                                 });
+                                
+                                // Nuclear Option: Re-instantiate the mixer to guarantee a fresh pipeline
+                                drop(mixer);
+                                mixer = rodio::Player::connect_new(&handle.mixer());
+                                mixer.set_volume(current_vol);
+
                                 mixer.append(decoder);
-                                debug_log!("🟢 [Audio API] Decoder appended to mixer. Song: {:?}", target_uuid);
-
-
+                                debug_log!("🟢 [Audio API] Decoder appended to new mixer instance. Song: {:?}", target_uuid);
+                                
                                 mixer.play();
                                 debug_log!("🟢 [Audio API] Mixer play command issued.");
 

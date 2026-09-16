@@ -1483,7 +1483,10 @@ impl eframe::App for App {
                         && self.dragging_seeker
                         && let Some(p) = dragging_progress
                     {
-                        self.player.seek(state.duration().mul_f32(p));
+                        // Verify we are still on the same song before applying the seek
+                        if self.current_song_uuid == Some(state.song()) {
+                            self.player.seek(state.duration().mul_f32(p));
+                        }
                         self.dragging_seeker = false;
                     }
 
