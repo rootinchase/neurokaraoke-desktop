@@ -510,7 +510,12 @@ impl Player {
 
                                     if let Some(idx) = current_index {
                                         let len = playlist.len();
-                                        for next_idx in (idx + 1)..len {
+                                        let mut search_indices = (idx + 1..len).collect::<Vec<_>>();
+                                        if loop_mode == LoopMode::All {
+                                            search_indices.extend(0..idx + 1);
+                                        }
+
+                                        for next_idx in search_indices {
                                             if let Some(url_playlist) = &player_state.url_playlist {
                                                 if url_playlist.len() == playlist.len() {
                                                     if let Some(next_song) =
@@ -536,6 +541,7 @@ impl Player {
                                             }
                                         }
                                     }
+
                                 }
 
                                 drop(lock);
