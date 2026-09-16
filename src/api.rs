@@ -205,6 +205,10 @@ pub struct Song {
     #[serde(default, deserialize_with = "deserialize_artists")]
     pub original_artists: Arc<[Arc<str>]>,
     pub cover_art: Option<Artwork>,
+    #[serde(rename = "playCount", default)]
+    pub play_count: Option<u64>,
+    #[serde(rename = "duration", default)]
+    pub duration: Option<u64>,
 }
 
 /// Active authentication context containing the issued session token.
@@ -712,7 +716,7 @@ impl LazySongDatabase {
 
         let json: Value = response.json().await?;
         let detail: PlaylistDetail = serde_json::from_value(json)?;
-        debug_log!("Deserialized PlaylistDetail: {:?}", detail);
+        // debug_log!("Deserialized PlaylistDetail: {:?}", detail);
 
         Ok(detail)
     }

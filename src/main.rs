@@ -715,8 +715,7 @@ fn play_playlist(player: &mut Player, songs: &[api::SongDTO], name: &str) {
     // Restore playlist for Player logic
     let pl: Vec<Uuid> = songs.iter().map(|s| s.id).collect();
     player.clear_playlist();
-    player.playlist(Some(pl.clone().into()));
-    player.url_playlist(Some(songs.into()));
+    player.playlists(Some(pl.clone().into()), Some(songs.into()));
 
     if let Some(first_song) = songs.first() {
         player.url_playback(Some(pl[0]), first_song.clone(), Player::play);
@@ -1276,7 +1275,7 @@ impl eframe::App for App {
             // Fallback to URL-based metadata if database lookup failed
             if song.is_none() {
                 if let Ok(meta) = self.player.current_url_metadata.lock() {
-                    if let Some(meta) = &*meta {
+                    if let Some(meta) = &*meta && meta.id == state.song() {
                         // Map SongDTO to a mock Song for UI consistency, or just handle it separately in the UI
                         song = Some(Song {
                             id: state.song(),
@@ -1286,6 +1285,8 @@ impl eframe::App for App {
                             cover_artists: meta.cover_artists.clone(),
                             original_artists: meta.original_artists.clone(),
                             cover_art: meta.cover_art.clone(),
+                            play_count: None,
+                            duration: None,
                         });
                     }
                 }
@@ -1300,6 +1301,7 @@ impl eframe::App for App {
                         let guard = self.player.current_url_metadata.lock().unwrap();
                         guard
                             .as_ref()
+                            .filter(|m| m.id == state.song())
                             .and_then(|m| m.cover_art.as_ref())
                             .and_then(|a| a.cloudflare_id.as_ref())
                             .map(|id| id.to_string())
@@ -1488,7 +1490,7 @@ impl eframe::App for App {
                             }
                             if current_img_uuid.is_none() {
                                 if let Ok(meta) = self.player.current_url_metadata.lock() {
-                                    if let Some(meta) = &*meta {
+                                    if let Some(meta) = &*meta && meta.id == state.song() {
                                         if let Some(art) = &meta.cover_art {
                                             current_img_uuid = art.cloudflare_id.clone();
                                             current_abs_path = Some(art.absolute_path.clone());
@@ -2022,82 +2024,78 @@ impl eframe::App for App {
                         } else if self.activity == ActivityType::Search {
                             ui.add(egui::TextEdit::singleline(&mut self.search));
 
-                            ui.horizontal(|ui| {
-                                if ui.button("find and play").clicked() {
-                                    let search = self.search.to_lowercase();
-                                    self.player.song(
-                                        self.songs
-                                            .get_map()
-                                            .iter()
-                                            .find(|x| {
-                                                x.value().if_loaded_or_else(
-                                                    |s| {
-                                                        s.title
-                                                            .to_lowercase()
-                                                            .starts_with(search.as_str())
-                                                    },
-                                                    false,
-                                                )
-                                            })
-                                            .map(|x| *x.key()),
-                                        Player::play,
-                                    );
-                                }
+                            ui.add_space(10.0);
 
-                                if ui.button("add search results to playlist").clicked() {
-                                    let search = self.search.to_lowercase();
-                                    let mut pl = self
-                                        .player
-                                        .get_playlist()
-                                        .map(|x| Vec::from(&*x))
-                                        .unwrap_or_else(Vec::new);
-                                    pl.append(
-                                        &mut self
-                                            .songs
-                                            .get_map()
-                                            .iter()
-                                            .filter(|x| {
-                                                x.value().if_loaded_or_else(
-                                                    |s| {
-                                                        s.title
-                                                            .to_lowercase()
-                                                            .starts_with(search.as_str())
-                                                    },
-                                                    false,
-                                                )
-                                            })
-                                            .map(|x| *x.key())
-                                            .collect::<Vec<Uuid>>(),
-                                    );
-                                    let playlist_arc: Arc<[Uuid]> = pl.clone().into();
-                                    self.player.playlist(Some(playlist_arc));
-                                    if self.player.get_playback_state().is_none() && !pl.is_empty() {
-                                        self.player.play_song(pl[0]);
-                                        debug_log!("Now playing")
-                                    }
-                                }
+                            let search = self.search.to_lowercase();
+                            let matching_songs: Vec<Uuid> = self.songs
+                                .get_map()
+                                .iter()
+                                .filter(|x| {
+                                    x.value().if_loaded_or_else(
+                                        |s| {
+                                            s.title
+                                                .to_lowercase()
+                                                .starts_with(search.as_str())
+                                        },
+                                        false,
+                                    )
+                                })
+                                .map(|x| *x.key())
+                                .collect();
 
-                                if ui.button("delete playlist").clicked() {
-                                    self.player.playlist(None);
-                                }
-                            });
+                            use egui_extras::{Column, TableBuilder};
+                            TableBuilder::new(ui)
+                                .column(Column::exact(40.0))  // Add Button
+                                .column(Column::remainder()) // Name
+                                .column(Column::exact(120.0)) // Orig Artist
+                                .column(Column::exact(120.0)) // Cover Artist
+                                .column(Column::exact(60.0))  // Plays
+                                .column(Column::exact(60.0))  // Duration
+                                .header(20.0, |mut header| {
+                                    header.col(|ui| { ui.label("Add"); });
+                                    header.col(|ui| { ui.label("Song Name"); });
+                                    header.col(|ui| { ui.label("Original Artist"); });
+                                    header.col(|ui| { ui.label("Cover Artist"); });
+                                    header.col(|ui| { ui.label("Plays"); });
+                                    header.col(|ui| { ui.label("Length"); });
+                                })
+                                .body(|body| {
+                                    body.rows(20.0, matching_songs.len(), |mut row| {
+                                        let idx = row.index();
+                                        let song_uuid = matching_songs[idx];
+                                        
+                                        let song_data = self.songs.get(&song_uuid, |s| (s.title.to_string(), s.original_artists.clone(), s.cover_artists.clone(), s.play_count, s.duration));
+                                        
+                                        let (title, orig_artists, cover_artists, play_count, duration) = match song_data {
+                                            LoadingState::Loaded((t, oa, ca, pc, d)) => (t, oa.join(" & "), ca.join(" & "), pc.unwrap_or(0), d),
+                                            _ => ("Loading...".to_string(), "-".to_string(), "-".to_string(), 0, None),
+                                        };
 
-                            if let Some(pl) = self.player.get_playlist() {
-                                ui.label("Playlist:");
-                                egui::Frame::new()
-                                    .fill(self.theme.background_elevated)
-                                    .show(ui, |ui| {
-                                        ui.vertical(|ui| {
-                                            for song in &*pl {
-                                                if let LoadingState::Loaded(title) =
-                                                    self.songs.get(song, |s| s.title.clone())
-                                                {
-                                                    ui.label(title.to_string());
+                                        row.col(|ui| {
+                                            if ui.button("+").clicked() {
+                                                self.player.append_to_playlist(song_uuid);
+                                                if self.player.get_playback_state().is_none() {
+                                                    self.player.play_song(song_uuid);
+                                                } else {
+                                                    self.player.play();
                                                 }
                                             }
                                         });
+                                        row.col(|ui| {
+                                            if ui.selectable_label(self.current_song_uuid == Some(song_uuid), title).clicked() {
+                                                self.player.play_song(song_uuid);
+                                            }
+                                        });
+                                        row.col(|ui| { ui.label(orig_artists); });
+                                        row.col(|ui| { ui.label(cover_artists); });
+                                        row.col(|ui| { ui.label(play_count.to_string()); });
+                                        row.col(|ui| {
+                                            if let Some(dur) = duration {
+                                                ui.label(format!("{}:{:02}", dur / 60, dur % 60));
+                                            } else { ui.label("-"); }
+                                        });
                                     });
-                            }
+                                });
                         } else if self.activity == ActivityType::Playlists {
                             ui.vertical(|ui| {
                                 ui.horizontal(|ui| {
@@ -2472,12 +2470,10 @@ impl eframe::App for App {
                                                         let pl: Vec<Uuid> =
                                                             songs.iter().map(|s| s.id).collect();
                                                         self.player.clear_playlist();
-                                                        self.player
-                                                            .playlist(Some(pl.clone().into()));
-                                                        self.player.url_playlist(Some(
-                                                            songs.clone().into(),
-                                                        ));
-
+                                                        self.player.playlists(
+                                                            Some(pl.clone().into()),
+                                                            Some(songs.clone().into()),
+                                                        );
                                                         if let Some(first_song) = songs.first() {
                                                             self.player.url_playback(
                                                                 Some(pl[0]),
@@ -2658,7 +2654,7 @@ pub async fn spawn_discord_worker(mut rx: tokio::sync::mpsc::UnboundedReceiver<D
         // Updated for presenceforge 0.3.0 builder specifications
         let mut activity = ActivityBuilder::new()
             .details(payload.title)
-            .large_text("NeuroKaraoke");
+            .large_text("Neuro Karaoke Player");
 
         if let Some(ref image_url) = payload.cover_url && !image_url.is_empty() {
             activity = activity.large_image(image_url.trim());

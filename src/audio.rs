@@ -20,6 +20,7 @@ pub struct PlaybackState {
     paused: Option<Instant>,
     duration: Duration,
     song: Uuid,
+    loading: bool,
 }
 
 impl PlaybackState {
@@ -27,7 +28,11 @@ impl PlaybackState {
         self.duration
     }
     pub fn position(&self) -> Duration {
-        (self.paused.unwrap_or_else(Instant::now) - self.start).min(self.duration)
+        if self.loading {
+            Duration::from_secs(0)
+        } else {
+            (self.paused.unwrap_or_else(Instant::now) - self.start).min(self.duration)
+        }
     }
     pub fn paused(&self) -> bool {
         self.paused.is_some()
@@ -43,6 +48,18 @@ impl PlaybackState {
             paused: if is_playing { None } else { Some(now) },
             duration,
             song,
+            loading: false,
+        }
+    }
+
+    fn new_loading(song: Uuid) -> Self {
+        let now = Instant::now();
+        Self {
+            start: now,
+            paused: Some(now),
+            duration: Duration::from_secs(0),
+            song,
+            loading: true,
         }
     }
 
@@ -52,7 +69,11 @@ impl PlaybackState {
 
     fn play(&mut self) {
         if self.paused.is_some() {
-            self.start = Instant::now() - self.position();
+            if self.position() >= self.duration {
+                self.start = Instant::now();
+            } else {
+                self.start = Instant::now() - self.position();
+            }
             self.paused.take();
         }
     }
@@ -88,6 +109,7 @@ enum PlaybackCommand {
     Loop(LoopMode),
     Playlist(Option<Arc<[Uuid]>>),
     UrlPlaylist(Option<Arc<[crate::api::SongDTO]>>),
+    Playlists(Option<Arc<[Uuid]>>, Option<Arc<[crate::api::SongDTO]>>),
     Song(Option<Uuid>, Box<dyn FnOnce(&Player) + Send + 'static>),
     UrlPlayback(
         Option<Uuid>,
@@ -102,6 +124,7 @@ enum PlaybackCommand {
     Seek(Duration),
     Shutdown,
     NextSong,
+    AppendToPlaylist(Uuid),
 }
 
 #[derive(Debug)]
@@ -228,19 +251,27 @@ impl Player {
                     let lock = player.state.lock().unwrap();
                     if let Some(state) = lock.as_ref()
                         && !state.paused()
+                        && !state.loading
                     {
                         let pos = state.position();
                         let dur = state.duration();
                         if pos >= dur && dur > Duration::from_secs(0) {
                             debug_log!(
-                                "Transition: Position {} >= Duration {}",
+                                "Transition: Position {} >= Duration {}, state.song={:?}",
                                 pos.as_secs(),
-                                dur.as_secs()
+                                dur.as_secs(),
+                                state.song
                             );
                             let state = state.clone();
                             drop(lock);
 
-                            if let Some(playlist) = ordered_playlist.as_ref().map(|p| p.clone()) {
+                            let mut playlist_to_use = ordered_playlist.clone();
+                            if playlist_to_use.is_none() {
+                                let ps = player.player_state.lock().unwrap();
+                                playlist_to_use = ps.playlist.clone();
+                            }
+
+                            if let Some(playlist) = playlist_to_use {
                                 let (len, idx) = {
                                     let mut idx = None;
                                     for i in 0..playlist.len() {
@@ -251,7 +282,8 @@ impl Player {
                                     }
                                     (playlist.len(), idx)
                                 };
-
+                                
+                                debug_log!("Transition: Found index {:?} in playlist of length {}, loop_mode={:?}", idx, len, loop_mode);
                                 if let Some(idx) = idx {
                                     // FIX 1: Prioritize LoopMode::One BEFORE checking if we reached the end of the playlist.
                                     // This catches URL tracks and DB tracks anywhere in the playlist.
@@ -286,16 +318,33 @@ impl Player {
                                             len
                                         );
                                         match loop_mode {
-                                            // Loop mode all is not handled here
                                             LoopMode::All => {
-                                                unreachable!("Handled below");
+                                                debug_log!("Transition: LoopMode::All, restarting playlist");
+                                                
+                                                let player_state = player.player_state.lock().unwrap();
+                                                if let Some(url_playlist) = &player_state.url_playlist
+                                                    && url_playlist.len() == playlist.len()
+                                                {
+                                                    player.url_playback(
+                                                        Some(playlist[0]),
+                                                        url_playlist[0].clone(),
+                                                        Player::play,
+                                                    );
+                                                } else {
+                                                    player.song(Some(playlist[0]), Player::play);
+                                                }
+                                                break 'block;
                                             }
                                             LoopMode::One => {
                                                 unreachable!("Handled above");
                                             }
                                             LoopMode::None => {
-                                                player.player_state.lock().unwrap().playlist = None;
-                                                ordered_playlist = None;
+                                                // Keep the playlist set, but stop playback
+                                                if let Some(state) = player.state.lock().unwrap().as_mut() {
+                                                    state.pause();
+                                                    // Set position to duration to prevent re-triggering the 'pos >= dur' check
+                                                    state.seek(state.duration());
+                                                }
                                                 break 'block;
                                             }
                                         }
@@ -306,6 +355,7 @@ impl Player {
                                             "Transition: Normal transition to index {}",
                                             next_idx
                                         );
+                                        
                                         let player_state = player.player_state.lock().unwrap();
                                         if let Some(url_playlist) = &player_state.url_playlist
                                             && url_playlist.len() == playlist.len()
@@ -326,9 +376,23 @@ impl Player {
                                     }
                                 }
                             } else {
-                                // No playlist set yet
-                                if loop_mode != LoopMode::None {
-                                    player.song(Some(state.song), Player::play);
+                                // No playlist set yet, or song not in playlist
+                                if let Some(playlist) = ordered_playlist.as_ref() 
+                                    && loop_mode != LoopMode::None 
+                                {
+                                    debug_log!("Transition: Song not in playlist or no playlist, loading first song");
+                                    let player_state = player.player_state.lock().unwrap();
+                                    if let Some(url_playlist) = &player_state.url_playlist
+                                        && url_playlist.len() == playlist.len()
+                                    {
+                                        player.url_playback(
+                                            Some(playlist[0]),
+                                            url_playlist[0].clone(),
+                                            Player::play,
+                                        );
+                                    } else {
+                                        player.song(Some(playlist[0]), Player::play);
+                                    }
                                     break 'block;
                                 } else {
                                     break 'block;
@@ -404,6 +468,14 @@ impl Player {
                             player.player_state.lock().unwrap().url_playlist = playlist;
                         }
 
+                        PlaybackCommand::Playlists(playlist, url_playlist) => {
+                            let mut ps = player.player_state.lock().unwrap();
+                            ps.playlist = playlist;
+                            ps.url_playlist = url_playlist;
+                        }
+
+                        PlaybackCommand::AppendToPlaylist(_) => {}
+
                         PlaybackCommand::Seek(mut position) => {
                             if let Some(state) = player.state.lock().unwrap().as_mut() {
                                 position = position.min(state.duration);
@@ -471,6 +543,7 @@ impl Player {
                             }
 
                             if let Some((opt_uuid, opt_dto)) = next_song_to_play {
+                                *player.current_url_metadata.lock().unwrap() = None;
                                 if let Some(dto) = opt_dto {
                                     debug_log!("NextSong: Loading URL song transition");
                                     player.url_playback(opt_uuid, dto, Player::play);
@@ -489,6 +562,7 @@ impl Player {
                         PlaybackCommand::Song(uuid, cb) => {
                             let mut lock = player.state.lock().unwrap();
                             if let Some(uuid) = uuid {
+                                *player.current_url_metadata.lock().unwrap() = None;
                                 if let Some(pl) = ordered_playlist.as_ref()
                                     && !pl.contains(&uuid)
                                 {
@@ -502,12 +576,24 @@ impl Player {
                                 let is_same_song =
                                     lock.as_ref().map(|s| s.song == uuid).unwrap_or(false);
 
+                                debug_log!(
+                                    "PlaybackCommand::Song: uuid={:?}, is_same_song={}, lock.song={:?}, mixer.empty={}",
+                                    uuid,
+                                    is_same_song,
+                                    lock.as_ref().map(|s| s.song),
+                                    mixer.empty()
+                                );
+
                                 if lock.as_ref().map(|s| s.song != uuid).unwrap_or(true)
                                     || (mixer.empty() && !is_same_song)
                                 {
+                                    debug_log!(
+                                        "PlaybackCommand::Song: Condition met, reloading track."
+                                    );
                                     mixer.pause();
                                     mixer.clear();
-                                    *lock = None;
+                                    *lock = Some(PlaybackState::new_loading(uuid));
+                                    *player.current_url_metadata.lock().unwrap() = None; // FIX: Clear stale URL metadata
                                     drop(lock);
                                     match database.get(&uuid, |s| {
                                         s.opus.clone().or_else(|| s.absolute_path.clone())
@@ -581,11 +667,7 @@ impl Player {
                                 target_uuid
                             );
 
-                            *lock = Some(PlaybackState::new(
-                                Duration::from_secs(0),
-                                target_uuid,
-                                true,
-                            ));
+                            *lock = Some(PlaybackState::new_loading(target_uuid));
                             drop(lock);
 
                             *player.current_url_metadata.lock().unwrap() = Some(song_dto.clone());
@@ -674,6 +756,7 @@ impl Player {
 
                                 mixer.pause();
                                 mixer.clear();
+                                *player.current_url_metadata.lock().unwrap() = None;
 
                                 let current_vol = player.player_state.lock().unwrap().volume;
                                 mixer.set_volume(current_vol);
@@ -689,9 +772,16 @@ impl Player {
                                     duration.as_secs()
                                 );
 
-                                *lock = Some(PlaybackState::new(duration, target_uuid, true));
+                                *lock = Some(PlaybackState {
+                                    start: Instant::now(),
+                                    paused: None,
+                                    duration,
+                                    song: target_uuid,
+                                    loading: false,
+                                });
                                 mixer.append(decoder);
-                                debug_log!("🟢 [Audio API] Decoder appended to mixer.");
+                                debug_log!("🟢 [Audio API] Decoder appended to mixer. Song: {:?}", target_uuid);
+
 
                                 mixer.play();
                                 debug_log!("🟢 [Audio API] Mixer play command issued.");
@@ -762,15 +852,24 @@ impl Player {
         self.sender.try_send(PlaybackCommand::Loop(mode)).ok();
     }
 
-    pub fn playlist(&self, playlist: Option<Arc<[Uuid]>>) {
-        self.sender
-            .try_send(PlaybackCommand::Playlist(playlist))
-            .ok();
+    pub fn append_to_playlist(&self, uuid: Uuid) {
+        let mut player_state = self.player_state.lock().unwrap();
+        let mut pl = player_state.playlist.as_ref().map(|x| x.to_vec()).unwrap_or_else(Vec::new);
+        pl.push(uuid);
+        player_state.playlist = Some(pl.into());
+        // Do not send a `PlaybackCommand::Playlist` or reset playback here
     }
+
+    pub fn playlists(&self, playlist: Option<Arc<[Uuid]>>, url_playlist: Option<Arc<[crate::api::SongDTO]>>) {
+        self.sender.try_send(PlaybackCommand::Playlists(playlist, url_playlist)).ok();
+    }
+
+    pub fn playlist(&self, playlist: Option<Arc<[Uuid]>>) {
+        self.sender.try_send(PlaybackCommand::Playlist(playlist)).ok();
+    }
+
     pub fn url_playlist(&self, playlist: Option<Arc<[crate::api::SongDTO]>>) {
-        self.sender
-            .try_send(PlaybackCommand::UrlPlaylist(playlist))
-            .ok();
+        self.sender.try_send(PlaybackCommand::UrlPlaylist(playlist)).ok();
     }
     pub fn clear_playlist(&self) {
         self.playlist(None);
