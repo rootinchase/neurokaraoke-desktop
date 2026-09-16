@@ -905,11 +905,8 @@ impl Player {
             let lock = self.state.lock().unwrap();
             if let Some(state) = lock.as_ref() {
                 let current_index = playlist.iter().position(|&uuid| uuid == state.song());
-                if let Some(idx) = current_index
-                    && idx > 0
-                {
-                    let prev_idx = idx - 1;
-
+                if let Some(idx) = current_index {
+                    let prev_idx = if idx > 0 { idx - 1 } else { playlist.len() - 1 };
                     if let Some(url_playlist) = &url_playlist
                         && url_playlist.len() == playlist.len()
                     {
