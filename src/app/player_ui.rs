@@ -251,6 +251,18 @@ pub fn render_player_controls(
                     // Center control
                     //columns[1].set_max_height(60.0);
                     columns[1].horizontal_centered(|ui| {
+                        app.config.shuffle = app.shared_config
+                            .shuffle
+                            .load(std::sync::atomic::Ordering::SeqCst);
+                        let current_mode_u32 = app.shared_config
+                            .loop_mode
+                            .load(std::sync::atomic::Ordering::SeqCst);
+                        app.config.loop_mode = match current_mode_u32 {
+                            1 => LoopMode::One,
+                            2 => LoopMode::All,
+                            _ => LoopMode::None,
+                        };
+
                         //ui.set_height(80.0);
                         if btn(
                             &app.theme,
@@ -312,18 +324,6 @@ pub fn render_player_controls(
                         ui.add_space(10.0);
 
                         //Loop
-                        let current_mode_u32 = app.shared_config
-                            .loop_mode
-                            .load(std::sync::atomic::Ordering::SeqCst);
-                        app.config.loop_mode = match current_mode_u32 {
-                            1 => LoopMode::One,
-                            2 => LoopMode::All,
-                            _ => LoopMode::None,
-                        };
-                        app.config.shuffle = app.shared_config
-                            .shuffle
-                            .load(std::sync::atomic::Ordering::SeqCst);
-
                         if btn(
                             &app.theme,
                             ui,
