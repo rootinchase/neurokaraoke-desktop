@@ -6,7 +6,5 @@ pub mod urls;
 
 pub(crate) use crate::api::models::*;
 pub(crate) use crate::api::urls::API_URLS;
-pub(crate) use crate::api::internal::*;
-pub(crate) use crate::api::client::*;
 
 

@@ -211,6 +211,7 @@ impl LazySongDatabase {
     }
 
     pub async fn report_play_count(&self, song_id: Uuid) -> anyhow::Result<()> {
+        debug_log!("🎵 Reporting play count for song: {}", song_id);
         let url = format!(
             "{}/api/songs/playCount/{}",
             API_URLS.api,
@@ -221,11 +222,13 @@ impl LazySongDatabase {
 
         let response = request.send().await?;
         if !response.status().is_success() {
+            debug_log!("❌ Failed to report play count for song {}: status {}", song_id, response.status());
             return Err(anyhow!(
                 "Failed to report play count: {}",
                 response.status()
             ));
         }
+        debug_log!("✅ Successfully reported play count for song: {}", song_id);
         Ok(())
     }
 

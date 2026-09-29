@@ -115,9 +115,6 @@ pub struct Artwork {
     #[serde(default)]
     #[serde_as(as = "DefaultOnNull")]
     pub file_name: Arc<str>,
-    //#[serde(default)]
-    //#[serde_as(as = "DefaultOnNull")]
-    //pub description: Arc<str>,
     #[serde(default)]
     #[serde_as(as = "DefaultOnNull")]
     pub cloudflare_id: Option<Arc<str>>,

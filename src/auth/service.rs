@@ -1,11 +1,9 @@
-use std::sync::Arc;
-use anyhow::anyhow;
-use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use reqwest::Client;
-use uuid::Uuid;
-use crate::{api, debug_log};
 use crate::api::API_URLS;
+use crate::{api, debug_log};
+use anyhow::anyhow;
+use reqwest::Client;
+use std::sync::Arc;
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AuthService {

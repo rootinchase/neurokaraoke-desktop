@@ -117,7 +117,6 @@ impl ProfileActivity {
         &mut self,
         ctx: &egui::Context,
         rt: &tokio::runtime::Runtime,
-        client: &reqwest::Client,
         badge_id: &str,
         image_path: &str,
     ) {
@@ -134,7 +133,6 @@ impl ProfileActivity {
         let tx = self.tx.clone();
         let ctx_clone = ctx.clone();
         let cache = self.cache.clone();
-        let client_clone = client.clone();
         let badge_id_owned = badge_id.to_string();
 
         rt.spawn(async move {
@@ -166,7 +164,6 @@ impl ProfileActivity {
         &mut self,
         ctx: &egui::Context,
         rt: &tokio::runtime::Runtime,
-        client: &reqwest::Client,
     ) {
         let url = self.state.profile_data.as_ref()
             .and_then(|data| data.avatar_url.as_ref())
@@ -174,7 +171,7 @@ impl ProfileActivity {
 
         if let Some(url) = url {
             if matches!(self.state.avatar_state, AvatarState::None) {
-                self.resolve_avatar_uri(ctx, rt, client, &url);
+                self.resolve_avatar_uri(ctx, rt, &url);
             }
         }
     }
@@ -183,7 +180,6 @@ impl ProfileActivity {
         &mut self,
         ctx: &egui::Context,
         rt: &tokio::runtime::Runtime,
-        client: &reqwest::Client,
         avatar_url: &str,
     ) {
         if matches!(self.state.avatar_state, AvatarState::Downloading) {
@@ -211,7 +207,6 @@ impl ProfileActivity {
         let tx = self.tx.clone();
         let ctx_clone = ctx.clone();
         let cache = self.cache.clone();
-        let client_clone = client.clone();
 
         rt.spawn(async move {
             match cache
@@ -237,7 +232,6 @@ impl ProfileActivity {
         current_auth: &Option<AuthContext>,
         auth_service: &AuthService,
         rt: &Arc<tokio::runtime::Runtime>,
-        client: &reqwest::Client,
     ) {
         ui.add_space(20.0);
 
@@ -268,7 +262,7 @@ impl ProfileActivity {
                                         ui.painter().rect_filled(rect, 32.0, theme.background_elevated);
                                     }
                                     AvatarState::None => {
-                                        self.resolve_avatar_uri(ui.ctx(), rt, client, &avatar_url);
+                                        self.resolve_avatar_uri(ui.ctx(), rt, &avatar_url);
                                         let (rect, _) = ui.allocate_exact_size(Vec2::new(64.0, 64.0), egui::Sense::hover());
                                         ui.painter().rect_filled(rect, 32.0, theme.background_elevated);
                                     }
@@ -371,7 +365,7 @@ impl ProfileActivity {
                                         }
 
                                         for (badge_id, cloudflare_id) in badges_to_download {
-                                            self.resolve_badge_image(ui.ctx(), rt, client, &badge_id, &cloudflare_id);
+                                            self.resolve_badge_image(ui.ctx(), rt, &badge_id, &cloudflare_id);
                                         }
 
                                         let mut count = 0;
@@ -454,7 +448,7 @@ impl ProfileActivity {
             }
             None => {
                 // 🔴 STATE: User is Logged Out
-                crate::auth::ui::render_login_form(ui, theme, &mut self.state, auth_service, self.tx.clone(), rt);
+                crate::auth::auth_ui::render_login_form(ui, theme, &mut self.state, auth_service, self.tx.clone(), rt);
             }
         }
     }

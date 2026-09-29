@@ -10,7 +10,6 @@ use std::sync::Arc;
 use eframe;
 use eframe::egui::{self, CentralPanel, Color32, Ui};
 use std::time::{Duration, Instant};
-use reqwest::Client;
 use tokio::spawn;
 use tokio::time::sleep;
 use uuid::Uuid;
@@ -44,7 +43,6 @@ impl eframe::App for App {
                     let tx_channel = self.profile_activity.get_sender_handle();
                     let shared_config = self.shared_config.clone();
                     let rt = self.rt.clone();
-                    let rt_handle = rt.handle().clone();
 
                     rt.spawn(async move {
                         let profile_url = format!("{}/api/badge/profile", API_URLS.api);
@@ -110,7 +108,7 @@ impl eframe::App for App {
 
                 ProfileMessage::ProfileHeaderLoaded(header_data) => {
                     self.profile_activity.state.profile_data = Some(header_data);
-                    self.profile_activity.try_load_avatar(ui.ctx(), &self.rt, &self.client);
+                    self.profile_activity.try_load_avatar(ui.ctx(), &self.rt);
                     self.home_activity.fetch_suggested();
                     self.home_activity.fetch_trending();
                     self.home_activity.fetch_recent_setlist();
@@ -124,9 +122,6 @@ impl eframe::App for App {
                     self.cached_avatar_path = None;
 
                     self.songs.map.clear();
-
-                    let favorite_clone = self.favorites_activity.playlists.clone();
-                    let favorite = Arc::new(self.favorites_activity.playlists.clone());
 
                     let fav_playlists = self.favorites_activity.playlists.clone();
                     let fav_songs = self.favorites_activity.songs.clone();
@@ -245,12 +240,20 @@ impl eframe::App for App {
                     let artwork_url = s
                         .cover_art
                         .as_ref()
-                        .map(|art| {
-                            cache::get_thumbnail_url(
-                                art.cloudflare_id.as_deref(),
-                                &art.absolute_path,
-                                "crop,gravity=auto",
-                            )
+                        .and_then(|art| {
+                            let key_str: Arc<str> = art.cloudflare_id
+                                .clone()
+                                .map(|id| id.to_string())
+                                .unwrap_or_else(|| art.absolute_path.to_string())
+                                .into();
+                            let target_uuid = Uuid::parse_str(&key_str)
+                                .unwrap_or_else(|_| Uuid::new_v5(&Uuid::NAMESPACE_URL, key_str.as_bytes()));
+
+                            if let Some(path) = self.cache.get_cached_path(target_uuid, cache::AssetType::Image) {
+                                Some(path.to_string_lossy().into_owned())
+                            } else {
+                                self.resolve_artwork_uri(ui, art.cloudflare_id.clone(), art.absolute_path.clone())
+                            }
                         })
                         .unwrap_or_default();
 
@@ -331,7 +334,6 @@ impl App {
             let player_ref = self.player.clone();
             self.queue_activity.render(
                 ui,
-                &self.theme,
                 move |playlist| {
                     let pl: Vec<Uuid> = playlist.songs.iter().map(|s| s.id).collect();
                     player1.clear_playlist();
@@ -465,7 +467,6 @@ impl App {
                 &self.config.auth,
                 &auth_service,
                 &self.rt,
-                &self.client,
             );
         }
     }

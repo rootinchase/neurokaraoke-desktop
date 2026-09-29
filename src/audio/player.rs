@@ -1,12 +1,11 @@
-use crate::api::{LazySongDatabase, LoadingState, API_URLS};
+use crate::api::{API_URLS, LazySongDatabase, LoadingState};
 use crate::audio::types::*;
-use crate::utilities::cache::PersistentMediaCache;
 use crate::debug_log;
+use crate::utilities::cache::PersistentMediaCache;
 use eframe::egui;
 use rand::prelude::SliceRandom;
 use rodio::Source;
 use rodio::decoder::DecoderBuilder;
-use serde::{Deserialize, Serialize};
 use std::io::BufReader;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -14,7 +13,6 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 use uuid::Uuid;
-
 
 
 impl PlaybackState {
@@ -189,6 +187,8 @@ impl Player {
                 }
             };
 
+            let mut reported_play_song: Option<Uuid> = None;
+
             loop {
                 'block: {
                     let lock = player.state.lock().unwrap();
@@ -198,6 +198,20 @@ impl Player {
                     {
                         let pos = state.position();
                         let dur = state.duration();
+                        let song_uuid = state.song();
+
+                        if reported_play_song != Some(song_uuid) {
+                            if pos >= Duration::from_secs(30) || (dur > Duration::from_secs(0) && pos >= dur) {
+                                reported_play_song = Some(song_uuid);
+                                let db_clone = database.clone();
+                                rt.spawn(async move {
+                                    if let Err(e) = db_clone.report_play_count(song_uuid).await {
+                                        debug_log!("❌ Failed to report play count for {}: {}", song_uuid, e);
+                                    }
+                                });
+                            }
+                        }
+
                         if pos >= dur && dur > Duration::from_secs(0) {
                             debug_log!(
                                 "Transition: Position {} >= Duration {}, state.song={:?}",
@@ -573,7 +587,7 @@ impl Player {
                                                 let cache_worker = cache.clone();
                                                 let client_worker = client.clone(); // `client` is available in `internal` scope
                                                 let cb_worker = cb;
-                                                let url = format!("{}/{}", API_URLS.storage, path_str.as_ref() as &str); // Construct URL
+                                                let url = format!("{}/{}", API_URLS.storage, path_str.as_ref()); // Construct URL
 
                                                 rt.spawn(async move {
                                                     match cache_worker.get_or_download_audio(&client_worker, uuid, url).await {

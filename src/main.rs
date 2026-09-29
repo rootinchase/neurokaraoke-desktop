@@ -5,7 +5,6 @@ mod audio;
 mod auth;
 mod config;
 mod theme;
-mod util;
 mod utilities;
 
 use app::factory::create_app;

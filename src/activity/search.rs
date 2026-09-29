@@ -1,9 +1,7 @@
-use std::sync::Arc;
 use eframe::egui;
 use eframe::egui::Ui;
-use tokio::sync::Mutex;
-use uuid::Uuid;
 use egui_extras::{Column, TableBuilder};
+use uuid::Uuid;
 
 use crate::api::LoadingState;
 use crate::audio::types::Player;

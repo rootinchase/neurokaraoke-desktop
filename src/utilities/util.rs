@@ -82,189 +82,7 @@ macro_rules! debug_log {
     };
 }
 
-pub fn render_song_table(
-    ui: &mut Ui,
-    songs: &[crate::api::SongDTO]
-) {
-    use egui_extras::{Column, TableBuilder};
 
-    TableBuilder::new(ui)
-        .column(Column::remainder())
-        .column(Column::exact(60.0))
-        .column(Column::exact(100.0))
-        .column(Column::exact(60.0))
-        .header(20.0, |mut header| {
-            header.col(|ui| {
-                ui.label("Song");
-            });
-            header.col(|ui| {
-                ui.label("Plays");
-            });
-            header.col(|ui| {
-                ui.label("Stream Date");
-            });
-            header.col(|ui| {
-                ui.label("Duration");
-            });
-        })
-        .body(|body| {
-            body.rows(20.0, songs.len(), |mut row| {
-                let row_index = row.index();
-                let song = &songs[row_index];
-                row.col(|ui| {
-                    let text = format!(
-                        "{} - {} ({})",
-                        song.original_artists.join(" & "),
-                        song.title,
-                        song.cover_artists.join(" & ")
-                    );
-                    ui.label(text);
-                });
-                row.col(|ui| {
-                    ui.label(
-                        song.play_count
-                            .map(|c| c.to_string())
-                            .unwrap_or_else(|| "-".to_string()),
-                    );
-                });
-                row.col(|ui| {
-                    ui.label(song.stream_date.as_deref().unwrap_or("-"));
-                });
-                row.col(|ui| {
-                    if let Some(duration) = song.duration {
-                        ui.label(format_duration(duration));
-                    } else {
-                        ui.label("-");
-                    }
-                });
-            });
-        });
-}
-
-pub fn render_list_table<T>(
-    ui: &mut Ui,
-    id: &str,
-    items: &[T],
-    name: impl Fn(&T) -> String,
-    song_count: impl Fn(&T) -> String,
-    play_count: impl Fn(&T) -> String,
-    metadata: impl Fn(&T) -> String,
-    created_at: impl Fn(&T) -> String,
-    updated_at: impl Fn(&T) -> String,
-    mut on_click: impl FnMut(usize),
-    mut on_header_click: impl FnMut(usize),
-) {
-    use egui_extras::{Column, TableBuilder};
-
-    ui.push_id(id, |ui| {
-        TableBuilder::new(ui)
-            .column(Column::remainder())
-            .column(Column::exact(60.0))
-            .column(Column::exact(80.0))
-            .column(if is_col_empty(items, &metadata) { Column::exact(0.0) } else { Column::exact(100.0) })
-            .column(Column::exact(80.0))
-            .column(if is_col_empty(items, &updated_at) { Column::exact(0.0) } else { Column::exact(80.0) })
-            .header(20.0, |mut header| {
-                header.col(|ui| {
-                    if ui.selectable_label(false, "Name").clicked() {
-                        on_header_click(0);
-                    }
-                });
-                header.col(|ui| {
-                    if ui.selectable_label(false, "Songs").clicked() {
-                        on_header_click(1);
-                    }
-                });
-                header.col(|ui| {
-                    if ui.selectable_label(false, "Plays").clicked() {
-                        on_header_click(2);
-                    }
-                });
-                if !is_col_empty(items, &metadata) {
-                    header.col(|ui| {
-                        if ui.selectable_label(false, "Creator").clicked() {
-                            on_header_click(3);
-                        }
-                    });
-                }
-                header.col(|ui| {
-                    if ui.selectable_label(false, "Created").clicked() {
-                        on_header_click(4);
-                    }
-                });
-                if !is_col_empty(items, &updated_at) {
-                    header.col(|ui| {
-                        if ui.selectable_label(false, "Updated").clicked() {
-                            on_header_click(5);
-                        }
-                    });
-                }
-            })
-            .body(|body| {
-                body.rows(20.0, items.len(), |mut row| {
-                    let item = &items[row.index()];
-                    let mut clicked = false;
-                    row.col(|ui| {
-                        if ui.selectable_label(false, name(item)).clicked() {
-                            clicked = true;
-                        }
-                    });
-                    if clicked {
-                        on_click(row.index());
-                    }
-                    row.col(|ui| {
-                        ui.label(song_count(item));
-                    });
-                    row.col(|ui| {
-                        ui.label(play_count(item));
-                    });
-                    if !is_col_empty(items, &metadata) {
-                        row.col(|ui| {
-                            ui.label(metadata(item));
-                        });
-                    }
-                    row.col(|ui| {
-                        ui.label(created_at(item));
-                    });
-                    if !is_col_empty(items, &updated_at) {
-                        row.col(|ui| {
-                            ui.label(updated_at(item));
-                        });
-                    }
-                });
-            });
-    });
-}
-
-pub fn is_col_empty<T>(
-    items: &[T],
-    f: &impl Fn(&T) -> String
-) -> bool {
-    items.iter().all(|item| f(item).is_empty())
-}
-
-pub fn render_playlist_details(
-    ui: &mut Ui,
-    selected: &LoadingState<crate::api::PlaylistDetail>,
-    mut on_play: impl FnMut(&crate::api::PlaylistDetail),
-) {
-    ui.separator();
-    match selected {
-        LoadingState::Loaded(detail) => {
-            ui.label(format!("Playlist: {}", detail.name));
-            if ui.button("Play Playlist").clicked() {
-                on_play(detail);
-            }
-            render_song_table(ui, &detail.songs);
-        }
-        LoadingState::Loading => {
-            ui.label("Loading playlist details...");
-        }
-        LoadingState::Failed(err) => {
-            ui.label(format!("Error loading playlist details: {}", err));
-        }
-    }
-}
 #[allow(dead_code)]
 pub struct IntoAs<T>(std::marker::PhantomData<T>);
 impl<'de, U, T: Deserialize<'de> + Into<U>> DeserializeAs<'de, U> for IntoAs<T> {
@@ -306,6 +124,7 @@ impl<T: Serialize> SerializeAs<Arc<Mutex<T>>> for AsArcMutex<T> {
     }
 }
 
+
 pub fn select_playlist_by_id(
     id: Uuid,
     selected: Arc<Mutex<Option<LoadingState<crate::api::PlaylistDetail>>>>,
@@ -324,6 +143,5 @@ pub fn select_playlist_by_id(
         }
     });
 }
-
 
 

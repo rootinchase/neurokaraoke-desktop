@@ -161,19 +161,19 @@ impl PersistentMediaCache {
 
             let result = self.execute_download(url.clone(), cloudflare_id).await;
 
-            match result {
+            return match result {
                 Ok(saved_path) => {
                     debug_log!("🎉 [Cache] Successfully downloaded: {}", cloudflare_id);
                     self.in_flight
                         .insert(key, DownloadStatus::Complete(saved_path.clone()));
                     notify.notify_waiters();
-                    return Ok(saved_path);
+                    Ok(saved_path)
                 }
                 Err(e) => {
                     debug_log!("❌ [Cache] Download failed for {}: {}", cloudflare_id, e);
                     self.in_flight.remove(&key);
                     notify.notify_waiters();
-                    return Err(e);
+                    Err(e)
                 }
             }
         }
@@ -356,17 +356,17 @@ impl PersistentMediaCache {
                 .await;
 
             // STEP 5: Register outcomes and alert waiting threads
-            match download_result {
+            return match download_result {
                 Ok(saved_path) => {
                     self.in_flight
                         .insert(key, DownloadStatus::Complete(saved_path.clone()));
                     notify.notify_waiters();
-                    return Ok(File::open(&saved_path).await?);
+                    Ok(File::open(&saved_path).await?)
                 }
                 Err(e) => {
                     self.in_flight.remove(&key);
                     notify.notify_waiters();
-                    return Err(e);
+                    Err(e)
                 }
             }
         }

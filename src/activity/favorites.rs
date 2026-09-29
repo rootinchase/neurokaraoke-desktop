@@ -1,5 +1,5 @@
 use crate::activity::profile::ProfileActivity;
-use crate::activity::{render_mosaic, render_playlist_art, render_playlist_art_advanced, render_playlist_box};
+use crate::activity::{render_mosaic, render_playlist_art, render_playlist_box};
 use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongDTO};
 use crate::debug_log;
 use crate::theme::ThemeManager;
@@ -208,7 +208,7 @@ impl FavoritesActivity {
                             &creator,
                             &favorite_songs_detail,
                             &mut |s_list, song_id| {
-                                (play_song.borrow_mut())(s_list, song_id);
+                                play_song.borrow_mut()(s_list, song_id);
                             },
                             |ui| {
                                 render_mosaic(
@@ -264,7 +264,7 @@ impl FavoritesActivity {
                                             &playlist.creator,
                                             detail,
                                             &mut |s_list, song_id| {
-                                                (play_song.borrow_mut())(s_list, song_id);
+                                                play_song.borrow_mut()(s_list, song_id);
                                             },
                                             |ui| {
                                                 render_playlist_art(

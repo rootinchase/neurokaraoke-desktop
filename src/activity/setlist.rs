@@ -190,7 +190,7 @@ impl SetlistActivity {
                                                 "",
                                                 detail,
                                                 &mut |songs, song_id| {
-                                                    (play_song.borrow_mut())(songs, song_id)
+                                                    play_song.borrow_mut()(songs, song_id)
                                                 },
                                                 |ui| {
                                                     render_playlist_art_advanced(

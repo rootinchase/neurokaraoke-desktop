@@ -2,7 +2,7 @@ use crate::activity::profile::{ProfileMessage, ProfileState};
 use crate::auth::discord::{capture_discord_token, NEURO_KARAOKE_DISCORD};
 use crate::auth::AuthService;
 use crate::theme::ThemeManager;
-use eframe::egui::{self, Button, Frame, RichText, TextEdit, Ui, Vec2};
+use eframe::egui::{Button, Frame, RichText, TextEdit, Ui, Vec2};
 use std::sync::Arc;
 
 pub fn render_login_form(

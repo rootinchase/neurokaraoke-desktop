@@ -47,7 +47,7 @@ fn render_theme_button(
     config_theme: &mut SelectableTheme,
     select_theme: SelectableTheme,
     label: &str,
-    icon_source: eframe::egui::ImageSource<'static>,
+    icon_source: egui::ImageSource<'static>,
 ) {
     let current = *config_theme;
     let is_selected = current == select_theme;
@@ -78,7 +78,7 @@ fn render_theme_button(
 
     let resp = ui
         .scope(|ui| {
-            let btn_frame = eframe::egui::Frame::new()
+            let btn_frame = egui::Frame::new()
                 .fill(fill_color)
                 .corner_radius(corner_radius);
             btn_frame.show(ui, |ui| {
@@ -121,7 +121,7 @@ fn render_twins_button(
 
     let resp = ui
         .scope(|ui| {
-            let btn_frame = eframe::egui::Frame::new()
+            let btn_frame = egui::Frame::new()
                 .fill(fill_color)
                 .corner_radius(CornerRadius::ZERO);
             btn_frame.show(ui, |ui| {
@@ -159,7 +159,7 @@ fn render_compact_theme_btn(
     theme: &ThemeManager,
     config_theme: &mut SelectableTheme,
     select_theme: SelectableTheme,
-    icon_source: eframe::egui::ImageSource<'static>,
+    icon_source: egui::ImageSource<'static>,
     tooltip: &str,
 ) {
     let current = *config_theme;
@@ -172,7 +172,7 @@ fn render_compact_theme_btn(
 
     let resp = ui
         .scope(|ui| {
-            let btn_frame = eframe::egui::Frame::new()
+            let btn_frame = egui::Frame::new()
                 .fill(fill_color)
                 .corner_radius(4.0);
             btn_frame.show(ui, |ui| {
@@ -221,7 +221,7 @@ fn render_compact_twins_btn(
 
     let resp = ui
         .scope(|ui| {
-            let btn_frame = eframe::egui::Frame::new()
+            let btn_frame = egui::Frame::new()
                 .fill(fill_color)
                 .corner_radius(4.0);
             btn_frame.show(ui, |ui| {
@@ -395,13 +395,71 @@ pub fn render_sidebar(
             nav_button(ui, ActivityType::Setlists);
 
             // Push bottom area to the very bottom of the sidebar panel
-            let bottom_height = if config.compact_sidebar { 180.0 } else { 120.0 };
+            let bottom_height = if config.compact_sidebar { 140.0 } else { 90.0 };
             let spacing = ui.available_height() - bottom_height;
             if spacing > 0.0 {
                 ui.add_space(spacing);
             }
 
             ui.separator();
+            ui.add_space(10.0);
+
+            // Profile Icon
+            let profile_tooltip = if let Some(auth) = &config.auth {
+                format!("Profile: {}", auth.user.username)
+            } else {
+                "Profile: Guest Account".to_string()
+            };
+
+            let resp = ui
+                .scope(|ui| {
+                    if config.compact_sidebar {
+                        ui.horizontal(|ui| {
+                            let available = ui.available_width();
+                            let size = 32.0;
+                            let padding = (available - size) / 2.0;
+                            if padding > 0.0 {
+                                ui.add_space(padding);
+                            }
+                            render_avatar(ui, profile_activity, theme);
+                        });
+                    } else {
+                        ui.horizontal(|ui| {
+                            ui.add_space(4.0);
+                            render_avatar(ui, profile_activity, theme);
+                            ui.add_space(4.0);
+                            if let Some(auth) = &config.auth {
+                                let username_str = &auth.user.username;
+                                ui.add(
+                                    Label::new(RichText::new(username_str.to_string()).size(16.0))
+                                        .selectable(false),
+                                );
+                            } else {
+                                ui.add(
+                                    Label::new(
+                                        RichText::new("Guest Account")
+                                            .italics()
+                                            .color(theme.text_muted)
+                                            .size(14.0),
+                                    )
+                                        .selectable(false),
+                                );
+                            }
+                        });
+                    }
+                })
+                .response
+                .interact(Sense::click())
+                .on_hover_text(profile_tooltip);
+
+            if resp.hovered() {
+                ui.set_cursor_icon(CursorIcon::PointingHand);
+            }
+
+            if resp.clicked() {
+                *current_activity = ActivityType::Profile;
+            }
+
             ui.add_space(10.0);
 
             // theme switcher
@@ -470,65 +528,5 @@ pub fn render_sidebar(
                     (spacing.item_spacing, spacing.button_padding) = old_spacing;
                 });
             }
-
-            ui.add_space(10.0);
-
-            // Profile Icon
-            let profile_tooltip = if let Some(auth) = &config.auth {
-                format!("Profile: {}", auth.user.username)
-            } else {
-                "Profile: Guest Account".to_string()
-            };
-
-            let resp = ui
-                .scope(|ui| {
-                    if config.compact_sidebar {
-                        ui.horizontal(|ui| {
-                            let available = ui.available_width();
-                            let size = 32.0;
-                            let padding = (available - size) / 2.0;
-                            if padding > 0.0 {
-                                ui.add_space(padding);
-                            }
-                            render_avatar(ui, profile_activity, theme);
-                        });
-                    } else {
-                        ui.horizontal(|ui| {
-                            ui.add_space(4.0);
-                            render_avatar(ui, profile_activity, theme);
-                            ui.add_space(4.0);
-                            if let Some(auth) = &config.auth {
-                                let username_str = &auth.user.username;
-                                ui.add(
-                                    Label::new(RichText::new(username_str.to_string()).size(16.0))
-                                        .selectable(false),
-                                );
-                            } else {
-                                ui.add(
-                                    Label::new(
-                                        RichText::new("Guest Account")
-                                            .italics()
-                                            .color(theme.text_muted)
-                                            .size(14.0),
-                                    )
-                                        .selectable(false),
-                                );
-                            }
-                        });
-                    }
-                })
-                .response
-                .interact(Sense::click())
-                .on_hover_text(profile_tooltip);
-
-            if resp.hovered() {
-                ui.set_cursor_icon(CursorIcon::PointingHand);
-            }
-
-            if resp.clicked() {
-                *current_activity = ActivityType::Profile;
-            }
-
-            ui.add_space(10.0);
         });
 }

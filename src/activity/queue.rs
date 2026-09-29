@@ -1,7 +1,6 @@
 use crate::activity::*;
 use crate::api::{LazySongDatabase, LoadingState, PlaylistDetail, SongDTO};
 use crate::audio::types::Player;
-use crate::theme::ThemeManager;
 use crate::utilities::cache::PersistentMediaCache;
 use eframe::egui::{Context, Ui};
 use egui_extras::{Column, TableBuilder};
@@ -13,7 +12,7 @@ pub struct QueueActivity {
     pub cache: Arc<PersistentMediaCache>,
     pub ctx: Context,
     pub rt: Arc<Runtime>,
-    pub client: reqwest::Client,
+    pub client: Client,
     pub show_queue: bool,
     pub activity: String,
     pub current_song_uuid: Option<Uuid>,
@@ -25,7 +24,7 @@ impl QueueActivity {
         cache: Arc<PersistentMediaCache>,
         ctx: Context,
         rt: Arc<Runtime>,
-        client: reqwest::Client,
+        client: Client,
     ) -> Self {
         Self {
             songs,
@@ -42,9 +41,8 @@ impl QueueActivity {
     pub fn render(
         &mut self,
         ui: &mut Ui,
-        theme: &ThemeManager,
-        mut _play_playlist: impl FnMut(&PlaylistDetail),
-        mut _play_song: impl FnMut(Vec<SongDTO>, Uuid) + 'static,
+        _play_playlist: impl FnMut(&PlaylistDetail),
+        _play_song: impl FnMut(Vec<SongDTO>, Uuid) + 'static,
         player: &Player,
     ) {
         ui.heading(&self.activity);
