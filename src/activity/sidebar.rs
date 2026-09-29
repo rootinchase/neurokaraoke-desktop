@@ -85,9 +85,7 @@ fn render_theme_button(
                 ui.set_min_width(ui.available_width());
                 ui.horizontal(|ui| {
                     ui.add_space(6.0);
-                    ui.add(
-                        Image::new(icon_source).fit_to_exact_size(Vec2::new(20.0, 20.0)),
-                    );
+                    ui.add(Image::new(icon_source).fit_to_exact_size(Vec2::new(20.0, 20.0)));
                     ui.add_space(6.0);
                     ui.label(RichText::new(label).size(14.0).color(theme.text));
                 });
@@ -172,9 +170,7 @@ fn render_compact_theme_btn(
 
     let resp = ui
         .scope(|ui| {
-            let btn_frame = egui::Frame::new()
-                .fill(fill_color)
-                .corner_radius(4.0);
+            let btn_frame = egui::Frame::new().fill(fill_color).corner_radius(4.0);
             btn_frame.show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
                 ui.horizontal(|ui| {
@@ -221,9 +217,7 @@ fn render_compact_twins_btn(
 
     let resp = ui
         .scope(|ui| {
-            let btn_frame = egui::Frame::new()
-                .fill(fill_color)
-                .corner_radius(4.0);
+            let btn_frame = egui::Frame::new().fill(fill_color).corner_radius(4.0);
             btn_frame.show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
                 ui.horizontal(|ui| {
@@ -286,7 +280,7 @@ pub fn render_sidebar(
                                 Image::new(include_image!("../../assets/expand.svg"))
                                     .fit_to_exact_size(Vec2::new(20.0, 20.0)),
                             )
-                                .fill(theme.background_elevated),
+                            .fill(theme.background_elevated),
                         )
                         .on_hover_text("Expand Sidebar");
                     if expand_btn.clicked() {
@@ -316,7 +310,7 @@ pub fn render_sidebar(
                                     Image::new(include_image!("../../assets/collapse.svg"))
                                         .fit_to_exact_size(Vec2::new(20.0, 20.0)),
                                 )
-                                    .fill(theme.background_elevated),
+                                .fill(theme.background_elevated),
                             )
                             .on_hover_text("Compact Sidebar");
                         if collapse_btn.clicked() {
@@ -349,9 +343,9 @@ pub fn render_sidebar(
                             ui.add(img);
                         });
                     })
-                        .response
-                        .interact(Sense::click())
-                        .on_hover_text(activity.as_str())
+                    .response
+                    .interact(Sense::click())
+                    .on_hover_text(activity.as_str())
                 } else {
                     ui.scope(|ui| {
                         ui.set_min_width(ui.available_width());
@@ -370,8 +364,8 @@ pub fn render_sidebar(
                             ui.add(Label::new(text).selectable(false));
                         });
                     })
-                        .response
-                        .interact(Sense::click())
+                    .response
+                    .interact(Sense::click())
                 };
 
                 ui.add_space(4.0);
@@ -442,7 +436,7 @@ pub fn render_sidebar(
                                             .color(theme.text_muted)
                                             .size(14.0),
                                     )
-                                        .selectable(false),
+                                    .selectable(false),
                                 );
                             }
                         });

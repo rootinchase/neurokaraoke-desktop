@@ -8,9 +8,9 @@ mod theme;
 mod utilities;
 
 use app::factory::create_app;
+use eframe::egui::Vec2;
 use mimalloc::MiMalloc;
 use std::sync::Arc;
-use eframe::egui::Vec2;
 
 // RustRover is stupid and wants to get rid of this crate... that's needed by egui_extras
 use image as _;

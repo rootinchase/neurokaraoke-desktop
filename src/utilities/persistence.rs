@@ -1,6 +1,6 @@
-use crate::audio::types::LoopMode;
 use crate::audio::Player;
-use crate::config::{config_dir, Config};
+use crate::audio::types::LoopMode;
+use crate::config::{Config, config_dir};
 use serde::{Deserialize, Serialize};
 use std::fs::{read_to_string, remove_file, write};
 use std::sync::Arc;
@@ -44,7 +44,7 @@ pub async fn handle_signals(player: Player, config: Config) {
 
     #[cfg(unix)]
     {
-        use tokio::signal::unix::{signal, SignalKind};
+        use tokio::signal::unix::{SignalKind, signal};
         if let Ok(mut sigterm) = signal(SignalKind::terminate()) {
             tokio::select! {
                 _ = ctrl_c => {},

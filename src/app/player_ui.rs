@@ -1,16 +1,16 @@
-use crate::debug_log;
 use crate::api::Song;
 use crate::app::state::App;
-use eframe::egui::{self, include_image, lerp, Align, Color32, CursorIcon, Image, ImageSource, Layout, PopupKind, Pos2, Rgba, RichText, Sense, Stroke, TextWrapMode, Ui, Vec2, Button };
+use crate::audio::LoopMode;
+use crate::debug_log;
+use crate::theme::ThemeManager;
+use eframe::egui::{
+    self, Align, Button, Color32, CursorIcon, Image, ImageSource, Layout, PopupKind, Pos2, Rgba,
+    RichText, Sense, Stroke, TextWrapMode, Ui, Vec2, include_image, lerp,
+};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use crate::audio::LoopMode;
-use crate::theme::ThemeManager;
 
-pub fn render_player_controls(
-    app: &mut App,
-    ui: &mut Ui,
-) {
+pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
     if let Some(state) = app.player.get_playback_state() {
         let mut song = match app.songs.get(&state.song(), |song| song.clone()) {
             crate::api::LoadingState::Loaded(s) => Some(s),
@@ -76,7 +76,8 @@ pub fn render_player_controls(
                 let lerped_color: Color32 = lerp(
                     Rgba::from(app.theme.accent)..=Rgba::from(app.theme.primary),
                     progress,
-                ).into();
+                )
+                .into();
 
                 let w = rect.width() * progress;
                 mesh.colored_vertex(rect.left_top() + Vec2::new(0.0, 1.0), app.theme.accent);
@@ -105,21 +106,19 @@ pub fn render_player_controls(
                             )),
                             ui.layer_id(),
                         )
-                            .align(Default::default())
-                            .kind(PopupKind::Tooltip)
-                            .open(true)
-                            .show(|ui| {
-                                let point = state.duration().mul_f32(p).as_secs();
-                                ui.add(
-                                    egui::Label::new(
-                                        RichText::new(crate::utilities::util::format_duration(point))
-                                            .size(12.0),
-                                    )
-                                        .wrap_mode(TextWrapMode::Extend),
-                                );
-                            });
-
-
+                        .align(Default::default())
+                        .kind(PopupKind::Tooltip)
+                        .open(true)
+                        .show(|ui| {
+                            let point = state.duration().mul_f32(p).as_secs();
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(crate::utilities::util::format_duration(point))
+                                        .size(12.0),
+                                )
+                                .wrap_mode(TextWrapMode::Extend),
+                            );
+                        });
                     }
                 }
 
@@ -149,7 +148,6 @@ pub fn render_player_controls(
                         ui.allocate_ui_with_layout(
                             egui::vec2(ui.available_width(), ui.available_height()),
                             Layout::left_to_right(Align::Center),
-
                             |ui| {
                                 let mut current_img_uuid: Option<Arc<str>> = None;
                                 let mut current_abs_path: Option<Arc<str>> = None;
@@ -174,18 +172,23 @@ pub fn render_player_controls(
 
                                 let mut cached_path_str = None;
                                 if let Some(abs_path) = current_abs_path {
-                                    cached_path_str =
-                                        app.resolve_artwork_uri(ui.ctx(), current_img_uuid, abs_path);
+                                    cached_path_str = app.resolve_artwork_uri(
+                                        ui.ctx(),
+                                        current_img_uuid,
+                                        abs_path,
+                                    );
                                 }
 
                                 let size = 80.0;
                                 if let Some(path_str) = cached_path_str {
                                     if let Ok(image_bytes) = std::fs::read(&path_str) {
                                         let image_source = ImageSource::Bytes {
-                                            uri: std::borrow::Cow::Owned(format!("bytes://{}", path_str)),
+                                            uri: std::borrow::Cow::Owned(format!(
+                                                "bytes://{}",
+                                                path_str
+                                            )),
                                             bytes: image_bytes.into(),
                                         };
-
 
                                         ui.add(
                                             Image::new(image_source)
@@ -195,12 +198,14 @@ pub fn render_player_controls(
                                         );
                                     }
                                 } else {
-                                    let (rect, _) =
-                                        ui.allocate_exact_size(Vec2::new(size, size), Sense::hover());
-                                    ui.painter()
-                                        .rect_filled(rect, 8.0, app.theme.background_elevated);
+                                    let (rect, _) = ui
+                                        .allocate_exact_size(Vec2::new(size, size), Sense::hover());
+                                    ui.painter().rect_filled(
+                                        rect,
+                                        8.0,
+                                        app.theme.background_elevated,
+                                    );
                                 }
-
 
                                 //Song metadata display
                                 ui.with_layout(Layout::top_down(Align::LEFT), |ui| {
@@ -221,10 +226,10 @@ pub fn render_player_controls(
                                                     s.original_artists.join(" & "),
                                                     s.cover_artists.join(" & ")
                                                 ))
-                                                    .color(app.theme.text_muted)
-                                                    .size(12.0),
+                                                .color(app.theme.text_muted)
+                                                .size(12.0),
                                             )
-                                                .wrap_mode(TextWrapMode::Truncate),
+                                            .wrap_mode(TextWrapMode::Truncate),
                                         );
                                     }
                                     let position = state.position().as_secs();
@@ -238,10 +243,10 @@ pub fn render_player_controls(
                                                 duration / 60,
                                                 duration % 60
                                             ))
-                                                .color(app.theme.text_muted)
-                                                .size(10.0),
+                                            .color(app.theme.text_muted)
+                                            .size(10.0),
                                         )
-                                            .wrap_mode(TextWrapMode::Truncate),
+                                        .wrap_mode(TextWrapMode::Truncate),
                                     )
                                 });
                             },
@@ -251,10 +256,12 @@ pub fn render_player_controls(
                     // Center control
                     //columns[1].set_max_height(60.0);
                     columns[1].horizontal_centered(|ui| {
-                        app.config.shuffle = app.shared_config
+                        app.config.shuffle = app
+                            .shared_config
                             .shuffle
                             .load(std::sync::atomic::Ordering::SeqCst);
-                        let current_mode_u32 = app.shared_config
+                        let current_mode_u32 = app
+                            .shared_config
                             .loop_mode
                             .load(std::sync::atomic::Ordering::SeqCst);
                         app.config.loop_mode = match current_mode_u32 {
@@ -300,11 +307,11 @@ pub fn render_player_controls(
                                 } else {
                                     include_image!("../../assets/pause.svg")
                                 })
-                                    .fit_to_exact_size(Vec2::new(24.0, 24.0)),
+                                .fit_to_exact_size(Vec2::new(24.0, 24.0)),
                             )
-                                .min_size(Vec2::new(40.0, 40.0))
-                                .corner_radius(20.0)
-                                .fill(app.theme.primary),
+                            .min_size(Vec2::new(40.0, 40.0))
+                            .corner_radius(20.0)
+                            .fill(app.theme.primary),
                         );
 
                         if resp.hovered() {
@@ -318,8 +325,6 @@ pub fn render_player_controls(
                                 app.player.pause();
                             }
                         }
-
-
 
                         ui.add_space(10.0);
 
@@ -361,7 +366,6 @@ pub fn render_player_controls(
 
                         ui.add_space(10.0);
 
-
                         if btn(
                             &app.theme,
                             ui,
@@ -370,13 +374,11 @@ pub fn render_player_controls(
                         ) {
                             app.player.next_song();
                         }
-
                     });
 
                     // Right Side controls
 
                     columns[2].horizontal_centered(|ui| {
-
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             // Volume control
                             ui.add_space(8.0); // Give a little margin from the favorite/timer icons
@@ -387,16 +389,19 @@ pub fn render_player_controls(
                             ui.allocate_ui_with_layout(
                                 desired_slider_size,
                                 Layout::bottom_up(Align::Center), // Dictates vertical orientation space rules
-
                                 |ui| {
                                     let visual_style = ui.visuals_mut();
                                     // Track background
-                                    visual_style.widgets.inactive.bg_fill = app.theme.text.linear_multiply(0.2); // Darker background
-                                    visual_style.widgets.hovered.bg_fill = app.theme.text.linear_multiply(0.3);
+                                    visual_style.widgets.inactive.bg_fill =
+                                        app.theme.text.linear_multiply(0.2); // Darker background
+                                    visual_style.widgets.hovered.bg_fill =
+                                        app.theme.text.linear_multiply(0.3);
 
                                     // Slider handle (the moving part)
-                                    visual_style.widgets.inactive.fg_stroke.color = app.theme.primary;
-                                    visual_style.widgets.hovered.fg_stroke.color = app.theme.primary;
+                                    visual_style.widgets.inactive.fg_stroke.color =
+                                        app.theme.primary;
+                                    visual_style.widgets.hovered.fg_stroke.color =
+                                        app.theme.primary;
                                     visual_style.widgets.active.fg_stroke.color = app.theme.primary;
 
                                     visual_style.widgets.inactive.bg_stroke = Stroke::NONE;
@@ -407,7 +412,7 @@ pub fn render_player_controls(
                                     let vol = ui.add(
                                         egui::Slider::new(&mut app.config.volume, 0.0..=1.0)
                                             .vertical()
-                                            .show_value(false)
+                                            .show_value(false),
                                     );
 
                                     if vol.changed() {
@@ -415,8 +420,6 @@ pub fn render_player_controls(
                                     }
                                 },
                             );
-
-
 
                             ui.add_space(10.0);
 
@@ -596,9 +599,9 @@ pub fn render_player_controls(
                                                             app.sleep_timer_end = Some(
                                                                 Instant::now()
                                                                     + Duration::from_secs(
-                                                                    duration.num_seconds()
-                                                                        as u64,
-                                                                ),
+                                                                        duration.num_seconds()
+                                                                            as u64,
+                                                                    ),
                                                             );
                                                             app.show_timer_menu = false;
                                                         }
@@ -622,19 +625,12 @@ pub fn render_player_controls(
                             ui.add_space(10.0);
                         });
                     });
-
                 });
-
             });
     }
 }
 
-pub fn btn(
-    theme: &ThemeManager,
-    ui: &mut Ui,
-    source: ImageSource,
-    active: bool,
-) -> bool {
+pub fn btn(theme: &ThemeManager, ui: &mut Ui, source: ImageSource, active: bool) -> bool {
     let resp = ui
         .add(
             Image::new(source)

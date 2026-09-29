@@ -1,9 +1,9 @@
-use crate::api::{API_URLS};
-use crate::api::{AuthContext, UserLimits, Badge, ProfileHeader };
+use crate::api::API_URLS;
+use crate::api::{AuthContext, Badge, ProfileHeader, UserLimits};
 use crate::auth::AuthService;
-use crate::utilities::cache::PersistentMediaCache;
 use crate::debug_log;
 use crate::theme::ThemeManager;
+use crate::utilities::cache::PersistentMediaCache;
 use eframe::egui::{self, Frame, RichText, Ui, Vec2, include_image};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -141,10 +141,7 @@ impl ProfileActivity {
             let hash_val = std::hash::Hasher::finish(&hasher);
             let badge_uuid = Uuid::from_u128(hash_val as u128);
 
-            match cache
-                .get_or_download_image(badge_uuid, final_url)
-                .await
-            {
+            match cache.get_or_download_image(badge_uuid, final_url).await {
                 Ok(path) => {
                     let path_str = path.to_string_lossy().into_owned();
                     let _ = tx
@@ -160,12 +157,11 @@ impl ProfileActivity {
     }
 
     // Resolution logic matching your existing Cloudflare Image variant criteria
-    pub fn try_load_avatar(
-        &mut self,
-        ctx: &egui::Context,
-        rt: &tokio::runtime::Runtime,
-    ) {
-        let url = self.state.profile_data.as_ref()
+    pub fn try_load_avatar(&mut self, ctx: &egui::Context, rt: &tokio::runtime::Runtime) {
+        let url = self
+            .state
+            .profile_data
+            .as_ref()
             .and_then(|data| data.avatar_url.as_ref())
             .map(|url| url.to_string());
 
@@ -209,10 +205,7 @@ impl ProfileActivity {
         let cache = self.cache.clone();
 
         rt.spawn(async move {
-            match cache
-                .get_or_download_image(avatar_uuid, final_url)
-                .await
-            {
+            match cache.get_or_download_image(avatar_uuid, final_url).await {
                 Ok(path) => {
                     let path_str = path.to_string_lossy().into_owned();
                     let _ = tx.send(ProfileMessage::AvatarLoaded(path_str)).await;
@@ -448,7 +441,14 @@ impl ProfileActivity {
             }
             None => {
                 // 🔴 STATE: User is Logged Out
-                crate::auth::auth_ui::render_login_form(ui, theme, &mut self.state, auth_service, self.tx.clone(), rt);
+                crate::auth::auth_ui::render_login_form(
+                    ui,
+                    theme,
+                    &mut self.state,
+                    auth_service,
+                    self.tx.clone(),
+                    rt,
+                );
             }
         }
     }

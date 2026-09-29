@@ -156,18 +156,18 @@ impl App {
                 } else {
                     None
                 }
-                    .or_else(|| {
-                        let guard = self
-                            .player
-                            .current_url_metadata
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner());
-                        guard
-                            .as_ref()
-                            .and_then(|m| m.cover_art.as_ref())
-                            .and_then(|a| a.cloudflare_id.as_ref())
-                            .map(|id| id.to_string())
-                    });
+                .or_else(|| {
+                    let guard = self
+                        .player
+                        .current_url_metadata
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
+                    guard
+                        .as_ref()
+                        .and_then(|m| m.cover_art.as_ref())
+                        .and_then(|a| a.cloudflare_id.as_ref())
+                        .map(|id| id.to_string())
+                });
 
                 let external_cover_url = cloudflare_id
                     .as_deref()
@@ -190,4 +190,3 @@ impl App {
         }
     }
 }
-

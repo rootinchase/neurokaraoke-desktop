@@ -162,7 +162,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
                         cache::cache_dir().join("songs.ron"),
                         ron::ser::to_string_pretty(&s, Default::default()).unwrap(),
                     )
-                        .await;
+                    .await;
 
                     if let Err(e) = write_res {
                         debug_log!(
@@ -290,4 +290,3 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
 
     app
 }
-

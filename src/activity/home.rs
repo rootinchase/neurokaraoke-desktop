@@ -1,15 +1,13 @@
 use crate::api::{LazySongDatabase, LoadingState, SongDTO, TrendingTimes};
+use crate::debug_log;
+use crate::theme::ThemeManager;
 use crate::utilities::cache::{self, PersistentMediaCache, cache_dir};
 use crate::utilities::persistence::{AppState, load_app_state};
-use crate::theme::ThemeManager;
-use eframe::egui::{
-    Button, Frame, Grid, Image, RichText, Sense, Ui, Vec2, include_image,
-};
+use eframe::egui::{Button, Frame, Grid, Image, RichText, Sense, Ui, Vec2, include_image};
 use egui_extras::{Column, TableBuilder};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
-use crate::debug_log;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct CachedSetlist {
@@ -69,7 +67,8 @@ impl HomeActivity {
                     let _ = tokio::fs::write(
                         cache_path,
                         ron::ser::to_string_pretty(&data, Default::default()).unwrap(),
-                    ).await;
+                    )
+                    .await;
                 }
                 Err(err) => {
                     let mut state_lock = songs_state.lock().await;
@@ -101,7 +100,8 @@ impl HomeActivity {
                     let _ = tokio::fs::write(
                         cache_path,
                         ron::ser::to_string_pretty(&data, Default::default()).unwrap(),
-                    ).await;
+                    )
+                    .await;
                 }
                 Err(err) => {
                     let mut state_lock = songs_state.lock().await;
@@ -134,9 +134,15 @@ impl HomeActivity {
                     if let Some(setlist) = data.first() {
                         match songs.get_playlist_details(setlist.id).await {
                             Ok(detail) => {
-                                let name = detail.name.to_string().replace("Setlist", "").trim().to_string();
+                                let name = detail
+                                    .name
+                                    .to_string()
+                                    .replace("Setlist", "")
+                                    .trim()
+                                    .to_string();
                                 *setlist_name.lock().await = Some(name.clone());
-                                *songs_state.lock().await = LoadingState::Loaded(detail.songs.clone());
+                                *songs_state.lock().await =
+                                    LoadingState::Loaded(detail.songs.clone());
 
                                 let cached = CachedSetlist {
                                     name: Some(name),
@@ -144,8 +150,10 @@ impl HomeActivity {
                                 };
                                 let _ = tokio::fs::write(
                                     cache_path,
-                                    ron::ser::to_string_pretty(&cached, Default::default()).unwrap(),
-                                ).await;
+                                    ron::ser::to_string_pretty(&cached, Default::default())
+                                        .unwrap(),
+                                )
+                                .await;
                             }
                             Err(err) => {
                                 let mut state_lock = songs_state.lock().await;
@@ -343,7 +351,6 @@ impl HomeActivity {
         on_play_suggested: impl Fn(Vec<SongDTO>, Uuid),
     ) {
         ui.vertical(|ui| {
-
             // Previous session UI
             if let Some(state) = load_app_state() {
                 ui.heading("Welcome back!");
@@ -362,12 +369,22 @@ impl HomeActivity {
                                         songs.get(&uuid, |s| s.cover_art.clone())
                                     {
                                         if let Some(art) = song {
-                                            self.resolve_and_render_art(ui, &art, Vec2::new(150.0, 150.0));
+                                            self.resolve_and_render_art(
+                                                ui,
+                                                &art,
+                                                Vec2::new(150.0, 150.0),
+                                            );
                                         } else {
-                                            ui.allocate_exact_size(Vec2::new(150.0, 150.0), Sense::hover());
+                                            ui.allocate_exact_size(
+                                                Vec2::new(150.0, 150.0),
+                                                Sense::hover(),
+                                            );
                                         }
                                     } else {
-                                        ui.allocate_exact_size(Vec2::new(150.0, 150.0), Sense::hover());
+                                        ui.allocate_exact_size(
+                                            Vec2::new(150.0, 150.0),
+                                            Sense::hover(),
+                                        );
                                     }
                                 } else {
                                     ui.allocate_exact_size(Vec2::new(150.0, 150.0), Sense::hover());
@@ -379,15 +396,16 @@ impl HomeActivity {
                             ui.vertical(|ui| {
                                 ui.heading("Continue where you left off");
                                 if let Some(name) = &state.playlist_name {
-                                    ui.label(RichText::new(format!("Playlist: {}", name)).size(18.0).strong());
+                                    ui.label(
+                                        RichText::new(format!("Playlist: {}", name))
+                                            .size(18.0)
+                                            .strong(),
+                                    );
                                 }
 
                                 if let Some(uuid) = state.current_song_uuid {
                                     let song_info = songs.get(&uuid, |s| {
-                                        (
-                                            s.title.to_string(),
-                                            s.original_artists.clone(),
-                                        )
+                                        (s.title.to_string(), s.original_artists.clone())
                                     });
                                     match song_info {
                                         LoadingState::Loaded((title, artists)) => {
@@ -408,11 +426,13 @@ impl HomeActivity {
                                             Image::new(include_image!("../../assets/play.svg"))
                                                 .fit_to_exact_size(Vec2::new(20.0, 20.0)),
                                         )
-                                            .min_size(Vec2::new(40.0, 40.0))
-                                            .corner_radius(20.0)
-                                            .fill(theme.primary),
+                                        .min_size(Vec2::new(40.0, 40.0))
+                                        .corner_radius(20.0)
+                                        .fill(theme.primary),
                                     );
-                                    if play_resp.clicked() { on_restore(state); }
+                                    if play_resp.clicked() {
+                                        on_restore(state);
+                                    }
                                 });
                             });
                         });
@@ -462,4 +482,3 @@ impl HomeActivity {
         });
     }
 }
-

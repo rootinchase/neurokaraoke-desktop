@@ -1,14 +1,17 @@
-use std::sync::Arc;
+use crate::api::{
+    API_URLS, FavoriteEntry, FavoriteItem, LazySongDatabase, LoadingState, Playlist,
+    PlaylistDetail, ProfileResponse, Song, SongDTO, TrendingTimes, UploadSong, UserLimits,
+};
+use crate::config::SharedConfig;
+use crate::debug_log;
 use anyhow::anyhow;
 use dashmap::DashMap;
 use reqwest::Client;
-use serde::{Serialize, Serializer};
 use serde::ser::SerializeMap;
-use serde_json::{json, Value};
+use serde::{Serialize, Serializer};
+use serde_json::{Value, json};
+use std::sync::Arc;
 use uuid::Uuid;
-use crate::api::{LazySongDatabase, UserLimits, API_URLS, Song, LoadingState, Playlist, FavoriteItem, UploadSong, SongDTO, FavoriteEntry, PlaylistDetail, TrendingTimes, ProfileResponse};
-use crate::config::SharedConfig;
-use crate::debug_log;
 
 impl LazySongDatabase {
     pub async fn get_profile(&self, token: &str) -> anyhow::Result<ProfileResponse> {
@@ -19,10 +22,7 @@ impl LazySongDatabase {
 
         let response = request.send().await?;
         if !response.status().is_success() {
-            return Err(anyhow!(
-                "Failed to fetch profile: {}",
-                response.status()
-            ));
+            return Err(anyhow!("Failed to fetch profile: {}", response.status()));
         }
 
         let profile: ProfileResponse = response.json().await?;
@@ -32,7 +32,7 @@ impl LazySongDatabase {
     pub async fn get_user_limits(&self) -> anyhow::Result<UserLimits> {
         let request = self
             .client
-            .get( format!("{}/api/user/upload-limits", API_URLS.api) );
+            .get(format!("{}/api/user/upload-limits", API_URLS.api));
         let request = self.apply_auth(request).await;
 
         let response = request.send().await?;
@@ -62,7 +62,7 @@ impl LazySongDatabase {
     }
 
     pub async fn fetch_favorite_playlists(&self) -> anyhow::Result<Vec<Playlist>> {
-        let url = format!( "{}/api/favorites/type?type=3", API_URLS.api );
+        let url = format!("{}/api/favorites/type?type=3", API_URLS.api);
         let request = self.client.get(url);
         let request = self.apply_auth(request).await;
 
@@ -130,7 +130,7 @@ impl LazySongDatabase {
     pub async fn get_user_playlists(&self) -> anyhow::Result<Vec<Playlist>> {
         let mut request = self
             .client
-            .get( format!("{}/api/user/playlists", API_URLS.api ) );
+            .get(format!("{}/api/user/playlists", API_URLS.api));
         request = self.apply_auth(request).await; // <-- Inject headers
 
         let response = request.send().await?;
@@ -144,7 +144,10 @@ impl LazySongDatabase {
     }
 
     pub async fn get_official_setlists(&self, year: u32) -> anyhow::Result<Vec<Playlist>> {
-        let url = format!("{}/api/playlists?isSetlist=True&year={}", API_URLS.api, year );
+        let url = format!(
+            "{}/api/playlists?isSetlist=True&year={}",
+            API_URLS.api, year
+        );
         let mut request = self.client.get(url);
         request = self.apply_auth(request).await; // <-- Inject headers
 
@@ -160,11 +163,7 @@ impl LazySongDatabase {
 
     pub async fn add_to_favorites(&self, song_id: Uuid) -> anyhow::Result<()> {
         debug_log!("Adding song to favorites: {}", song_id);
-        let url = format!(
-            "{}/api/user/favorites/{}",
-            API_URLS.api,
-            song_id
-        );
+        let url = format!("{}/api/user/favorites/{}", API_URLS.api, song_id);
         let request = self.client.put(url);
         let request = self.apply_auth(request).await;
 
@@ -178,7 +177,7 @@ impl LazySongDatabase {
     #[allow(dead_code)]
     pub async fn upload_song(&self, upload: UploadSong) -> anyhow::Result<()> {
         debug_log!("Adding song to favorites: {}", upload.url);
-        let url = format!("{}/api/user/song/download-from-url", API_URLS.idk );
+        let url = format!("{}/api/user/song/download-from-url", API_URLS.idk);
 
         let request = self.client.post(url).json(&upload);
         let request = self.apply_auth(request).await;
@@ -192,11 +191,7 @@ impl LazySongDatabase {
 
     pub async fn remove_from_favorites(&self, song_id: Uuid) -> anyhow::Result<()> {
         debug_log!("Removing song from favorites: {}", song_id);
-        let url = format!(
-            "{}/api/user/favorites/{}",
-            API_URLS.api,
-            song_id
-        );
+        let url = format!("{}/api/user/favorites/{}", API_URLS.api, song_id);
         let request = self.client.delete(url);
         let request = self.apply_auth(request).await;
 
@@ -212,17 +207,17 @@ impl LazySongDatabase {
 
     pub async fn report_play_count(&self, song_id: Uuid) -> anyhow::Result<()> {
         debug_log!("🎵 Reporting play count for song: {}", song_id);
-        let url = format!(
-            "{}/api/songs/playCount/{}",
-            API_URLS.api,
-            song_id
-        );
+        let url = format!("{}/api/songs/playCount/{}", API_URLS.api, song_id);
         let request = self.client.put(url);
         let request = self.apply_auth(request).await;
 
         let response = request.send().await?;
         if !response.status().is_success() {
-            debug_log!("❌ Failed to report play count for song {}: status {}", song_id, response.status());
+            debug_log!(
+                "❌ Failed to report play count for song {}: status {}",
+                song_id,
+                response.status()
+            );
             return Err(anyhow!(
                 "Failed to report play count: {}",
                 response.status()
@@ -235,7 +230,7 @@ impl LazySongDatabase {
     pub async fn get_favorite_songs(&self) -> anyhow::Result<Vec<SongDTO>> {
         let mut request = self
             .client
-            .get(format!("{}/api/favorites/type?type=0", API_URLS.api ) );
+            .get(format!("{}/api/favorites/type?type=0", API_URLS.api));
         request = self.apply_auth(request).await;
 
         let response = request.send().await?;
@@ -314,7 +309,10 @@ impl LazySongDatabase {
 
         let response = request.send().await?;
         if !response.status().is_success() {
-            return Err(anyhow!("Failed to fetch suggested songs: {}", response.status()));
+            return Err(anyhow!(
+                "Failed to fetch suggested songs: {}",
+                response.status()
+            ));
         }
 
         let songs: Vec<SongDTO> = response.json().await?;
@@ -329,7 +327,10 @@ impl LazySongDatabase {
 
         let response = request.send().await?;
         if !response.status().is_success() {
-            return Err(anyhow!("Failed to fetch trending songs: {}", response.status()));
+            return Err(anyhow!(
+                "Failed to fetch trending songs: {}",
+                response.status()
+            ));
         }
 
         let songs: Vec<SongDTO> = response.json().await?;
@@ -362,8 +363,8 @@ impl LazySongDatabase {
                             req.send().await?.bytes().await?.as_ref(),
                         )?)
                     }
-                        .await
-                        .map_err(Arc::new)
+                    .await
+                    .map_err(Arc::new)
                     {
                         Ok(song) => LoadingState::Loaded(song),
                         Err(err) => LoadingState::Failed(err),
@@ -380,7 +381,7 @@ impl LazySongDatabase {
     ) -> anyhow::Result<Arc<[LoadingState<T>]>> {
         let json = self
             .client
-            .post( format!("{}/api/songs", API_URLS.api) )
+            .post(format!("{}/api/songs", API_URLS.api))
             .json(&json!({"page": 1, "pageSize": 0}))
             .send()
             .await?

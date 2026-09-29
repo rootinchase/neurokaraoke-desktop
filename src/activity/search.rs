@@ -6,7 +6,6 @@ use uuid::Uuid;
 use crate::api::LoadingState;
 use crate::audio::types::Player;
 
-
 pub struct SearchActivity {
     search: String,
     current_search_sort: SearchSortOption,
@@ -41,7 +40,6 @@ impl SearchActivity {
         }
     }
 
-
     pub fn render(
         &mut self,
         ui: &mut Ui,
@@ -60,9 +58,20 @@ impl SearchActivity {
             .filter(|x| {
                 x.value().if_loaded_or_else(
                     |s| {
-                        let title_match = s.title.to_lowercase().contains(&criteria.title.to_lowercase());
-                        let original_match = criteria.original.as_ref().map_or(true, |q| s.original_artists.iter().any(|a| a.to_lowercase().contains(&q.to_lowercase())));
-                        let cover_match = criteria.cover.as_ref().map_or(true, |q| s.cover_artists.iter().any(|a| a.to_lowercase().contains(&q.to_lowercase())));
+                        let title_match = s
+                            .title
+                            .to_lowercase()
+                            .contains(&criteria.title.to_lowercase());
+                        let original_match = criteria.original.as_ref().map_or(true, |q| {
+                            s.original_artists
+                                .iter()
+                                .any(|a| a.to_lowercase().contains(&q.to_lowercase()))
+                        });
+                        let cover_match = criteria.cover.as_ref().map_or(true, |q| {
+                            s.cover_artists
+                                .iter()
+                                .any(|a| a.to_lowercase().contains(&q.to_lowercase()))
+                        });
 
                         title_match && original_match && cover_match
                     },
@@ -73,8 +82,24 @@ impl SearchActivity {
             .collect();
 
         matching_songs.sort_by(|a, b| {
-            let a_data = songs.get(a, |s| (s.title.to_string(), s.original_artists.join(" "), s.cover_artists.join(" "), s.play_count.unwrap_or(0), s.duration.unwrap_or(0)));
-            let b_data = songs.get(b, |s| (s.title.to_string(), s.original_artists.join(" "), s.cover_artists.join(" "), s.play_count.unwrap_or(0), s.duration.unwrap_or(0)));
+            let a_data = songs.get(a, |s| {
+                (
+                    s.title.to_string(),
+                    s.original_artists.join(" "),
+                    s.cover_artists.join(" "),
+                    s.play_count.unwrap_or(0),
+                    s.duration.unwrap_or(0),
+                )
+            });
+            let b_data = songs.get(b, |s| {
+                (
+                    s.title.to_string(),
+                    s.original_artists.join(" "),
+                    s.cover_artists.join(" "),
+                    s.play_count.unwrap_or(0),
+                    s.duration.unwrap_or(0),
+                )
+            });
 
             let (a_title, a_orig, a_cover, a_plays, a_dur) = match a_data {
                 LoadingState::Loaded(d) => d,
@@ -93,47 +118,102 @@ impl SearchActivity {
                 SearchSortOption::Length => a_dur.cmp(&b_dur),
             };
 
-            if self.current_search_sort_desc { cmp.reverse() } else { cmp }
+            if self.current_search_sort_desc {
+                cmp.reverse()
+            } else {
+                cmp
+            }
         });
 
-
         TableBuilder::new(ui)
-            .column(Column::exact(40.0))  // Add Button
+            .column(Column::exact(40.0)) // Add Button
             .column(Column::remainder()) // Name
             .column(Column::exact(120.0)) // Orig Artist
             .column(Column::exact(120.0)) // Cover Artist
-            .column(Column::exact(60.0))  // Plays
-            .column(Column::exact(60.0))  // Duration
+            .column(Column::exact(60.0)) // Plays
+            .column(Column::exact(60.0)) // Duration
             .header(20.0, |mut header| {
-                header.col(|ui| { ui.label("Add"); });
                 header.col(|ui| {
-                    if ui.selectable_label(self.current_search_sort == SearchSortOption::Name, "Song Name").clicked() {
-                        if self.current_search_sort == SearchSortOption::Name { self.current_search_sort_desc = !self.current_search_sort_desc; }
-                        else { self.current_search_sort = SearchSortOption::Name; self.current_search_sort_desc = false; }
+                    ui.label("Add");
+                });
+                header.col(|ui| {
+                    if ui
+                        .selectable_label(
+                            self.current_search_sort == SearchSortOption::Name,
+                            "Song Name",
+                        )
+                        .clicked()
+                    {
+                        if self.current_search_sort == SearchSortOption::Name {
+                            self.current_search_sort_desc = !self.current_search_sort_desc;
+                        } else {
+                            self.current_search_sort = SearchSortOption::Name;
+                            self.current_search_sort_desc = false;
+                        }
                     }
                 });
                 header.col(|ui| {
-                    if ui.selectable_label(self.current_search_sort == SearchSortOption::OriginalArtist, "Original Artist").clicked() {
-                        if self.current_search_sort == SearchSortOption::OriginalArtist { self.current_search_sort_desc = !self.current_search_sort_desc; }
-                        else { self.current_search_sort = SearchSortOption::OriginalArtist; self.current_search_sort_desc = false; }
+                    if ui
+                        .selectable_label(
+                            self.current_search_sort == SearchSortOption::OriginalArtist,
+                            "Original Artist",
+                        )
+                        .clicked()
+                    {
+                        if self.current_search_sort == SearchSortOption::OriginalArtist {
+                            self.current_search_sort_desc = !self.current_search_sort_desc;
+                        } else {
+                            self.current_search_sort = SearchSortOption::OriginalArtist;
+                            self.current_search_sort_desc = false;
+                        }
                     }
                 });
                 header.col(|ui| {
-                    if ui.selectable_label(self.current_search_sort == SearchSortOption::CoverArtist, "Cover Artist").clicked() {
-                        if self.current_search_sort == SearchSortOption::CoverArtist { self.current_search_sort_desc = !self.current_search_sort_desc; }
-                        else { self.current_search_sort = SearchSortOption::CoverArtist; self.current_search_sort_desc = false; }
+                    if ui
+                        .selectable_label(
+                            self.current_search_sort == SearchSortOption::CoverArtist,
+                            "Cover Artist",
+                        )
+                        .clicked()
+                    {
+                        if self.current_search_sort == SearchSortOption::CoverArtist {
+                            self.current_search_sort_desc = !self.current_search_sort_desc;
+                        } else {
+                            self.current_search_sort = SearchSortOption::CoverArtist;
+                            self.current_search_sort_desc = false;
+                        }
                     }
                 });
                 header.col(|ui| {
-                    if ui.selectable_label(self.current_search_sort == SearchSortOption::Plays, "Plays").clicked() {
-                        if self.current_search_sort == SearchSortOption::Plays { self.current_search_sort_desc = !self.current_search_sort_desc; }
-                        else { self.current_search_sort = SearchSortOption::Plays; self.current_search_sort_desc = false; }
+                    if ui
+                        .selectable_label(
+                            self.current_search_sort == SearchSortOption::Plays,
+                            "Plays",
+                        )
+                        .clicked()
+                    {
+                        if self.current_search_sort == SearchSortOption::Plays {
+                            self.current_search_sort_desc = !self.current_search_sort_desc;
+                        } else {
+                            self.current_search_sort = SearchSortOption::Plays;
+                            self.current_search_sort_desc = false;
+                        }
                     }
                 });
                 header.col(|ui| {
-                    if ui.selectable_label(self.current_search_sort == SearchSortOption::Length, "Length").clicked() {
-                        if self.current_search_sort == SearchSortOption::Length { self.current_search_sort_desc = !self.current_search_sort_desc; }
-                        else { self.current_search_sort = SearchSortOption::Length; self.current_search_sort_desc = false; }
+                    if ui
+                        .selectable_label(
+                            self.current_search_sort == SearchSortOption::Length,
+                            "Length",
+                        )
+                        .clicked()
+                    {
+                        if self.current_search_sort == SearchSortOption::Length {
+                            self.current_search_sort_desc = !self.current_search_sort_desc;
+                        } else {
+                            self.current_search_sort = SearchSortOption::Length;
+                            self.current_search_sort_desc = false;
+                        }
                     }
                 });
             })
@@ -142,11 +222,28 @@ impl SearchActivity {
                     let idx = row.index();
                     let song_uuid = matching_songs[idx];
 
-                    let song_data = songs.get(&song_uuid, |s| (s.title.to_string(), s.original_artists.clone(), s.cover_artists.clone(), s.play_count, s.duration));
+                    let song_data = songs.get(&song_uuid, |s| {
+                        (
+                            s.title.to_string(),
+                            s.original_artists.clone(),
+                            s.cover_artists.clone(),
+                            s.play_count,
+                            s.duration,
+                        )
+                    });
 
-                    let (title, orig_artists, cover_artists, play_count, duration) = match song_data {
-                        LoadingState::Loaded((t, oa, ca, pc, d)) => (t, oa.join(" & "), ca.join(" & "), pc.unwrap_or(0), d),
-                        _ => ("Loading...".to_string(), "-".to_string(), "-".to_string(), 0, None),
+                    let (title, orig_artists, cover_artists, play_count, duration) = match song_data
+                    {
+                        LoadingState::Loaded((t, oa, ca, pc, d)) => {
+                            (t, oa.join(" & "), ca.join(" & "), pc.unwrap_or(0), d)
+                        }
+                        _ => (
+                            "Loading...".to_string(),
+                            "-".to_string(),
+                            "-".to_string(),
+                            0,
+                            None,
+                        ),
                     };
 
                     row.col(|ui| {
@@ -170,22 +267,32 @@ impl SearchActivity {
                         }
                     });
                     row.col(|ui| {
-                        if ui.selectable_label(current_song_uuid == &Some(song_uuid), title).clicked() {
+                        if ui
+                            .selectable_label(current_song_uuid == &Some(song_uuid), title)
+                            .clicked()
+                        {
                             player.play_song(song_uuid);
                         }
                     });
-                    row.col(|ui| { ui.label(orig_artists); });
-                    row.col(|ui| { ui.label(cover_artists); });
-                    row.col(|ui| { ui.label(play_count.to_string()); });
+                    row.col(|ui| {
+                        ui.label(orig_artists);
+                    });
+                    row.col(|ui| {
+                        ui.label(cover_artists);
+                    });
+                    row.col(|ui| {
+                        ui.label(play_count.to_string());
+                    });
                     row.col(|ui| {
                         if let Some(dur) = duration {
                             ui.label(format!("{}:{:02}", dur / 60, dur % 60));
-                        } else { ui.label("-"); }
+                        } else {
+                            ui.label("-");
+                        }
                     });
                 });
             });
     }
-
 }
 
 pub(crate) fn parse_query(search: &str, is_playlist: bool) -> SearchCriteria {

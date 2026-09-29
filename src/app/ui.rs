@@ -241,18 +241,27 @@ impl eframe::App for App {
                         .cover_art
                         .as_ref()
                         .and_then(|art| {
-                            let key_str: Arc<str> = art.cloudflare_id
+                            let key_str: Arc<str> = art
+                                .cloudflare_id
                                 .clone()
                                 .map(|id| id.to_string())
                                 .unwrap_or_else(|| art.absolute_path.to_string())
                                 .into();
-                            let target_uuid = Uuid::parse_str(&key_str)
-                                .unwrap_or_else(|_| Uuid::new_v5(&Uuid::NAMESPACE_URL, key_str.as_bytes()));
+                            let target_uuid = Uuid::parse_str(&key_str).unwrap_or_else(|_| {
+                                Uuid::new_v5(&Uuid::NAMESPACE_URL, key_str.as_bytes())
+                            });
 
-                            if let Some(path) = self.cache.get_cached_path(target_uuid, cache::AssetType::Image) {
+                            if let Some(path) = self
+                                .cache
+                                .get_cached_path(target_uuid, cache::AssetType::Image)
+                            {
                                 Some(path.to_string_lossy().into_owned())
                             } else {
-                                self.resolve_artwork_uri(ui, art.cloudflare_id.clone(), art.absolute_path.clone())
+                                self.resolve_artwork_uri(
+                                    ui,
+                                    art.cloudflare_id.clone(),
+                                    art.absolute_path.clone(),
+                                )
                             }
                         })
                         .unwrap_or_default();
@@ -349,11 +358,7 @@ impl App {
                 move |songs, song_id| {
                     let pl: Vec<Uuid> = songs.iter().map(|s| s.id).collect();
                     player2.clear_playlist();
-                    player2.playlists(
-                        Some(pl.clone().into()),
-                        Some(songs.into()),
-                        None,
-                    );
+                    player2.playlists(Some(pl.clone().into()), Some(songs.into()), None);
                     player2.play_song(song_id);
                 },
                 &player_ref,
@@ -371,8 +376,7 @@ impl App {
                     player1.volume(state.volume);
                     player1.shuffle(state.shuffle);
                     player1.looping(state.loop_mode);
-                    player1
-                        .playlists(state.playlist, state.url_playlist, state.playlist_name);
+                    player1.playlists(state.playlist, state.url_playlist, state.playlist_name);
                     if let Some(song_id) = state.current_song_uuid {
                         player1.play_song(song_id);
                         let p = player1.clone();
@@ -386,8 +390,7 @@ impl App {
                 move |songs, song_id| {
                     let pl: Vec<Uuid> = songs.iter().map(|s| s.id).collect();
                     player2.clear_playlist();
-                    player2
-                        .playlists(Some(pl.clone().into()), Some(songs.into()), None);
+                    player2.playlists(Some(pl.clone().into()), Some(songs.into()), None);
                     player2.play_song(song_id);
                 },
             );
@@ -414,7 +417,8 @@ impl App {
         } else if self.activity == ActivityType::MyPlaylists {
             let mut player1 = self.player.clone();
             let mut player2 = self.player.clone();
-            let username = self.config
+            let username = self
+                .config
                 .auth
                 .as_ref()
                 .map(|a| a.user.username.to_string());

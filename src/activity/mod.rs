@@ -11,7 +11,10 @@ use crate::api::{Artwork, LoadingState, Playlist, PlaylistDetail, SongDTO};
 use crate::theme::ThemeManager;
 use crate::utilities::cache::{self, PersistentMediaCache};
 use crate::utilities::util::format_duration;
-use eframe::egui::{include_image, vec2, Align2, Color32, Context, FontId, Frame, Grid, Image, ImageSource, Sense, Ui, Vec2};
+use eframe::egui::{
+    Align2, Color32, Context, FontId, Frame, Grid, Image, ImageSource, Sense, Ui, Vec2,
+    include_image, vec2,
+};
 use egui_extras::{Column, TableBuilder};
 use reqwest::Client;
 use std::fs::read;
@@ -144,7 +147,7 @@ impl ActivityType {
             Self::Setlists => Some(include_image!("../../assets/setlist.svg")),
             Self::Favorites => Some(include_image!("../../assets/favorite.svg")),
             Self::Profile => Some(include_image!("../../assets/icon.png")),
-            Self::Queue => Some(include_image!("../../assets/player-queue.svg"))
+            Self::Queue => Some(include_image!("../../assets/player-queue.svg")),
         }
     }
 }
@@ -425,8 +428,8 @@ pub fn render_playlist_art_advanced(
         }
     }
 
-    let half_vertical = vec2(size[0] / 2.0, size[1] );
-    let half_horizontal = vec2(size[0], size[1] / 2.0 );
+    let half_vertical = vec2(size[0] / 2.0, size[1]);
+    let half_horizontal = vec2(size[0], size[1] / 2.0);
 
     let mosaic_valid = playlist
         .mosaic_media
@@ -440,25 +443,41 @@ pub fn render_playlist_art_advanced(
                     1 => {
                         resolve_and_render_art(ui, cache, ctx, rt, client, valid_mosaic[0], size);
                         return;
-                    },
+                    }
                     2 => {
                         Grid::new(format!("{} songs mosaic", playlist.id))
                             .spacing(Vec2::new(1.0, 2.0))
                             .show(ui, |ui| {
                                 for i in 0..2 {
                                     let cover = valid_mosaic[i % valid_mosaic.len()];
-                                    resolve_and_render_art(ui, cache, ctx, rt, client, cover, half_vertical);
+                                    resolve_and_render_art(
+                                        ui,
+                                        cache,
+                                        ctx,
+                                        rt,
+                                        client,
+                                        cover,
+                                        half_vertical,
+                                    );
                                 }
                             });
-                        return
+                        return;
                     }
-                    3 =>{
+                    3 => {
                         Grid::new(format!("{} songs mosaic - p1", playlist.id))
                             .spacing(Vec2::new(1.0, 2.0))
                             .show(ui, |ui| {
                                 for i in 0..2 {
                                     let cover = valid_mosaic[i % valid_mosaic.len()];
-                                    resolve_and_render_art(ui, cache, ctx, rt, client, cover, size / 2.0);
+                                    resolve_and_render_art(
+                                        ui,
+                                        cache,
+                                        ctx,
+                                        rt,
+                                        client,
+                                        cover,
+                                        size / 2.0,
+                                    );
                                 }
                             });
 
@@ -466,10 +485,17 @@ pub fn render_playlist_art_advanced(
                             .spacing(Vec2::new(1.0, 1.0))
                             .show(ui, |ui| {
                                 let cover = valid_mosaic[2];
-                                resolve_and_render_art(ui, cache, ctx, rt, client, cover, half_horizontal);
-
+                                resolve_and_render_art(
+                                    ui,
+                                    cache,
+                                    ctx,
+                                    rt,
+                                    client,
+                                    cover,
+                                    half_horizontal,
+                                );
                             });
-                        return
+                        return;
                     }
                     _ => {
                         Grid::new(format!("{} songs mosaic", playlist.id))
@@ -477,7 +503,15 @@ pub fn render_playlist_art_advanced(
                             .show(ui, |ui| {
                                 for i in 0..4 {
                                     let cover = valid_mosaic[i % valid_mosaic.len()];
-                                    resolve_and_render_art(ui, cache, ctx, rt, client, cover, size / 2.0);
+                                    resolve_and_render_art(
+                                        ui,
+                                        cache,
+                                        ctx,
+                                        rt,
+                                        client,
+                                        cover,
+                                        size / 2.0,
+                                    );
                                     if i == 1 {
                                         ui.end_row();
                                     }
@@ -490,28 +524,34 @@ pub fn render_playlist_art_advanced(
         }
     }
 
-    let valid_song_covers: Vec<&Artwork> = songs
-        .iter()
-        .filter_map(|s| s.cover_art.as_ref())
-        .collect();
+    let valid_song_covers: Vec<&Artwork> =
+        songs.iter().filter_map(|s| s.cover_art.as_ref()).collect();
     if !valid_song_covers.is_empty() {
         match valid_song_covers.len() {
             1 => {
                 resolve_and_render_art(ui, cache, ctx, rt, client, valid_song_covers[0], size);
                 return;
-            },
+            }
             2 => {
                 Grid::new(format!("{} songs mosaic", playlist.id))
                     .spacing(Vec2::new(1.0, 2.0))
                     .show(ui, |ui| {
                         for i in 0..2 {
                             let cover = valid_song_covers[i % valid_song_covers.len()];
-                            resolve_and_render_art(ui, cache, ctx, rt, client, cover, half_vertical);
+                            resolve_and_render_art(
+                                ui,
+                                cache,
+                                ctx,
+                                rt,
+                                client,
+                                cover,
+                                half_vertical,
+                            );
                         }
                     });
-                return
+                return;
             }
-            3 =>{
+            3 => {
                 Grid::new(format!("{} songs mosaic-p1", playlist.id))
                     .spacing(Vec2::new(1.0, 2.0))
                     .show(ui, |ui| {
@@ -525,10 +565,9 @@ pub fn render_playlist_art_advanced(
                     .show(ui, |ui| {
                         let cover = valid_song_covers[2];
                         resolve_and_render_art(ui, cache, ctx, rt, client, cover, half_horizontal);
-
                     });
 
-                return
+                return;
             }
             _ => {
                 Grid::new(format!("{} songs mosaic", playlist.id))

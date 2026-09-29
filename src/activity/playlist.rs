@@ -5,11 +5,11 @@ use crate::utilities::util::{select_playlist_by_id, sort_items};
 
 use crate::debug_log;
 use dashmap::DashMap;
-use eframe::egui::{ScrollArea, TextEdit, Context, Ui};
+use eframe::egui::{Context, ScrollArea, TextEdit, Ui};
 use ron::de;
 use ron::ser;
-use std::fs::read;
 use std::cell::RefCell;
+use std::fs::read;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
@@ -64,7 +64,7 @@ impl PlaylistActivity {
         }));
 
         let has_more = Arc::new(Mutex::new(
-            cached_playlists.as_ref().map_or(true, |d| d.len() > 20)
+            cached_playlists.as_ref().map_or(true, |d| d.len() > 20),
         ));
         let loading_more = Arc::new(Mutex::new(false));
 
@@ -134,14 +134,26 @@ impl PlaylistActivity {
         let playlists = self.playlists.clone();
         let all_playlists = self.all_playlists.clone();
         let songs = self.songs.clone();
-        let cache_path = cache_dir().join(if self.is_personal { "my_playlists.ron" } else { "playlists.ron" });
+        let cache_path = cache_dir().join(if self.is_personal {
+            "my_playlists.ron"
+        } else {
+            "playlists.ron"
+        });
         let ctx = self.ctx.clone();
         let is_personal = self.is_personal;
 
-        debug_log!("🚀 [PlaylistActivity] load_more() called. has_more={}, loading_more={}", *has_more.blocking_lock(), *loading.blocking_lock());
+        debug_log!(
+            "🚀 [PlaylistActivity] load_more() called. has_more={}, loading_more={}",
+            *has_more.blocking_lock(),
+            *loading.blocking_lock()
+        );
 
         if *loading.blocking_lock() || !*has_more.blocking_lock() {
-            debug_log!("⚠️ [PlaylistActivity] load_more() aborted: loading={}, has_more={}", *loading.blocking_lock(), *has_more.blocking_lock());
+            debug_log!(
+                "⚠️ [PlaylistActivity] load_more() aborted: loading={}, has_more={}",
+                *loading.blocking_lock(),
+                *has_more.blocking_lock()
+            );
             return;
         }
 
@@ -164,12 +176,16 @@ impl PlaylistActivity {
                         let _ = tokio::fs::write(
                             cache_path.clone(),
                             ser::to_string_pretty(&data, Default::default()).unwrap(),
-                        ).await;
+                        )
+                        .await;
                         *all_opt = Some(data.clone());
                         data
                     }
                     Err(e) => {
-                        debug_log!("❌ [PlaylistActivity] Error fetching playlists in load_more: {}", e);
+                        debug_log!(
+                            "❌ [PlaylistActivity] Error fetching playlists in load_more: {}",
+                            e
+                        );
                         *has_more.lock().await = false;
                         *loading.lock().await = false;
                         ctx.request_repaint();
@@ -395,4 +411,3 @@ impl PlaylistActivity {
         });
     }
 }
-

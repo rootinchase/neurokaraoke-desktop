@@ -183,7 +183,7 @@ impl Theme {
             Color32::from_hex("#1A0B14").unwrap(), // background_elevated
             Color32::from_hex("#2A1220").unwrap(), // background_mid
             Color32::from_hex("#3D1A2E").unwrap(), // background_hover
-            Color32::WHITE,                              // text
+            Color32::WHITE,                        // text
             Color32::from_hex("#E0A3C7").unwrap(), // text_secondary
             Color32::from_hex("#8A5A73").unwrap(), // text_muted
             Color32::from_hex("#4A2438").unwrap(), // border

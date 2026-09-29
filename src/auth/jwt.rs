@@ -17,9 +17,7 @@ pub fn extract_claims_from_jwt(token: &str) -> Result<api::UserClaims> {
     let raw_payload: api::JwtPayload = serde_json::from_slice(&decoded_bytes)
         .map_err(|e| anyhow!("Failed to map JWT fields: {}", e))?;
 
-    let user_uuid = Uuid::parse_str(&raw_payload.id).unwrap_or_else(|_| {
-        Uuid::new_v4()
-    });
+    let user_uuid = Uuid::parse_str(&raw_payload.id).unwrap_or_else(|_| Uuid::new_v4());
 
     Ok(api::UserClaims {
         id: user_uuid,

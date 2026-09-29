@@ -5,7 +5,6 @@ pub struct ApiUrls {
     pub images: &'static str,
     pub storage: &'static str,
     pub account_hash: &'static str,
-
 }
 pub const API_URLS: ApiUrls = ApiUrls {
     base: "https://neurokaraoke.com",

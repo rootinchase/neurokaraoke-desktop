@@ -1,6 +1,6 @@
 use crate::activity::profile::{ProfileMessage, ProfileState};
-use crate::auth::discord::{capture_discord_token, NEURO_KARAOKE_DISCORD};
 use crate::auth::AuthService;
+use crate::auth::discord::{NEURO_KARAOKE_DISCORD, capture_discord_token};
 use crate::theme::ThemeManager;
 use eframe::egui::{Button, Frame, RichText, TextEdit, Ui, Vec2};
 use std::sync::Arc;
@@ -86,10 +86,14 @@ pub fn render_login_form(
                             Ok(discord_token) => {
                                 match auth_service.login_via_discord(&discord_token).await {
                                     Ok(auth_ctx) => {
-                                        let _ = tx.send(ProfileMessage::LoginSuccess(auth_ctx)).await;
+                                        let _ =
+                                            tx.send(ProfileMessage::LoginSuccess(auth_ctx)).await;
                                     }
                                     Err(e) => {
-                                        crate::debug_log!("❌ Discord login verification failed: {}", e);
+                                        crate::debug_log!(
+                                            "❌ Discord login verification failed: {}",
+                                            e
+                                        );
                                     }
                                 }
                             }

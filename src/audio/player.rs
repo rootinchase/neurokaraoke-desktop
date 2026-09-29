@@ -14,7 +14,6 @@ use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 use uuid::Uuid;
 
-
 impl PlaybackState {
     pub fn duration(&self) -> Duration {
         self.duration
@@ -202,12 +201,18 @@ impl Player {
                         let song_uuid = state.song();
 
                         if reported_play_song != Some(song_uuid) {
-                            if pos >= Duration::from_secs(30) || (dur > Duration::from_secs(0) && pos >= dur) {
+                            if pos >= Duration::from_secs(30)
+                                || (dur > Duration::from_secs(0) && pos >= dur)
+                            {
                                 reported_play_song = Some(song_uuid);
                                 let db_clone = database.clone();
                                 rt.spawn(async move {
                                     if let Err(e) = db_clone.report_play_count(song_uuid).await {
-                                        debug_log!("❌ Failed to report play count for {}: {}", song_uuid, e);
+                                        debug_log!(
+                                            "❌ Failed to report play count for {}: {}",
+                                            song_uuid,
+                                            e
+                                        );
                                     }
                                 });
                             }
@@ -241,7 +246,12 @@ impl Player {
                                     (playlist.len(), idx)
                                 };
 
-                                debug_log!("Transition: Found index {:?} in playlist of length {}, loop_mode={:?}", idx, len, loop_mode);
+                                debug_log!(
+                                    "Transition: Found index {:?} in playlist of length {}, loop_mode={:?}",
+                                    idx,
+                                    len,
+                                    loop_mode
+                                );
                                 if let Some(idx) = idx {
                                     // FIX 1: Prioritize LoopMode::One BEFORE checking if we reached the end of the playlist.
                                     // This catches URL tracks and DB tracks anywhere in the playlist.
@@ -277,10 +287,14 @@ impl Player {
                                         );
                                         match loop_mode {
                                             LoopMode::All => {
-                                                debug_log!("Transition: LoopMode::All, restarting playlist");
+                                                debug_log!(
+                                                    "Transition: LoopMode::All, restarting playlist"
+                                                );
 
-                                                let player_state = player.player_state.lock().unwrap();
-                                                if let Some(url_playlist) = &player_state.url_playlist
+                                                let player_state =
+                                                    player.player_state.lock().unwrap();
+                                                if let Some(url_playlist) =
+                                                    &player_state.url_playlist
                                                     && url_playlist.len() == playlist.len()
                                                 {
                                                     player.url_playback(
@@ -298,7 +312,9 @@ impl Player {
                                             }
                                             LoopMode::None => {
                                                 // Keep the playlist set, but stop playback
-                                                if let Some(state) = player.state.lock().unwrap().as_mut() {
+                                                if let Some(state) =
+                                                    player.state.lock().unwrap().as_mut()
+                                                {
                                                     state.pause();
                                                     // Set position to duration to prevent re-triggering the 'pos >= dur' check
                                                     state.seek(state.duration());
@@ -338,7 +354,9 @@ impl Player {
                                 if let Some(playlist) = ordered_playlist.as_ref()
                                     && loop_mode != LoopMode::None
                                 {
-                                    debug_log!("Transition: Song not in playlist or no playlist, loading first song");
+                                    debug_log!(
+                                        "Transition: Song not in playlist or no playlist, loading first song"
+                                    );
                                     let player_state = player.player_state.lock().unwrap();
                                     if let Some(url_playlist) = &player_state.url_playlist
                                         && url_playlist.len() == playlist.len()
@@ -475,7 +493,6 @@ impl Player {
 
                                         for next_idx in search_indices {
                                             if let Some(url_playlist) = &player_state.url_playlist {
-
                                                 if url_playlist.len() == playlist.len() {
                                                     if let Some(next_song) =
                                                         url_playlist.get(next_idx)
@@ -500,7 +517,6 @@ impl Player {
                                             }
                                         }
                                     }
-
                                 }
 
                                 drop(lock);
@@ -587,7 +603,11 @@ impl Player {
                                                 let cache_worker = cache.clone();
                                                 let client_worker = client.clone(); // `client` is available in `internal` scope
                                                 let cb_worker = cb;
-                                                let url = format!("{}/{}", API_URLS.storage, path_str.as_ref()); // Construct URL
+                                                let url = format!(
+                                                    "{}/{}",
+                                                    API_URLS.storage,
+                                                    path_str.as_ref()
+                                                ); // Construct URL
 
                                                 rt.spawn(async move {
                                                     match cache_worker.get_or_download_audio(&client_worker, uuid, url).await {
@@ -610,7 +630,11 @@ impl Player {
                                             continue;
                                         }
                                         LoadingState::Failed(e) => {
-                                            debug_log!("🔴 [Audio API] Song load failed: {:?}, error: {:?}", uuid, e);
+                                            debug_log!(
+                                                "🔴 [Audio API] Song load failed: {:?}, error: {:?}",
+                                                uuid,
+                                                e
+                                            );
                                             continue;
                                         }
                                     }
@@ -671,10 +695,7 @@ impl Player {
 
                                 // Fix absolute path base mismatches if the API returned neurokaraoke.com directly
                                 let url = if url.contains(API_URLS.base) {
-                                    url.replace(
-                                        API_URLS.base,
-                                        API_URLS.storage,
-                                    )
+                                    url.replace(API_URLS.base, API_URLS.storage)
                                 } else {
                                     url
                                 };
@@ -778,7 +799,10 @@ impl Player {
                                 mixer.set_volume(current_vol.powi(3));
 
                                 mixer.append(decoder);
-                                debug_log!("🟢 [Audio API] Decoder appended to new mixer instance. Song: {:?}", target_uuid);
+                                debug_log!(
+                                    "🟢 [Audio API] Decoder appended to new mixer instance. Song: {:?}",
+                                    target_uuid
+                                );
 
                                 mixer.play();
                                 debug_log!("🟢 [Audio API] Mixer play command issued.");
@@ -851,19 +875,34 @@ impl Player {
 
     pub fn append_to_playlist(&self, uuid: Uuid) {
         let mut player_state = self.player_state.lock().unwrap();
-        let mut pl = player_state.playlist.as_ref().map(|x| x.to_vec()).unwrap_or_else(Vec::new);
+        let mut pl = player_state
+            .playlist
+            .as_ref()
+            .map(|x| x.to_vec())
+            .unwrap_or_else(Vec::new);
         pl.push(uuid);
         player_state.playlist = Some(pl.into());
         // Do not send a `PlaybackCommand::Playlist` or reset playback here
     }
 
-    pub fn playlists(&self, playlist: Option<Arc<[Uuid]>>, url_playlist: Option<Arc<[crate::api::SongDTO]>>, playlist_name: Option<String>) {
+    pub fn playlists(
+        &self,
+        playlist: Option<Arc<[Uuid]>>,
+        url_playlist: Option<Arc<[crate::api::SongDTO]>>,
+        playlist_name: Option<String>,
+    ) {
         let mut ps = self.player_state.lock().unwrap();
         ps.playlist = playlist.clone();
         ps.url_playlist = url_playlist.clone();
         ps.playlist_name = playlist_name.clone();
         drop(ps);
-        self.sender.try_send(PlaybackCommand::Playlists(playlist, url_playlist, playlist_name)).ok();
+        self.sender
+            .try_send(PlaybackCommand::Playlists(
+                playlist,
+                url_playlist,
+                playlist_name,
+            ))
+            .ok();
     }
 
     pub fn get_playlist_name(&self) -> Option<String> {
@@ -880,7 +919,14 @@ impl Player {
             let new_url_pl: Vec<crate::api::SongDTO> = url_pl
                 .iter()
                 .cloned()
-                .zip(player_state.playlist.as_ref().map(|p| p.iter()).into_iter().flatten())
+                .zip(
+                    player_state
+                        .playlist
+                        .as_ref()
+                        .map(|p| p.iter())
+                        .into_iter()
+                        .flatten(),
+                )
                 .map(|(s, _)| s)
                 .collect();
             player_state.url_playlist = Some(new_url_pl.into());
@@ -888,11 +934,15 @@ impl Player {
     }
 
     pub fn playlist(&self, playlist: Option<Arc<[Uuid]>>) {
-        self.sender.try_send(PlaybackCommand::Playlist(playlist)).ok();
+        self.sender
+            .try_send(PlaybackCommand::Playlist(playlist))
+            .ok();
     }
 
     pub fn url_playlist(&self, playlist: Option<Arc<[crate::api::SongDTO]>>) {
-        self.sender.try_send(PlaybackCommand::UrlPlaylist(playlist)).ok();
+        self.sender
+            .try_send(PlaybackCommand::UrlPlaylist(playlist))
+            .ok();
     }
     pub fn clear_playlist(&self) {
         self.playlist(None);

@@ -87,7 +87,11 @@ impl SetlistActivity {
             // Always fetch fresh setlists from network
             match songs.get_official_setlists(year).await {
                 Ok(data) => {
-                    debug_log!("Fetched fresh setlists for year {}: {} items", year, data.len());
+                    debug_log!(
+                        "Fetched fresh setlists for year {}: {} items",
+                        year,
+                        data.len()
+                    );
 
                     // Retain only details that exist in the newly fetched setlists
                     let setlist_ids: std::collections::HashSet<Uuid> =
@@ -129,7 +133,7 @@ impl SetlistActivity {
                         cache_path,
                         ron::ser::to_string_pretty(&data, Default::default()).unwrap(),
                     )
-                        .await;
+                    .await;
                 }
                 Err(err) => {
                     let mut s_lock = s.lock().await;

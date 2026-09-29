@@ -1,9 +1,8 @@
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::AtomicU32;
-use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::AtomicU32;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use uuid::Uuid;
-
 
 #[derive(Debug, Clone, Copy)]
 pub struct PlaybackState {
@@ -40,7 +39,11 @@ pub enum PlaybackCommand {
     Loop(LoopMode),
     Playlist(Option<Arc<[Uuid]>>),
     UrlPlaylist(Option<Arc<[crate::api::SongDTO]>>),
-    Playlists(Option<Arc<[Uuid]>>, Option<Arc<[crate::api::SongDTO]>>, Option<String>),
+    Playlists(
+        Option<Arc<[Uuid]>>,
+        Option<Arc<[crate::api::SongDTO]>>,
+        Option<String>,
+    ),
     Song(Option<Uuid>, Box<dyn FnOnce(&Player) + Send + 'static>),
     UrlPlayback(
         Option<Uuid>,

@@ -44,7 +44,7 @@ impl AuthService {
 
             Ok(api::AuthContext {
                 token: data.token,
-                user: user_claims
+                user: user_claims,
             })
         } else {
             Err(Self::handle_error_response(res).await)
@@ -97,16 +97,12 @@ impl AuthService {
         }
     }
 
-
     /// GET /api/auth/me
     /// Verifies an active JWT structure against the core validation gate.
     #[allow(dead_code)]
     pub async fn verify_token(&self, token: &str) -> anyhow::Result<api::UserClaims> {
         let url = format!("{}/api/auth/me", self.auth_host);
-        let res = self.client.get(&url)
-            .bearer_auth(token)
-            .send()
-            .await?;
+        let res = self.client.get(&url).bearer_auth(token).send().await?;
 
         if res.status().is_success() {
             Ok(res.json().await?)
@@ -114,8 +110,6 @@ impl AuthService {
             Err(Self::handle_error_response(res).await)
         }
     }
-
-
 
     /// POST /api/auth/qr-session
     /// Allocates an unlinked identity synchronization state for hardware logins (e.g., TV/Car clients).
@@ -131,18 +125,21 @@ impl AuthService {
         }
     }
 
-
-
     /// GET /api/auth/qr-session/{sessionId}
     /// Polls the allocation loop to detect if a mobile/desktop controller has signed the session.
     #[allow(dead_code)]
-    pub async fn poll_qr_session(&self, session_id: Uuid) -> anyhow::Result<Option<api::AuthContext>> {
+    pub async fn poll_qr_session(
+        &self,
+        session_id: Uuid,
+    ) -> anyhow::Result<Option<api::AuthContext>> {
         let url = format!("{}/api/auth/qr-session/{}", self.auth_host, session_id);
         let res = self.client.get(&url).send().await?;
 
         if res.status().is_success() {
             let session: api::QrSession = res.json().await?;
-            if session.is_linked && let Some(token) = session.token {
+            if session.is_linked
+                && let Some(token) = session.token
+            {
                 // Instantly sync context records once validation wraps up
                 let user = self.verify_token(&token).await?;
                 return Ok(Some(api::AuthContext { token, user }));
@@ -153,17 +150,12 @@ impl AuthService {
         }
     }
 
-
-
     /// POST /api/auth/pairing-code
     /// Generates a human-readable linking identifier to connect target hardware platforms.
     #[allow(dead_code)]
     pub async fn generate_pairing_code(&self, token: &str) -> anyhow::Result<String> {
         let url = format!("{}/api/auth/pairing-code", self.auth_host);
-        let res = self.client.post(&url)
-            .bearer_auth(token)
-            .send()
-            .await?;
+        let res = self.client.post(&url).bearer_auth(token).send().await?;
 
         if res.status().is_success() {
             // Pairing codes are returned as plain string formats
@@ -173,14 +165,10 @@ impl AuthService {
         }
     }
 
-
     #[allow(dead_code)]
     pub async fn get_user_profile(&self, token: &str) -> anyhow::Result<api::ProfileResponse> {
         let url = format!("{}/api/badge/profile", API_URLS.api);
-        let res = self.client.get(url)
-            .bearer_auth(token)
-            .send()
-            .await?;
+        let res = self.client.get(url).bearer_auth(token).send().await?;
 
         if res.status().is_success() {
             Ok(res.json().await?)

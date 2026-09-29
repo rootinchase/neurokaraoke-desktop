@@ -1,4 +1,6 @@
-pub use playwire::{MediaControls, Track, Repeat, PlayerConfig, PlaybackState, Capabilities, Event};
+pub use playwire::{
+    Capabilities, Event, MediaControls, PlaybackState, PlayerConfig, Repeat, Track,
+};
 
 use crate::audio::{LoopMode, Player};
 use crate::config::SharedConfig;

@@ -1,7 +1,7 @@
 use crate::audio::Player;
 use crate::config::SharedConfig;
-use crate::utilities::playwire::{self, MediaControls, Repeat, Track};
 use crate::utilities::discord::DiscordPresencePayload;
+use crate::utilities::playwire::{self, MediaControls, Repeat, Track};
 use tokio::sync::mpsc::UnboundedSender;
 
 pub struct PlaybackIntegrationManager {

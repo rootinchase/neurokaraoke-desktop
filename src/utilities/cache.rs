@@ -10,7 +10,6 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::{Notify, Semaphore};
 use uuid::Uuid;
 
-
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum AssetType {
     Audio,
@@ -118,7 +117,11 @@ impl PersistentMediaCache {
     }
 
     pub async fn get_or_download_image(&self, cloudflare_id: Uuid, url: String) -> Result<PathBuf> {
-        debug_log!("🔍 [Cache] Requesting image: {} (URL: {})", cloudflare_id, url);
+        debug_log!(
+            "🔍 [Cache] Requesting image: {} (URL: {})",
+            cloudflare_id,
+            url
+        );
         let key = (cloudflare_id, AssetType::Image);
 
         loop {
@@ -129,7 +132,10 @@ impl PersistentMediaCache {
                         return Ok(path.clone());
                     }
                     DownloadStatus::InFlight(notify) => {
-                        debug_log!("⏳ [Cache] Waiting for in-flight download for: {}", cloudflare_id);
+                        debug_log!(
+                            "⏳ [Cache] Waiting for in-flight download for: {}",
+                            cloudflare_id
+                        );
                         let notify_clone = notify.clone();
                         drop(status);
                         notify_clone.notified().await;
@@ -147,7 +153,10 @@ impl PersistentMediaCache {
                 return Ok(potential_path);
             }
 
-            debug_log!("🌐 [Cache] File not in cache/disk. Starting download for: {}", cloudflare_id);
+            debug_log!(
+                "🌐 [Cache] File not in cache/disk. Starting download for: {}",
+                cloudflare_id
+            );
 
             let notify = Arc::new(Notify::new());
             match self.in_flight.entry(key) {
@@ -175,7 +184,7 @@ impl PersistentMediaCache {
                     notify.notify_waiters();
                     Err(e)
                 }
-            }
+            };
         }
     }
 
@@ -221,7 +230,7 @@ impl PersistentMediaCache {
             file.flush().await?;
             Ok::<(), std::io::Error>(())
         }
-            .await;
+        .await;
 
         if let Err(e) = write_result {
             let _ = remove_file(&tmp_path).await;
@@ -298,7 +307,6 @@ impl PersistentMediaCache {
                 }
             }
 
-
             let final_path = Self::get_asset_path(song_uuid, None);
             if metadata(&final_path).await.is_ok() {
                 self.in_flight
@@ -353,7 +361,7 @@ impl PersistentMediaCache {
 
                 Ok(final_path.clone())
             }
-                .await;
+            .await;
 
             // STEP 5: Register outcomes and alert waiting threads
             return match download_result {
@@ -368,7 +376,7 @@ impl PersistentMediaCache {
                     notify.notify_waiters();
                     Err(e)
                 }
-            }
+            };
         }
     }
 
@@ -397,7 +405,8 @@ pub fn get_thumbnail_url(cloudflare_id: Option<&str>, absolute_path: &str, fit: 
             API_URLS.images, API_URLS.account_hash, id, fit
         )
     } else if let Some(abs) = clean_abs {
-        if abs.starts_with("/WxURxyML82UkE7gY-PiBKw/") || abs.starts_with("WxURxyML82UkE7gY-PiBKw/") {
+        if abs.starts_with("/WxURxyML82UkE7gY-PiBKw/") || abs.starts_with("WxURxyML82UkE7gY-PiBKw/")
+        {
             let path_clean = abs.trim_start_matches('/');
             format!(
                 "{}/{}/width=512,height=512,fit={}",

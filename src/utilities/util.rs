@@ -17,34 +17,38 @@ pub fn sort_items<T>(
     get_date: impl Fn(&T) -> Option<String>,
 ) {
     match current_sort {
-        SortOption::Name => if *current_sort_desc {
-            items.sort_by(|a, b| get_name(b).to_lowercase().cmp(&get_name(a).to_lowercase()))
-        } else {
-            items.sort_by(|a, b| get_name(a).to_lowercase().cmp(&get_name(b).to_lowercase()))
-        },
-        SortOption::Songs => if *current_sort_desc {
-            items.sort_by(|a, b| get_song_count(b).cmp(&get_song_count(a)))
-        } else {
-            items.sort_by(|a, b| get_song_count(a).cmp(&get_song_count(b)))
-        },
-        SortOption::Plays => if *current_sort_desc {
-            items.sort_by(|a, b| get_play_count(b).cmp(&get_play_count(a)))
-        } else {
-            items.sort_by(|a, b| get_play_count(a).cmp(&get_play_count(b)))
-        },
+        SortOption::Name => {
+            if *current_sort_desc {
+                items.sort_by(|a, b| get_name(b).to_lowercase().cmp(&get_name(a).to_lowercase()))
+            } else {
+                items.sort_by(|a, b| get_name(a).to_lowercase().cmp(&get_name(b).to_lowercase()))
+            }
+        }
+        SortOption::Songs => {
+            if *current_sort_desc {
+                items.sort_by(|a, b| get_song_count(b).cmp(&get_song_count(a)))
+            } else {
+                items.sort_by(|a, b| get_song_count(a).cmp(&get_song_count(b)))
+            }
+        }
+        SortOption::Plays => {
+            if *current_sort_desc {
+                items.sort_by(|a, b| get_play_count(b).cmp(&get_play_count(a)))
+            } else {
+                items.sort_by(|a, b| get_play_count(a).cmp(&get_play_count(b)))
+            }
+        }
         SortOption::Date => {
             if *current_sort_desc {
                 items.sort_by(|a, b| get_date(b).cmp(&get_date(a)))
             } else {
                 items.sort_by(|a, b| get_date(a).cmp(&get_date(b)))
             }
-        },
+        }
     }
 }
 
-pub fn split_by_space_respecting_quotes(
-    s: &str
-) -> Vec<String> {
+pub fn split_by_space_respecting_quotes(s: &str) -> Vec<String> {
     let mut result = Vec::new();
     let mut current = String::new();
     let mut in_quotes = false;
@@ -57,7 +61,7 @@ pub fn split_by_space_respecting_quotes(
                     result.push(current.clone());
                     current.clear();
                 }
-            },
+            }
             _ => current.push(c),
         }
     }
@@ -67,9 +71,7 @@ pub fn split_by_space_respecting_quotes(
     result
 }
 
-pub fn format_duration(
-    seconds: u64
-) -> String {
+pub fn format_duration(seconds: u64) -> String {
     format!("{}:{:02}", seconds / 60, seconds % 60)
 }
 
@@ -81,7 +83,6 @@ macro_rules! debug_log {
         }
     };
 }
-
 
 #[allow(dead_code)]
 pub struct IntoAs<T>(std::marker::PhantomData<T>);
@@ -95,7 +96,7 @@ impl<'de, U, T: Deserialize<'de> + Into<U>> DeserializeAs<'de, U> for IntoAs<T> 
 }
 impl<U, T: Serialize> SerializeAs<U> for IntoAs<T>
 where
-        for<'a> T: From<&'a U>,
+    for<'a> T: From<&'a U>,
 {
     fn serialize_as<S>(source: &U, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -104,7 +105,6 @@ where
         T::from(source).serialize(serializer)
     }
 }
-
 
 pub struct AsArcMutex<T>(std::marker::PhantomData<T>);
 impl<'de, T: Deserialize<'de>> DeserializeAs<'de, Arc<Mutex<T>>> for AsArcMutex<T> {
@@ -129,14 +129,14 @@ impl<T: Serialize> SerializeAs<Arc<Mutex<T>>> for AsArcMutex<T> {
     }
 }
 
-
 pub fn select_playlist_by_id(
     id: Uuid,
     selected: Arc<Mutex<Option<LoadingState<crate::api::PlaylistDetail>>>>,
     songs: crate::api::LazySongDatabase,
 ) {
     tokio::spawn(async move {
-        let cache_path = crate::utilities::cache::cache_dir().join(format!("playlist_detail_{}.ron", id));
+        let cache_path =
+            crate::utilities::cache::cache_dir().join(format!("playlist_detail_{}.ron", id));
 
         // Optimistically load from cache if available
         if let Ok(data) = tokio::fs::read(&cache_path).await {
@@ -152,16 +152,17 @@ pub fn select_playlist_by_id(
                 let _ = tokio::fs::write(
                     cache_path,
                     ron::ser::to_string_pretty(&data, Default::default()).unwrap(),
-                ).await;
+                )
+                .await;
             }
             Err(err) => {
                 let mut sel_lock = selected.lock().await;
-                if sel_lock.is_none() || matches!(*sel_lock.as_ref().unwrap(), LoadingState::Loading) {
+                if sel_lock.is_none()
+                    || matches!(*sel_lock.as_ref().unwrap(), LoadingState::Loading)
+                {
                     *sel_lock = Some(LoadingState::Failed(Arc::new(err)));
                 }
             }
         }
     });
 }
-
-
