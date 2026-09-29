@@ -11,6 +11,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
+    let player_vol = app.player.get_volume();
+    if (app.config.volume - player_vol).abs() > f32::EPSILON {
+        app.config.volume = player_vol;
+    }
+
     if let Some(state) = app.player.get_playback_state() {
         let mut song = match app.songs.get(&state.song(), |song| song.clone()) {
             crate::api::LoadingState::Loaded(s) => Some(s),
