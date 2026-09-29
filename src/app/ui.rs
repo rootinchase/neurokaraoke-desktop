@@ -5,6 +5,7 @@ use crate::audio::Player;
 use crate::auth::AuthService;
 use crate::debug_log;
 use crate::utilities::{cache, persistence};
+use rand::prelude::SliceRandom;
 use std::sync::Arc;
 
 use eframe;
@@ -344,14 +345,18 @@ impl App {
             self.queue_activity.render(
                 ui,
                 move |playlist| {
-                    let pl: Vec<Uuid> = playlist.songs.iter().map(|s| s.id).collect();
+                    let mut songs = playlist.songs.clone();
+                    if player1.get_shuffle() && !songs.is_empty() {
+                        songs.shuffle(&mut rand::rng());
+                    }
+                    let pl: Vec<Uuid> = songs.iter().map(|s| s.id).collect();
                     player1.clear_playlist();
                     player1.playlists(
                         Some(pl.clone().into()),
-                        Some(playlist.songs.clone().into()),
+                        Some(songs.clone().into()),
                         Some(playlist.name.to_string()),
                     );
-                    if let Some(first) = playlist.songs.first() {
+                    if let Some(first) = songs.first() {
                         player1.play_song(first.id);
                     }
                 },
@@ -478,17 +483,21 @@ impl App {
 
 fn play_playlist(player: &mut Player, songs: &[SongDTO], name: &str) {
     debug_log!("Playlist '{}' has {} songs.", name, songs.len());
-    let pl: Vec<Uuid> = songs.iter().map(|s| s.id).collect();
+    let mut songs_vec = songs.to_vec();
+    if player.get_shuffle() && !songs_vec.is_empty() {
+        songs_vec.shuffle(&mut rand::rng());
+    }
+    let pl: Vec<Uuid> = songs_vec.iter().map(|s| s.id).collect();
     player.clear_playlist();
     player.playlists(
         Some(pl.clone().into()),
-        Some(songs.into()),
+        Some(songs_vec.clone().into()),
         Some(name.to_string()),
     );
     let _ = persistence::clear_app_state();
 
-    if let Some(first_song) = songs.first() {
-        player.url_playback(Some(pl[0]), first_song.clone(), Player::play);
+    if let Some(first_song) = songs_vec.first() {
+        player.url_playback(Some(first_song.id), first_song.clone(), Player::play);
     }
 }
 

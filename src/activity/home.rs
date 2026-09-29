@@ -1,9 +1,8 @@
 use crate::api::{LazySongDatabase, LoadingState, SongDTO, TrendingTimes};
-use crate::debug_log;
 use crate::theme::ThemeManager;
-use crate::utilities::cache::{self, PersistentMediaCache, cache_dir};
+use crate::utilities::cache::{PersistentMediaCache, cache_dir};
 use crate::utilities::persistence::{AppState, load_app_state};
-use eframe::egui::{Button, Frame, Grid, Image, RichText, Sense, Ui, Vec2, include_image};
+use eframe::egui::{Button, Frame, Grid, Image, RichText, ScrollArea, Sense, Ui, Vec2, include_image};
 use egui_extras::{Column, TableBuilder};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -350,30 +349,37 @@ impl HomeActivity {
         on_restore: impl FnOnce(AppState),
         on_play_suggested: impl Fn(Vec<SongDTO>, Uuid),
     ) {
-        ui.vertical(|ui| {
-            // Previous session UI
-            if let Some(state) = load_app_state() {
-                ui.heading("Welcome back!");
-                ui.add_space(10.0);
-                Frame::new()
-                    .fill(theme.background_elevated)
-                    .corner_radius(8.0)
-                    .inner_margin(10.0)
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.set_width(ui.available_width());
-                            ui.vertical(|ui| {
-                                ui.set_width(170.0);
-                                if let Some(uuid) = state.current_song_uuid {
-                                    if let LoadingState::Loaded(song) =
-                                        songs.get(&uuid, |s| s.cover_art.clone())
-                                    {
-                                        if let Some(art) = song {
-                                            self.resolve_and_render_art(
-                                                ui,
-                                                &art,
-                                                Vec2::new(150.0, 150.0),
-                                            );
+        ScrollArea::vertical().show(ui, |ui| {
+            ui.vertical(|ui| {
+                // Previous session UI
+                if let Some(state) = load_app_state() {
+                    ui.heading("Welcome back!");
+                    ui.add_space(10.0);
+                    Frame::new()
+                        .fill(theme.background_elevated)
+                        .corner_radius(8.0)
+                        .inner_margin(10.0)
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.set_width(ui.available_width());
+                                ui.vertical(|ui| {
+                                    ui.set_width(170.0);
+                                    if let Some(uuid) = state.current_song_uuid {
+                                        if let LoadingState::Loaded(song) =
+                                            songs.get(&uuid, |s| s.cover_art.clone())
+                                        {
+                                            if let Some(art) = song {
+                                                self.resolve_and_render_art(
+                                                    ui,
+                                                    &art,
+                                                    Vec2::new(150.0, 150.0),
+                                                );
+                                            } else {
+                                                ui.allocate_exact_size(
+                                                    Vec2::new(150.0, 150.0),
+                                                    Sense::hover(),
+                                                );
+                                            }
                                         } else {
                                             ui.allocate_exact_size(
                                                 Vec2::new(150.0, 150.0),
@@ -381,104 +387,99 @@ impl HomeActivity {
                                             );
                                         }
                                     } else {
-                                        ui.allocate_exact_size(
-                                            Vec2::new(150.0, 150.0),
-                                            Sense::hover(),
+                                        ui.allocate_exact_size(Vec2::new(150.0, 150.0), Sense::hover());
+                                    }
+                                    ui.label(RichText::new("Resume Session").size(18.0).strong());
+                                });
+
+                                ui.add_space(20.0);
+                                ui.vertical(|ui| {
+                                    ui.heading("Continue where you left off");
+                                    if let Some(name) = &state.playlist_name {
+                                        ui.label(
+                                            RichText::new(format!("Playlist: {}", name))
+                                                .size(18.0)
+                                                .strong(),
                                         );
                                     }
-                                } else {
-                                    ui.allocate_exact_size(Vec2::new(150.0, 150.0), Sense::hover());
-                                }
-                                ui.label(RichText::new("Resume Session").size(18.0).strong());
-                            });
 
-                            ui.add_space(20.0);
-                            ui.vertical(|ui| {
-                                ui.heading("Continue where you left off");
-                                if let Some(name) = &state.playlist_name {
-                                    ui.label(
-                                        RichText::new(format!("Playlist: {}", name))
-                                            .size(18.0)
-                                            .strong(),
-                                    );
-                                }
+                                    if let Some(uuid) = state.current_song_uuid {
+                                        let song_info = songs.get(&uuid, |s| {
+                                            (s.title.to_string(), s.original_artists.clone())
+                                        });
+                                        match song_info {
+                                            LoadingState::Loaded((title, artists)) => {
+                                                ui.heading(title);
+                                                ui.label(artists.join(" & "));
+                                            }
+                                            _ => {
+                                                ui.label("Loading last song details...");
+                                            }
+                                        }
+                                    }
 
-                                if let Some(uuid) = state.current_song_uuid {
-                                    let song_info = songs.get(&uuid, |s| {
-                                        (s.title.to_string(), s.original_artists.clone())
+                                    ui.add_space(10.0);
+
+                                    ui.horizontal(|ui| {
+                                        let play_resp = ui.add(
+                                            Button::image(
+                                                Image::new(include_image!("../../assets/play.svg"))
+                                                    .fit_to_exact_size(Vec2::new(20.0, 20.0)),
+                                            )
+                                            .min_size(Vec2::new(40.0, 40.0))
+                                            .corner_radius(20.0)
+                                            .fill(theme.primary),
+                                        );
+                                        if play_resp.clicked() {
+                                            on_restore(state);
+                                        }
                                     });
-                                    match song_info {
-                                        LoadingState::Loaded((title, artists)) => {
-                                            ui.heading(title);
-                                            ui.label(artists.join(" & "));
-                                        }
-                                        _ => {
-                                            ui.label("Loading last song details...");
-                                        }
-                                    }
-                                }
-
-                                ui.add_space(10.0);
-
-                                ui.horizontal(|ui| {
-                                    let play_resp = ui.add(
-                                        Button::image(
-                                            Image::new(include_image!("../../assets/play.svg"))
-                                                .fit_to_exact_size(Vec2::new(20.0, 20.0)),
-                                        )
-                                        .min_size(Vec2::new(40.0, 40.0))
-                                        .corner_radius(20.0)
-                                        .fill(theme.primary),
-                                    );
-                                    if play_resp.clicked() {
-                                        on_restore(state);
-                                    }
                                 });
                             });
                         });
-                    });
+                    ui.add_space(20.0);
+                }
+
+                // Suggested Songs UI
+                self.render_song_list(
+                    ui,
+                    theme,
+                    "suggested",
+                    "Suggested songs",
+                    "Personalized songs curated based on your listening taste",
+                    &self.suggested_songs,
+                    &on_play_suggested,
+                );
+
+                // Trending Songs UI
                 ui.add_space(20.0);
-            }
+                self.render_song_list(
+                    ui,
+                    theme,
+                    "trending",
+                    "Trending songs",
+                    "Top songs in the last week",
+                    &self.trending_songs,
+                    &on_play_suggested,
+                );
 
-            // Suggested Songs UI
-            self.render_song_list(
-                ui,
-                theme,
-                "suggested",
-                "Suggested songs",
-                "Personalized songs curated based on your listening taste",
-                &self.suggested_songs,
-                &on_play_suggested,
-            );
-
-            // Trending Songs UI
-            ui.add_space(20.0);
-            self.render_song_list(
-                ui,
-                theme,
-                "trending",
-                "Trending songs",
-                "Top songs in the last week",
-                &self.trending_songs,
-                &on_play_suggested,
-            );
-
-            // Setlist Songs UI
-            ui.add_space(20.0);
-            let setlist_label = self
-                .setlist_name
-                .blocking_lock()
-                .clone()
-                .unwrap_or_else(|| "Featured setlist for the current year".to_string());
-            self.render_song_list(
-                ui,
-                theme,
-                "setlist",
-                "Most Recent Setlist",
-                &setlist_label,
-                &self.setlist_songs,
-                &on_play_suggested,
-            );
+                // Setlist Songs UI
+                ui.add_space(20.0);
+                let setlist_label = self
+                    .setlist_name
+                    .blocking_lock()
+                    .clone()
+                    .unwrap_or_else(|| "Featured setlist for the current year".to_string());
+                self.render_song_list(
+                    ui,
+                    theme,
+                    "setlist",
+                    "Most Recent Setlist",
+                    &setlist_label,
+                    &self.setlist_songs,
+                    &on_play_suggested,
+                );
+            });
         });
     }
 }

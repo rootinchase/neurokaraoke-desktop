@@ -1,6 +1,5 @@
 use crate::activity::SortOption;
 use crate::api::LoadingState;
-use eframe::egui::Ui;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{DeserializeAs, SerializeAs};
 use std::sync::Arc;

@@ -449,6 +449,8 @@ impl Player {
                             ps.playlist = playlist;
                             ps.url_playlist = url_playlist;
                             ps.playlist_name = playlist_name;
+                            drop(ps);
+                            reorder(&mut ordered_playlist, shuffle, true, &mut loop_mode);
                         }
 
                         PlaybackCommand::AppendToPlaylist(_) => {}

@@ -113,7 +113,6 @@ pub enum ActivityType {
     MyPlaylists,
     Setlists,
     Favorites,
-    Queue,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,7 +133,6 @@ impl ActivityType {
             Self::MyPlaylists => "My Playlists",
             Self::Setlists => "Official Setlists",
             Self::Favorites => "Favorites",
-            Self::Queue => "Queue",
         }
     }
 
@@ -147,7 +145,6 @@ impl ActivityType {
             Self::Setlists => Some(include_image!("../../assets/setlist.svg")),
             Self::Favorites => Some(include_image!("../../assets/favorite.svg")),
             Self::Profile => Some(include_image!("../../assets/icon.png")),
-            Self::Queue => Some(include_image!("../../assets/player-queue.svg")),
         }
     }
 }

@@ -386,10 +386,10 @@ impl PlaylistActivity {
                             let has_more = *self.has_more.blocking_lock();
                             let loading_more = *self.loading_more.blocking_lock();
 
-                            debug_log!(
-                                "📜 [PlaylistActivity] Scroll check: offset_y={}, viewport_height={}, content_height={}, has_more={}, loading_more={}",
-                                offset_y, viewport_height, content_height, has_more, loading_more
-                            );
+                            //debug_log!(
+                            //    "📜 [PlaylistActivity] Scroll check: offset_y={}, viewport_height={}, content_height={}, has_more={}, loading_more={}",
+                            //    offset_y, viewport_height, content_height, has_more, loading_more
+                            //);
 
                             if has_more && !loading_more && (offset_y > 0.0 || content_height <= viewport_height + 300.0) && offset_y + viewport_height >= content_height - 300.0 {
                                 debug_log!("🚀 [PlaylistActivity] Auto-triggering load_more() from scroll");
