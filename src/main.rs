@@ -52,13 +52,14 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
+            .with_app_id("com.neurokaraoke.desktop")
             .with_icon(icon)
             .with_min_inner_size(Vec2::new(640.0, 480.0)),
         ..Default::default()
     };
 
     eframe::run_native(
-        "Karaoke App",
+        "Neuro Karaoke App",
         options,
         Box::new(|cc| Ok(Box::new(create_app(cc, runtime.clone())))),
     )
