@@ -33,10 +33,10 @@ image = { version = "0.25.10", features = ["png", "jpeg"] }
 rodio = { git = "https://github.com/RustAudio/rodio", rev = "4aa22e8", features = ["default", "symphonia-libopus"] }
 uuid = { version = "1.26.1", features = ["serde", "v4", "v5"] }
 reqwest = { version = "0.13.5", features = ["json", "stream"] }
-rand = "0.10.2"
+rand = "0.10.3"
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 serde_json = "1.0.151"
-serde_with = "3.23.0"
+serde_with = "3.24.0"
 dashmap = { version = "7.0.0-rc2", features = ["serde"] }
 anyhow = "1.0.104"
 # Media Controls
