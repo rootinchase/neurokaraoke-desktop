@@ -21,6 +21,23 @@ static GLOBAL: MiMalloc = MiMalloc;
 fn main() -> eframe::Result<()> {
     config::init_config_dir();
 
+    if std::env::args().any(|arg| arg == "--dump-cache" || arg == "--clear-cache") {
+        println!("🧹 [Cache] Dumping and clearing cache...");
+        let c_dir = utilities::cache::cache_dir();
+        if let Ok(entries) = std::fs::read_dir(c_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    let _ = std::fs::remove_file(&path);
+                } else if path.is_dir() {
+                    let _ = std::fs::remove_dir_all(&path);
+                }
+            }
+        }
+        let _ = utilities::persistence::clear_app_state();
+        println!("✨ [Cache] Cache successfully cleared.");
+    }
+
     let runtime = Arc::new(
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()

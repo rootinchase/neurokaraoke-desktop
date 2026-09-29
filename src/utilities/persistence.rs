@@ -1,5 +1,6 @@
 use crate::audio::types::LoopMode;
-use crate::config::config_dir;
+use crate::audio::Player;
+use crate::config::{config_dir, Config};
 use serde::{Deserialize, Serialize};
 use std::fs::{read_to_string, remove_file, write};
 use std::sync::Arc;
@@ -36,4 +37,47 @@ pub fn clear_app_state() -> anyhow::Result<()> {
         remove_file(path)?;
     }
     Ok(())
+}
+
+pub async fn handle_signals(player: Player, config: Config) {
+    let ctrl_c = tokio::signal::ctrl_c();
+
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        if let Ok(mut sigterm) = signal(SignalKind::terminate()) {
+            tokio::select! {
+                _ = ctrl_c => {},
+                _ = sigterm.recv() => {},
+            }
+        } else {
+            let _ = ctrl_c.await;
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = ctrl_c.await;
+    }
+
+    let _ = tokio::task::spawn_blocking(move || {
+        if let Some(state) = player.get_playback_state() {
+            let app_state = AppState {
+                current_song_uuid: Some(state.song()),
+                current_position_secs: state.position().as_secs(),
+                playlist: player.get_playlist(),
+                playlist_name: player.get_playlist_name(),
+                url_playlist: player.get_url_playlist(),
+                volume: player.get_volume(),
+                shuffle: player.get_shuffle(),
+                loop_mode: player.get_loop_mode(),
+            };
+            let _ = save_app_state(&app_state);
+        }
+
+        let _ = config.write_config();
+    })
+    .await;
+
+    std::process::exit(0);
 }

@@ -124,7 +124,8 @@ impl Player {
             handle.log_on_drop(false);
             let mut mixer = rodio::Player::connect_new(&handle.mixer());
 
-            mixer.set_volume(player.player_state.lock().unwrap().volume);
+            let init_vol = player.player_state.lock().unwrap().volume;
+            mixer.set_volume(init_vol.powi(3));
             mixer.pause();
 
             let client = reqwest::Client::new();
@@ -377,9 +378,8 @@ impl Player {
                             }
                         }
 
-                        PlaybackCommand::Volume(mut v) => {
-                            v = v.powi(3);
-                            mixer.set_volume(v);
+                        PlaybackCommand::Volume(v) => {
+                            mixer.set_volume(v.powi(3));
                             player.player_state.lock().unwrap().volume = v;
                         }
 
@@ -416,7 +416,7 @@ impl Player {
 
                             let vol = player.player_state.lock().unwrap().volume;
                             mixer.set_volume(0.0);
-                            mixer.set_volume(vol);
+                            mixer.set_volume(vol.powi(3));
 
                             player.player_state.lock().unwrap().playlist = playlist;
                             reorder(&mut ordered_playlist, shuffle, true, &mut loop_mode);
@@ -750,7 +750,7 @@ impl Player {
                                 }
 
                                 let current_vol = player.player_state.lock().unwrap().volume;
-                                mixer.set_volume(current_vol);
+                                mixer.set_volume(current_vol.powi(3));
                                 debug_log!("🟢 [Audio API] Volume set to: {}", current_vol);
 
                                 let duration =
@@ -775,7 +775,7 @@ impl Player {
                                 // Nuclear Option: Re-instantiate the mixer to guarantee a fresh pipeline
                                 drop(mixer);
                                 mixer = rodio::Player::connect_new(&handle.mixer());
-                                mixer.set_volume(current_vol);
+                                mixer.set_volume(current_vol.powi(3));
 
                                 mixer.append(decoder);
                                 debug_log!("🟢 [Audio API] Decoder appended to new mixer instance. Song: {:?}", target_uuid);

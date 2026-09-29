@@ -120,7 +120,12 @@ impl<T: Serialize> SerializeAs<Arc<Mutex<T>>> for AsArcMutex<T> {
     where
         S: Serializer,
     {
-        (*source.blocking_lock()).serialize(serializer)
+        let guard = if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::task::block_in_place(|| source.blocking_lock())
+        } else {
+            source.blocking_lock()
+        };
+        (*guard).serialize(serializer)
     }
 }
 
@@ -131,14 +136,29 @@ pub fn select_playlist_by_id(
     songs: crate::api::LazySongDatabase,
 ) {
     tokio::spawn(async move {
-        *selected.lock().await = Some(LoadingState::Loading);
+        let cache_path = crate::utilities::cache::cache_dir().join(format!("playlist_detail_{}.ron", id));
 
+        // Optimistically load from cache if available
+        if let Ok(data) = tokio::fs::read(&cache_path).await {
+            if let Ok(detail) = ron::de::from_bytes::<crate::api::PlaylistDetail>(&data) {
+                *selected.lock().await = Some(LoadingState::Loaded(detail));
+            }
+        }
+
+        // Fetch fresh playlist details from network
         match songs.get_playlist_details(id).await {
             Ok(data) => {
-                *selected.lock().await = Some(LoadingState::Loaded(data));
+                *selected.lock().await = Some(LoadingState::Loaded(data.clone()));
+                let _ = tokio::fs::write(
+                    cache_path,
+                    ron::ser::to_string_pretty(&data, Default::default()).unwrap(),
+                ).await;
             }
             Err(err) => {
-                *selected.lock().await = Some(LoadingState::Failed(Arc::new(err)));
+                let mut sel_lock = selected.lock().await;
+                if sel_lock.is_none() || matches!(*sel_lock.as_ref().unwrap(), LoadingState::Loading) {
+                    *sel_lock = Some(LoadingState::Failed(Arc::new(err)));
+                }
             }
         }
     });

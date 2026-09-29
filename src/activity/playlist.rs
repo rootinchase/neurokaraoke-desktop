@@ -17,6 +17,7 @@ use uuid::Uuid;
 
 pub struct PlaylistActivity {
     pub playlists: Arc<Mutex<LoadingState<Vec<Playlist>>>>,
+    pub all_playlists: Arc<Mutex<Option<Vec<Playlist>>>>,
     pub playlist_details: Arc<DashMap<Uuid, LoadingState<PlaylistDetail>>>,
     pub selected_playlist: Arc<Mutex<Option<LoadingState<PlaylistDetail>>>>,
     pub songs: LazySongDatabase,
@@ -44,45 +45,53 @@ impl PlaylistActivity {
             "playlists.ron"
         };
         let cache_path = cache_dir().join(cache_file);
-        let cached_playlists = read(&cache_path)
+        let cached_playlists: Option<Vec<Playlist>> = read(&cache_path)
             .ok()
             .and_then(|data| de::from_bytes(&data).ok());
 
-        let playlists = Arc::new(Mutex::new(if let Some(data) = cached_playlists {
-            LoadingState::Loaded(data)
+        let all_playlists = Arc::new(Mutex::new(cached_playlists.clone()));
+
+        let initial_playlists = if let Some(ref data) = cached_playlists {
+            data.iter().take(20).cloned().collect()
+        } else {
+            Vec::new()
+        };
+
+        let playlists = Arc::new(Mutex::new(if !initial_playlists.is_empty() {
+            LoadingState::Loaded(initial_playlists)
         } else {
             LoadingState::Loading
         }));
 
-        let has_more = Arc::new(Mutex::new(!is_personal));
+        let has_more = Arc::new(Mutex::new(
+            cached_playlists.as_ref().map_or(true, |d| d.len() > 20)
+        ));
         let loading_more = Arc::new(Mutex::new(false));
 
         let p = playlists.clone();
+        let ap = all_playlists.clone();
         let songs_clone = songs.clone();
         let hm = has_more.clone();
+        let ctx_clone = ctx.clone();
         tokio::spawn(async move {
             let result = if is_personal {
                 songs_clone.get_user_playlists().await
             } else {
-                match songs_clone.get_public_playlists(None, false, 0, 20).await {
-                    Ok(batch) => {
-                        if batch.len() < 20 {
-                            *hm.lock().await = false;
-                        }
-                        Ok(batch)
-                    }
-                    Err(e) => Err(e),
-                }
+                songs_clone.get_public_playlists(None, false, 0, 500).await
             };
 
             match result {
                 Ok(data) => {
-                    *p.lock().await = LoadingState::Loaded(data.clone());
+                    *ap.lock().await = Some(data.clone());
+                    let initial: Vec<_> = data.iter().take(20).cloned().collect();
+                    *p.lock().await = LoadingState::Loaded(initial);
+                    *hm.lock().await = data.len() > 20;
+
                     let _ = tokio::fs::write(
                         cache_path,
                         ser::to_string_pretty(&data, Default::default()).unwrap(),
                     )
-                        .await;
+                    .await;
                 }
                 Err(err) => {
                     let mut p_lock = p.lock().await;
@@ -91,10 +100,12 @@ impl PlaylistActivity {
                     }
                 }
             }
+            ctx_clone.request_repaint();
         });
 
         Self {
             playlists,
+            all_playlists,
             playlist_details: Arc::new(DashMap::new()),
             selected_playlist: Arc::new(Mutex::new(None)),
             songs,
@@ -110,58 +121,73 @@ impl PlaylistActivity {
 
     pub async fn clear(&self) {
         *self.playlists.lock().await = LoadingState::Loading;
+        *self.all_playlists.lock().await = None;
         *self.selected_playlist.lock().await = None;
-        *self.has_more.lock().await = !self.is_personal;
+        *self.has_more.lock().await = true;
         *self.loading_more.lock().await = false;
         debug_log!("🧹 [Playlist Activity] Resetting memory tables back to pristine state.");
     }
 
     pub fn load_more(&self) {
-        if self.is_personal {
-            return;
-        }
         let loading = self.loading_more.clone();
         let has_more = self.has_more.clone();
         let playlists = self.playlists.clone();
+        let all_playlists = self.all_playlists.clone();
         let songs = self.songs.clone();
-        let cache_path = cache_dir().join("playlists.ron");
+        let cache_path = cache_dir().join(if self.is_personal { "my_playlists.ron" } else { "playlists.ron" });
         let ctx = self.ctx.clone();
+        let is_personal = self.is_personal;
+
+        debug_log!("🚀 [PlaylistActivity] load_more() called. has_more={}, loading_more={}", *has_more.blocking_lock(), *loading.blocking_lock());
 
         if *loading.blocking_lock() || !*has_more.blocking_lock() {
+            debug_log!("⚠️ [PlaylistActivity] load_more() aborted: loading={}, has_more={}", *loading.blocking_lock(), *has_more.blocking_lock());
             return;
         }
 
         *loading.blocking_lock() = true;
-        debug_log!("🚀 [PlaylistActivity] Triggered load_more() to fetch next batch of public playlists...");
+        debug_log!("🚀 [PlaylistActivity] Triggered load_more() execution...");
 
         tokio::spawn(async move {
+            let mut all_opt = all_playlists.lock().await;
+            let all = if let Some(ref list) = *all_opt {
+                list.clone()
+            } else {
+                let fetch_result = if is_personal {
+                    songs.get_user_playlists().await
+                } else {
+                    songs.get_public_playlists(None, false, 0, 500).await
+                };
+
+                match fetch_result {
+                    Ok(data) => {
+                        let _ = tokio::fs::write(
+                            cache_path.clone(),
+                            ser::to_string_pretty(&data, Default::default()).unwrap(),
+                        ).await;
+                        *all_opt = Some(data.clone());
+                        data
+                    }
+                    Err(e) => {
+                        debug_log!("❌ [PlaylistActivity] Error fetching playlists in load_more: {}", e);
+                        *has_more.lock().await = false;
+                        *loading.lock().await = false;
+                        ctx.request_repaint();
+                        return;
+                    }
+                }
+            };
+            drop(all_opt);
+
             let current_len = match &*playlists.lock().await {
                 LoadingState::Loaded(list) => list.len(),
                 _ => 0,
             };
-
-            debug_log!("🌐 [PlaylistActivity] Fetching public playlists starting at index {}", current_len);
-            match songs.get_public_playlists(None, false, current_len as u64, 20).await {
-                Ok(batch) => {
-                    let is_empty = batch.is_empty();
-                    let len = batch.len();
-                    debug_log!("✅ [PlaylistActivity] Fetched batch of {} playlists", len);
-                    let mut lock = playlists.lock().await;
-                    if let LoadingState::Loaded(list) = &mut *lock {
-                        list.extend(batch);
-                        let _ = tokio::fs::write(
-                            cache_path,
-                            ser::to_string_pretty(&list, Default::default()).unwrap(),
-                        )
-                            .await;
-                    }
-                    if is_empty || len < 20 {
-                        *has_more.lock().await = false;
-                        debug_log!("🏁 [PlaylistActivity] Reached end of public playlists.");
-                    }
-                }
-                Err(e) => {
-                    debug_log!("❌ [PlaylistActivity] Error fetching public playlists batch: {}", e);
+            let next_batch: Vec<_> = all.iter().skip(current_len).take(20).cloned().collect();
+            let mut lock = playlists.lock().await;
+            if let LoadingState::Loaded(list) = &mut *lock {
+                list.extend(next_batch);
+                if list.len() >= all.len() {
                     *has_more.lock().await = false;
                 }
             }
@@ -249,12 +275,8 @@ impl PlaylistActivity {
                                 },
                             );
 
-                            ScrollArea::vertical().show(ui, |ui| {
-                                for (index, playlist) in sorted_playlists.iter().enumerate() {
-                                    // Automatically load more when reaching the 5th item from the end
-                                    if !self.is_personal && index + 5 >= sorted_playlists.len() {
-                                        self.load_more();
-                                    }
+                            let scroll_output = ScrollArea::vertical().show(ui, |ui| {
+                                for (_index, playlist) in sorted_playlists.iter().enumerate() {
                                     // Fetch detail if needed
                                     if !self.playlist_details.contains_key(&playlist.id) {
                                         self.playlist_details.insert(playlist.id, LoadingState::Loading);
@@ -317,8 +339,8 @@ impl PlaylistActivity {
                                     }
                                 }
 
-                                // Load more button at the bottom of public playlists
-                                if !self.is_personal && playlist_search.is_none() {
+                                // Load more button at the bottom of playlists
+                                if playlist_search.is_none() || playlist_search.as_ref().map_or(true, |s| s.is_empty()) {
                                     ui.add_space(10.0);
                                     ui.horizontal(|ui| {
                                         let has_more = *self.has_more.blocking_lock();
@@ -331,12 +353,32 @@ impl PlaylistActivity {
                                                 self.load_more();
                                             }
                                         } else {
-                                            ui.label("All public playlists loaded.");
+                                            ui.label(if is_personal {
+                                                "All personal playlists loaded."
+                                            } else {
+                                                "All public playlists loaded."
+                                            });
                                         }
                                     });
                                     ui.add_space(20.0);
                                 }
                             });
+
+                            let offset_y = scroll_output.state.offset.y;
+                            let content_height = scroll_output.content_size.y;
+                            let viewport_height = scroll_output.inner_rect.height();
+                            let has_more = *self.has_more.blocking_lock();
+                            let loading_more = *self.loading_more.blocking_lock();
+
+                            debug_log!(
+                                "📜 [PlaylistActivity] Scroll check: offset_y={}, viewport_height={}, content_height={}, has_more={}, loading_more={}",
+                                offset_y, viewport_height, content_height, has_more, loading_more
+                            );
+
+                            if has_more && !loading_more && (offset_y > 0.0 || content_height <= viewport_height + 300.0) && offset_y + viewport_height >= content_height - 300.0 {
+                                debug_log!("🚀 [PlaylistActivity] Auto-triggering load_more() from scroll");
+                                self.load_more();
+                            }
                         }
                         LoadingState::Loading => {
                             ui.label("Loading...");

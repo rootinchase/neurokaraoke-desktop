@@ -127,6 +127,12 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
     player.shuffle(config.shuffle);
     player.looping(config.loop_mode);
 
+    let signal_player = player.clone();
+    let signal_config = config.clone();
+    rt.spawn(async move {
+        crate::utilities::persistence::handle_signals(signal_player, signal_config).await;
+    });
+
     // 2. Extracted the Song database caching loops into an decoupled, async background task
     let s = songs.clone();
     let cc = config.cache.clone();

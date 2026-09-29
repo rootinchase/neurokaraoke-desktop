@@ -125,7 +125,7 @@ impl PersistentMediaCache {
             if let Some(status) = self.in_flight.get(&key) {
                 match status.value() {
                     DownloadStatus::Complete(path) => {
-                        debug_log!("✅ [Cache] Found in-flight Complete for: {}", cloudflare_id);
+                        //debug_log!("✅ [Cache] Found in-flight Complete for: {}", cloudflare_id);
                         return Ok(path.clone());
                     }
                     DownloadStatus::InFlight(notify) => {
@@ -163,7 +163,7 @@ impl PersistentMediaCache {
 
             return match result {
                 Ok(saved_path) => {
-                    debug_log!("🎉 [Cache] Successfully downloaded: {}", cloudflare_id);
+                    //debug_log!("🎉 [Cache] Successfully downloaded: {}", cloudflare_id);
                     self.in_flight
                         .insert(key, DownloadStatus::Complete(saved_path.clone()));
                     notify.notify_waiters();
@@ -196,7 +196,7 @@ impl PersistentMediaCache {
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
 
-        debug_log!("📦 [Cache] Downloaded bytes, content-type: {:?}", content_type);
+        //debug_log!("📦 [Cache] Downloaded bytes, content-type: {:?}", content_type);
 
         let body_bytes = response.bytes().await?;
 

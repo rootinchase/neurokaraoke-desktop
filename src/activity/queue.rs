@@ -48,7 +48,6 @@ impl QueueActivity {
         ui.heading(&self.activity);
         ui.push_id(&self.activity, |ui| {
             if self.show_queue {
-                ui.heading("Queue");
                 if let Some(pl) = player.get_playlist() {
                     let url_pl = player.get_url_playlist();
                     self.current_song_uuid = player.get_playback_state().map(|s| s.song());

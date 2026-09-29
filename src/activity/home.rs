@@ -1,5 +1,5 @@
 use crate::api::{LazySongDatabase, LoadingState, SongDTO, TrendingTimes};
-use crate::utilities::cache::{self, PersistentMediaCache};
+use crate::utilities::cache::{self, PersistentMediaCache, cache_dir};
 use crate::utilities::persistence::{AppState, load_app_state};
 use crate::theme::ThemeManager;
 use eframe::egui::{
@@ -10,6 +10,12 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 use crate::debug_log;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CachedSetlist {
+    name: Option<String>,
+    songs: Vec<SongDTO>,
+}
 
 pub struct HomeActivity {
     pub ctx: eframe::egui::Context,
@@ -50,19 +56,26 @@ impl HomeActivity {
         let ctx = self.ctx.clone();
 
         tokio::spawn(async move {
-            eprintln!("HomeActivity: Fetching suggestions...");
-            *songs_state.lock().await = LoadingState::Loading;
+            let cache_path = cache_dir().join("home_suggested.ron");
+            if let Ok(data) = tokio::fs::read(&cache_path).await {
+                if let Ok(cached) = ron::de::from_bytes::<Vec<SongDTO>>(&data) {
+                    *songs_state.lock().await = LoadingState::Loaded(cached);
+                }
+            }
+
             match songs.get_suggested(20).await {
                 Ok(data) => {
-                    eprintln!(
-                        "HomeActivity: Successfully fetched {} suggestions",
-                        data.len()
-                    );
-                    *songs_state.lock().await = LoadingState::Loaded(data);
+                    *songs_state.lock().await = LoadingState::Loaded(data.clone());
+                    let _ = tokio::fs::write(
+                        cache_path,
+                        ron::ser::to_string_pretty(&data, Default::default()).unwrap(),
+                    ).await;
                 }
                 Err(err) => {
-                    eprintln!("HomeActivity: Failed to fetch suggestions: {:?}", err);
-                    *songs_state.lock().await = LoadingState::Failed(Arc::new(err));
+                    let mut state_lock = songs_state.lock().await;
+                    if matches!(*state_lock, LoadingState::Loading) {
+                        *state_lock = LoadingState::Failed(Arc::new(err));
+                    }
                 }
             }
             ctx.request_repaint();
@@ -75,16 +88,26 @@ impl HomeActivity {
         let ctx = self.ctx.clone();
 
         tokio::spawn(async move {
-            debug_log!("HomeActivity: Fetching trending...");
-            *songs_state.lock().await = LoadingState::Loading;
+            let cache_path = cache_dir().join("home_trending.ron");
+            if let Ok(data) = tokio::fs::read(&cache_path).await {
+                if let Ok(cached) = ron::de::from_bytes::<Vec<SongDTO>>(&data) {
+                    *songs_state.lock().await = LoadingState::Loaded(cached);
+                }
+            }
+
             match songs.get_trending(TrendingTimes::Week).await {
                 Ok(data) => {
-                    debug_log!("HomeActivity: Successfully fetched {} trending", data.len());
-                    *songs_state.lock().await = LoadingState::Loaded(data);
+                    *songs_state.lock().await = LoadingState::Loaded(data.clone());
+                    let _ = tokio::fs::write(
+                        cache_path,
+                        ron::ser::to_string_pretty(&data, Default::default()).unwrap(),
+                    ).await;
                 }
                 Err(err) => {
-                    debug_log!("HomeActivity: Failed to fetch trending: {:?}", err);
-                    *songs_state.lock().await = LoadingState::Failed(Arc::new(err));
+                    let mut state_lock = songs_state.lock().await;
+                    if matches!(*state_lock, LoadingState::Loading) {
+                        *state_lock = LoadingState::Failed(Arc::new(err));
+                    }
                 }
             }
             ctx.request_repaint();
@@ -98,22 +121,37 @@ impl HomeActivity {
         let ctx = self.ctx.clone();
 
         tokio::spawn(async move {
-            debug_log!("HomeActivity: Fetching setlists...");
-            *songs_state.lock().await = LoadingState::Loading;
+            let cache_path = cache_dir().join("home_recent_setlist.ron");
+            if let Ok(data) = tokio::fs::read(&cache_path).await {
+                if let Ok(cached) = ron::de::from_bytes::<CachedSetlist>(&data) {
+                    *setlist_name.lock().await = cached.name;
+                    *songs_state.lock().await = LoadingState::Loaded(cached.songs);
+                }
+            }
+
             match songs.get_official_setlists(2026).await {
                 Ok(data) => {
                     if let Some(setlist) = data.first() {
-                        debug_log!("HomeActivity: Successfully fetched setlists, fetching details for {}", setlist.id);
                         match songs.get_playlist_details(setlist.id).await {
                             Ok(detail) => {
-                                debug_log!("HomeActivity: Successfully fetched {} songs from setlist", detail.songs.len());
                                 let name = detail.name.to_string().replace("Setlist", "").trim().to_string();
-                                *setlist_name.lock().await = Some(name);
-                                *songs_state.lock().await = LoadingState::Loaded(detail.songs);
+                                *setlist_name.lock().await = Some(name.clone());
+                                *songs_state.lock().await = LoadingState::Loaded(detail.songs.clone());
+
+                                let cached = CachedSetlist {
+                                    name: Some(name),
+                                    songs: detail.songs,
+                                };
+                                let _ = tokio::fs::write(
+                                    cache_path,
+                                    ron::ser::to_string_pretty(&cached, Default::default()).unwrap(),
+                                ).await;
                             }
                             Err(err) => {
-                                debug_log!("HomeActivity: Failed to fetch setlist details: {:?}", err);
-                                *songs_state.lock().await = LoadingState::Failed(Arc::new(err));
+                                let mut state_lock = songs_state.lock().await;
+                                if matches!(*state_lock, LoadingState::Loading) {
+                                    *state_lock = LoadingState::Failed(Arc::new(err));
+                                }
                             }
                         }
                     } else {
@@ -121,8 +159,10 @@ impl HomeActivity {
                     }
                 }
                 Err(err) => {
-                    debug_log!("HomeActivity: Failed to fetch setlists: {:?}", err);
-                    *songs_state.lock().await = LoadingState::Failed(Arc::new(err));
+                    let mut state_lock = songs_state.lock().await;
+                    if matches!(*state_lock, LoadingState::Loading) {
+                        *state_lock = LoadingState::Failed(Arc::new(err));
+                    }
                 }
             }
             ctx.request_repaint();
@@ -304,11 +344,10 @@ impl HomeActivity {
     ) {
         ui.vertical(|ui| {
 
-            ui.heading("Welcome back!");
-            ui.add_space(10.0);
-
             // Previous session UI
             if let Some(state) = load_app_state() {
+                ui.heading("Welcome back!");
+                ui.add_space(10.0);
                 Frame::new()
                     .fill(theme.background_elevated)
                     .corner_radius(8.0)

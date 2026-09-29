@@ -75,27 +75,19 @@ impl SetlistActivity {
         let rt = self.rt.clone();
 
         tokio::spawn(async move {
-            *s.lock().await = LoadingState::Loading;
-
             let cache_path = Self::get_cache_path(year);
 
-            // Try loading from cache
-            let loaded_setlists = if let Ok(data) = tokio::fs::read(&cache_path).await {
-                ron::de::from_bytes::<Vec<Playlist>>(&data).ok()
-            } else {
-                None
-            };
+            // Try loading from cache first (optimistic load)
+            if let Ok(data) = tokio::fs::read(&cache_path).await {
+                if let Ok(setlists) = ron::de::from_bytes::<Vec<Playlist>>(&data) {
+                    *s.lock().await = LoadingState::Loaded(setlists);
+                }
+            }
 
-            // Fallback to network
-            let fetched = if let Some(setlists) = loaded_setlists {
-                Ok(setlists)
-            } else {
-                songs.get_official_setlists(year).await
-            };
-
-            match fetched {
+            // Always fetch fresh setlists from network
+            match songs.get_official_setlists(year).await {
                 Ok(data) => {
-                    debug_log!("Loaded setlists for year {}: {} items", year, data.len());
+                    debug_log!("Fetched fresh setlists for year {}: {} items", year, data.len());
 
                     // Retain only details that exist in the newly fetched setlists
                     let setlist_ids: std::collections::HashSet<Uuid> =
@@ -140,7 +132,10 @@ impl SetlistActivity {
                         .await;
                 }
                 Err(err) => {
-                    *s.lock().await = LoadingState::Failed(Arc::new(err));
+                    let mut s_lock = s.lock().await;
+                    if matches!(*s_lock, LoadingState::Loading) {
+                        *s_lock = LoadingState::Failed(Arc::new(err));
+                    }
                 }
             }
         });
