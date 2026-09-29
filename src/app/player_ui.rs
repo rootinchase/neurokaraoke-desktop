@@ -380,46 +380,79 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
 
                     columns[2].horizontal_centered(|ui| {
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            // Volume control
+                            // Volume control progress bar
                             ui.add_space(8.0); // Give a little margin from the favorite/timer icons
 
-                            // Explicitly allocate the maximum vertical space available in this panel column
-                            let desired_slider_size = egui::vec2(20.0, ui.available_height() - 5.0);
+                            let desired_size = egui::vec2(16.0, ui.available_height() - 5.0);
+                            let (rect, resp) =
+                                ui.allocate_exact_size(desired_size, Sense::click_and_drag());
 
-                            ui.allocate_ui_with_layout(
-                                desired_slider_size,
-                                Layout::bottom_up(Align::Center), // Dictates vertical orientation space rules
-                                |ui| {
-                                    let visual_style = ui.visuals_mut();
-                                    // Track background
-                                    visual_style.widgets.inactive.bg_fill =
-                                        app.theme.text.linear_multiply(0.2); // Darker background
-                                    visual_style.widgets.hovered.bg_fill =
-                                        app.theme.text.linear_multiply(0.3);
+                            let progress = app.config.volume.clamp(0.0, 1.0);
 
-                                    // Slider handle (the moving part)
-                                    visual_style.widgets.inactive.fg_stroke.color =
-                                        app.theme.primary;
-                                    visual_style.widgets.hovered.fg_stroke.color =
-                                        app.theme.primary;
-                                    visual_style.widgets.active.fg_stroke.color = app.theme.primary;
+                            if resp.hovered() || resp.dragged() {
+                                ui.set_cursor_icon(CursorIcon::PointingHand);
+                            }
 
-                                    visual_style.widgets.inactive.bg_stroke = Stroke::NONE;
-                                    visual_style.widgets.hovered.bg_stroke = Stroke::NONE;
-                                    visual_style.widgets.active.bg_stroke = Stroke::NONE;
-                                    ui.spacing_mut().slider_width = ui.available_height();
-
-                                    let vol = ui.add(
-                                        egui::Slider::new(&mut app.config.volume, 0.0..=1.0)
-                                            .vertical()
-                                            .show_value(false),
-                                    );
-
-                                    if vol.changed() {
+                            if resp.dragged() || resp.clicked() {
+                                if let Some(pos) = ui.pointer_latest_pos() {
+                                    let p =
+                                        ((rect.bottom() - pos.y) / rect.height()).clamp(0.0, 1.0);
+                                    if (app.config.volume - p).abs() > f32::EPSILON {
+                                        app.config.volume = p;
                                         app.player.volume(app.config.volume);
+                                        let _ = app.config.write();
+                                        ui.ctx().request_repaint();
                                     }
-                                },
+                                }
+                            }
+
+                            if resp.hovered() || resp.dragged() {
+                                if let Some(pos) = ui.pointer_latest_pos() {
+                                    egui::Popup::new(
+                                        ui.id().with("volume_tooltip"),
+                                        ui.ctx().clone(),
+                                        egui::PopupAnchor::Position(Pos2::new(
+                                            rect.center().x,
+                                            pos.y.clamp(rect.top(), rect.bottom()),
+                                        )),
+                                        ui.layer_id(),
+                                    )
+                                    .align(Default::default())
+                                    .kind(PopupKind::Tooltip)
+                                    .open(true)
+                                    .show(|ui| {
+                                        ui.add(
+                                            egui::Label::new(
+                                                RichText::new(format!(
+                                                    "{:.0}%",
+                                                    app.config.volume * 100.0
+                                                ))
+                                                .size(11.0),
+                                            )
+                                            .wrap_mode(TextWrapMode::Extend),
+                                        );
+                                    });
+                                }
+                            }
+
+                            // Draw background track
+                            let track_rect = egui::Rect::from_center_size(
+                                rect.center(),
+                                egui::vec2(6.0, rect.height()),
                             );
+                            ui.painter().rect_filled(
+                                track_rect,
+                                3.0,
+                                app.theme.background_elevated,
+                            );
+
+                            // Draw filled-in part using theme accent
+                            let filled_height = rect.height() * progress;
+                            let filled_rect = egui::Rect::from_min_max(
+                                Pos2::new(track_rect.left(), rect.bottom() - filled_height),
+                                Pos2::new(track_rect.right(), rect.bottom()),
+                            );
+                            ui.painter().rect_filled(filled_rect, 3.0, app.theme.primary);
 
                             ui.add_space(10.0);
 
