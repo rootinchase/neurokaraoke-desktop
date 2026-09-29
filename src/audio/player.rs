@@ -1,5 +1,6 @@
 use crate::api::{LazySongDatabase, LoadingState, API_URLS};
-use crate::cache::Cache;
+use crate::audio::types::*;
+use crate::utilities::cache::PersistentMediaCache;
 use crate::debug_log;
 use eframe::egui;
 use rand::prelude::SliceRandom;
@@ -14,14 +15,7 @@ use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy)]
-pub struct PlaybackState {
-    start: Instant,
-    paused: Option<Instant>,
-    duration: Duration,
-    song: Uuid,
-    loading: bool,
-}
+
 
 impl PlaybackState {
     pub fn duration(&self) -> Duration {
@@ -84,58 +78,6 @@ impl PlaybackState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum LoopMode {
-    #[default]
-    None,
-    One,
-    All,
-}
-
-#[derive(Debug, Clone)]
-struct PlayerState {
-    volume: f32,
-    shuffle: bool,
-    loop_mode: LoopMode,
-    playlist: Option<Arc<[Uuid]>>,
-    url_playlist: Option<Arc<[crate::api::SongDTO]>>,
-}
-
-enum PlaybackCommand {
-    Pause,
-    Play,
-    Volume(f32),
-    Shuffle(bool),
-    Loop(LoopMode),
-    Playlist(Option<Arc<[Uuid]>>),
-    UrlPlaylist(Option<Arc<[crate::api::SongDTO]>>),
-    Playlists(Option<Arc<[Uuid]>>, Option<Arc<[crate::api::SongDTO]>>),
-    Song(Option<Uuid>, Box<dyn FnOnce(&Player) + Send + 'static>),
-    UrlPlayback(
-        Option<Uuid>,
-        crate::api::SongDTO,
-        Box<dyn FnOnce(&Player) + Send + 'static>,
-    ),
-    SongReady(
-        Option<Uuid>,
-        std::fs::File,
-        Option<Box<dyn FnOnce(&Player) + Send + 'static>>,
-    ),
-    Seek(Duration),
-    Shutdown,
-    NextSong,
-    AppendToPlaylist(Uuid),
-}
-
-#[derive(Debug)]
-pub struct Player {
-    refs: Option<Arc<AtomicU32>>,
-    state: Arc<Mutex<Option<PlaybackState>>>,
-    player_state: Arc<Mutex<PlayerState>>,
-    sender: tokio::sync::mpsc::Sender<PlaybackCommand>,
-    pub current_url_metadata: Arc<Mutex<Option<crate::api::SongDTO>>>,
-}
-
 impl Clone for Player {
     fn clone(&self) -> Self {
         if let Some(refs) = &self.refs {
@@ -156,7 +98,7 @@ impl Player {
         rt: Arc<Runtime>,
         ctx: egui::Context,
         database: LazySongDatabase,
-        cache: Arc<Cache>,
+        cache: Arc<PersistentMediaCache>,
     ) -> Player {
         let (tx, mut rx) = tokio::sync::mpsc::channel(64);
 
@@ -168,6 +110,7 @@ impl Player {
                 shuffle: false,
                 loop_mode: LoopMode::None,
                 playlist: None,
+                playlist_name: None,
                 url_playlist: None,
             })),
             sender: tx,
@@ -282,7 +225,7 @@ impl Player {
                                     }
                                     (playlist.len(), idx)
                                 };
-                                
+
                                 debug_log!("Transition: Found index {:?} in playlist of length {}, loop_mode={:?}", idx, len, loop_mode);
                                 if let Some(idx) = idx {
                                     // FIX 1: Prioritize LoopMode::One BEFORE checking if we reached the end of the playlist.
@@ -320,7 +263,7 @@ impl Player {
                                         match loop_mode {
                                             LoopMode::All => {
                                                 debug_log!("Transition: LoopMode::All, restarting playlist");
-                                                
+
                                                 let player_state = player.player_state.lock().unwrap();
                                                 if let Some(url_playlist) = &player_state.url_playlist
                                                     && url_playlist.len() == playlist.len()
@@ -355,7 +298,7 @@ impl Player {
                                             "Transition: Normal transition to index {}",
                                             next_idx
                                         );
-                                        
+
                                         let player_state = player.player_state.lock().unwrap();
                                         if let Some(url_playlist) = &player_state.url_playlist
                                             && url_playlist.len() == playlist.len()
@@ -377,8 +320,8 @@ impl Player {
                                 }
                             } else {
                                 // No playlist set yet, or song not in playlist
-                                if let Some(playlist) = ordered_playlist.as_ref() 
-                                    && loop_mode != LoopMode::None 
+                                if let Some(playlist) = ordered_playlist.as_ref()
+                                    && loop_mode != LoopMode::None
                                 {
                                     debug_log!("Transition: Song not in playlist or no playlist, loading first song");
                                     let player_state = player.player_state.lock().unwrap();
@@ -469,10 +412,11 @@ impl Player {
                             player.player_state.lock().unwrap().url_playlist = playlist;
                         }
 
-                        PlaybackCommand::Playlists(playlist, url_playlist) => {
+                        PlaybackCommand::Playlists(playlist, url_playlist, playlist_name) => {
                             let mut ps = player.player_state.lock().unwrap();
                             ps.playlist = playlist;
                             ps.url_playlist = url_playlist;
+                            ps.playlist_name = playlist_name;
                         }
 
                         PlaybackCommand::AppendToPlaylist(_) => {}
@@ -610,14 +554,14 @@ impl Player {
                                     mixer.clear();
                                     *lock = Some(PlaybackState::new_loading(uuid));
                                     // Helper to safely clear metadata if the ID doesn't match
-                                let mut meta_lock = player.current_url_metadata.lock().unwrap();
-                                if let Some(meta) = &*meta_lock {
-                                    if Some(meta.id) != Some(uuid) {
+                                    let mut meta_lock = player.current_url_metadata.lock().unwrap();
+                                    if let Some(meta) = &*meta_lock {
+                                        if Some(meta.id) != Some(uuid) {
+                                            *meta_lock = None;
+                                        }
+                                    } else {
                                         *meta_lock = None;
                                     }
-                                } else {
-                                    *meta_lock = None;
-                                }
                                     drop(lock);
                                     match database.get(&uuid, |s| {
                                         s.opus.clone().or_else(|| s.absolute_path.clone())
@@ -728,7 +672,7 @@ impl Player {
                                 let handle = player.clone();
                                 let client_worker = client.clone();
 
-                                // Pass down your Arc<Cache> instance down to the spawned async routine
+                                // Pass down your Arc<PersistentMediaCache> instance down to the spawned async routine
                                 let cache_worker = cache.clone();
 
                                 rt.spawn(async move {
@@ -813,7 +757,7 @@ impl Player {
                                     song: target_uuid,
                                     loading: false,
                                 });
-                                
+
                                 // Nuclear Option: Re-instantiate the mixer to guarantee a fresh pipeline
                                 drop(mixer);
                                 mixer = rodio::Player::connect_new(&handle.mixer());
@@ -821,7 +765,7 @@ impl Player {
 
                                 mixer.append(decoder);
                                 debug_log!("🟢 [Audio API] Decoder appended to new mixer instance. Song: {:?}", target_uuid);
-                                
+
                                 mixer.play();
                                 debug_log!("🟢 [Audio API] Mixer play command issued.");
 
@@ -899,8 +843,34 @@ impl Player {
         // Do not send a `PlaybackCommand::Playlist` or reset playback here
     }
 
-    pub fn playlists(&self, playlist: Option<Arc<[Uuid]>>, url_playlist: Option<Arc<[crate::api::SongDTO]>>) {
-        self.sender.try_send(PlaybackCommand::Playlists(playlist, url_playlist)).ok();
+    pub fn playlists(&self, playlist: Option<Arc<[Uuid]>>, url_playlist: Option<Arc<[crate::api::SongDTO]>>, playlist_name: Option<String>) {
+        let mut ps = self.player_state.lock().unwrap();
+        ps.playlist = playlist.clone();
+        ps.url_playlist = url_playlist.clone();
+        ps.playlist_name = playlist_name.clone();
+        drop(ps);
+        self.sender.try_send(PlaybackCommand::Playlists(playlist, url_playlist, playlist_name)).ok();
+    }
+
+    pub fn get_playlist_name(&self) -> Option<String> {
+        self.player_state.lock().unwrap().playlist_name.clone()
+    }
+
+    pub fn remove_from_playlist(&self, uuid: Uuid) {
+        let mut player_state = self.player_state.lock().unwrap();
+        if let Some(pl) = &player_state.playlist {
+            let new_pl: Vec<Uuid> = pl.iter().cloned().filter(|&id| id != uuid).collect();
+            player_state.playlist = Some(new_pl.into());
+        }
+        if let Some(url_pl) = &player_state.url_playlist {
+            let new_url_pl: Vec<crate::api::SongDTO> = url_pl
+                .iter()
+                .cloned()
+                .zip(player_state.playlist.as_ref().map(|p| p.iter()).into_iter().flatten())
+                .map(|(s, _)| s)
+                .collect();
+            player_state.url_playlist = Some(new_url_pl.into());
+        }
     }
 
     pub fn playlist(&self, playlist: Option<Arc<[Uuid]>>) {

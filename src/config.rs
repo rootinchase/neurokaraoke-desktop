@@ -1,10 +1,11 @@
-// Inside src/config.rs
-
 use crate::api::AuthContext;
+use crate::audio::types::LoopMode;
 use crate::theme::SelectableTheme;
-use crate::util::AsArcMutex;
+use crate::utilities::util::AsArcMutex;
+use ron::{de, ser};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use std::fs::{create_dir_all, read, write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::sync::{Arc, OnceLock, RwLock};
@@ -16,7 +17,7 @@ pub fn init_config_dir() {
     let dir = dirs::config_dir()
         .expect("config directory should exist")
         .join("neurokaraoke-desktop");
-    std::fs::create_dir_all(&dir).unwrap();
+    create_dir_all(&dir).unwrap();
     CONFIG_DIR.set(dir).expect("CONFIG_DIR already initialized");
 }
 
@@ -79,7 +80,7 @@ pub struct Config {
     #[serde(default)]
     pub shuffle: bool,
     #[serde(default)]
-    pub loop_mode: crate::audio::LoopMode,
+    pub loop_mode: LoopMode,
 
     #[serde(default)]
     pub theme: SelectableTheme,
@@ -91,6 +92,9 @@ pub struct Config {
     #[serde(default = "defaults::framerate_when_not_focused")]
     pub framerate_when_not_focused: f32,
 
+    #[serde(default)]
+    pub compact_sidebar: bool,
+
     /// Stores active user authentication. If None, app runs anonymously.
     #[serde(default)]
     pub auth: Option<AuthContext>,
@@ -101,10 +105,11 @@ impl Default for Config {
         Self {
             volume: defaults::volume(),
             shuffle: false,
-            loop_mode: crate::audio::LoopMode::None,
+            loop_mode: LoopMode::None,
             theme: Default::default(),
             cache: Default::default(),
             framerate_when_not_focused: defaults::framerate_when_not_focused(),
+            compact_sidebar: false,
             auth: None, // Defaults to logged-out state
         }
     }
@@ -121,24 +126,26 @@ pub struct SharedConfig {
 
 impl Config {
     pub fn read() -> anyhow::Result<Self> {
-        Ok(ron::de::from_bytes(
-            std::fs::read(config_file())?.as_slice(),
-        )?)
+        Ok(de::from_bytes(read(config_file())?.as_slice())?)
     }
 
-    pub fn write(&self) -> anyhow::Result<()> {
-        std::fs::write(
+    pub fn write_config(&self) -> anyhow::Result<()> {
+        write(
             config_file(),
-            ron::ser::to_string_pretty(self, Default::default())?.as_bytes(),
+            ser::to_string_pretty(self, Default::default())?.as_bytes(),
         )?;
         Ok(())
     }
 
+    pub fn write(&self) -> anyhow::Result<()> {
+        self.write_config()
+    }
+
     pub fn to_shared(&self) -> SharedConfig {
         let mode_u32 = match self.loop_mode {
-            crate::audio::LoopMode::None => 0,
-            crate::audio::LoopMode::One => 1,
-            crate::audio::LoopMode::All => 2,
+            LoopMode::None => 0,
+            LoopMode::One => 1,
+            LoopMode::All => 2,
         };
         SharedConfig {
             volume: Arc::new(AtomicU32::new(self.volume.to_bits())),

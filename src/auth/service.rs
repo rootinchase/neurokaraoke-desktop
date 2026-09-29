@@ -1,14 +1,11 @@
-pub mod discord;
-
-use crate::api;
-use crate::debug_log;
-use anyhow::{Result, anyhow};
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use reqwest::Client;
 use std::sync::Arc;
+use anyhow::anyhow;
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use reqwest::Client;
 use uuid::Uuid;
+use crate::{api, debug_log};
 use crate::api::API_URLS;
-// Pulling definitions from section above
 
 #[derive(Clone)]
 pub struct AuthService {
@@ -37,7 +34,7 @@ impl AuthService {
     }
 
     /// POST /api/auth/login
-    pub async fn login(&self, req: &api::LoginRequest) -> Result<api::AuthContext> {
+    pub async fn login(&self, req: &api::LoginRequest) -> anyhow::Result<api::AuthContext> {
         let url = format!("{}/api/auth/login", self.auth_host);
         let res = self.client.post(&url).json(req).send().await?;
 
@@ -57,7 +54,7 @@ impl AuthService {
     }
 
     /// POST /api/auth/discord-token
-    pub async fn login_via_discord(&self, access_token: &str) -> Result<api::AuthContext> {
+    pub async fn login_via_discord(&self, access_token: &str) -> anyhow::Result<api::AuthContext> {
         let url = format!("{}/api/auth/discord-token", self.auth_host);
         let payload = api::DiscordTokenRequest {
             access_token: access_token.into(),
@@ -106,7 +103,7 @@ impl AuthService {
     /// GET /api/auth/me
     /// Verifies an active JWT structure against the core validation gate.
     #[allow(dead_code)]
-    pub async fn verify_token(&self, token: &str) -> Result<api::UserClaims> {
+    pub async fn verify_token(&self, token: &str) -> anyhow::Result<api::UserClaims> {
         let url = format!("{}/api/auth/me", self.auth_host);
         let res = self.client.get(&url)
             .bearer_auth(token)
@@ -125,7 +122,7 @@ impl AuthService {
     /// POST /api/auth/qr-session
     /// Allocates an unlinked identity synchronization state for hardware logins (e.g., TV/Car clients).
     #[allow(dead_code)]
-    pub async fn initialize_qr_session(&self) -> Result<api::QrSession> {
+    pub async fn initialize_qr_session(&self) -> anyhow::Result<api::QrSession> {
         let url = format!("{}/api/auth/qr-session", self.auth_host);
         let res = self.client.post(&url).send().await?;
 
@@ -141,7 +138,7 @@ impl AuthService {
     /// GET /api/auth/qr-session/{sessionId}
     /// Polls the allocation loop to detect if a mobile/desktop controller has signed the session.
     #[allow(dead_code)]
-    pub async fn poll_qr_session(&self, session_id: Uuid) -> Result<Option<api::AuthContext>> {
+    pub async fn poll_qr_session(&self, session_id: Uuid) -> anyhow::Result<Option<api::AuthContext>> {
         let url = format!("{}/api/auth/qr-session/{}", self.auth_host, session_id);
         let res = self.client.get(&url).send().await?;
 
@@ -163,7 +160,7 @@ impl AuthService {
     /// POST /api/auth/pairing-code
     /// Generates a human-readable linking identifier to connect target hardware platforms.
     #[allow(dead_code)]
-    pub async fn generate_pairing_code(&self, token: &str) -> Result<String> {
+    pub async fn generate_pairing_code(&self, token: &str) -> anyhow::Result<String> {
         let url = format!("{}/api/auth/pairing-code", self.auth_host);
         let res = self.client.post(&url)
             .bearer_auth(token)
@@ -180,7 +177,7 @@ impl AuthService {
 
 
     #[allow(dead_code)]
-    pub async fn get_user_profile(&self, token: &str) -> Result<api::ProfileResponse> {
+    pub async fn get_user_profile(&self, token: &str) -> anyhow::Result<api::ProfileResponse> {
         let url = format!("{}/api/badge/profile", API_URLS.api);
         let res = self.client.get(url)
             .bearer_auth(token)
@@ -195,31 +192,4 @@ impl AuthService {
     }
 }
 
-fn extract_claims_from_jwt(token: &str) -> Result<api::UserClaims> {
-    let segments: Vec<&str> = token.split('.').collect();
-    if segments.len() != 3 {
-        return Err(anyhow::anyhow!("Malformed JWT token format string."));
-    }
-
-    // Decode the middle segment (Index 1) using standard URL-Safe Base64
-    let decoded_bytes = URL_SAFE_NO_PAD
-        .decode(segments[1])
-        .map_err(|e| anyhow::anyhow!("Failed to decode JWT Base64 segment: {}", e))?;
-
-    // ─── UPDATE THIS TYPE HOOK TO PATH REF ───
-    let raw_payload: api::JwtPayload = serde_json::from_slice(&decoded_bytes)
-        .map_err(|e| anyhow::anyhow!("Failed to map JWT fields: {}", e))?;
-
-    // Attempt to parse out the identity string. If the server passes a non-standard numeric string,
-    // or string literal, we handle fallback mappings or map it safely to a Uuid:
-    let user_uuid = Uuid::parse_str(&raw_payload.id).unwrap_or_else(|_| {
-        // Fallback generation for numeric/non-standard string IDs
-        Uuid::new_v4()
-    });
-
-    Ok(api::UserClaims {
-        id: user_uuid,
-        username: raw_payload.username.into(),
-        email: None,
-    })
-}
+use crate::auth::jwt::extract_claims_from_jwt;
