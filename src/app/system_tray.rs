@@ -1,0 +1,214 @@
+use tray_icon::menu::{Menu, MenuItem, Submenu, MenuEvent, MenuId};
+use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
+use eframe::egui;
+use crate::theme::SelectableTheme;
+use std::time::{Duration, Instant};
+
+fn load_icon() -> Icon {
+    let image = image::load_from_memory(include_bytes!("../../assets/icon.png"))
+        .expect("Failed to load tray icon from memory")
+        .into_rgba8();
+    let (width, height) = image.dimensions();
+    let rgba = image.into_raw();
+    Icon::from_rgba(rgba, width, height).unwrap()
+}
+
+pub struct TrayIconMenu {
+    _tray_icon: TrayIcon,
+    tray_menu: Menu,
+    show_item: MenuItem,
+    play_pause_item: MenuItem,
+    theme_submenu: Submenu,
+    theme_neuro: MenuItem,
+    theme_twins: MenuItem,
+    theme_evil: MenuItem,
+    timer_submenu: Submenu,
+    timer_5: MenuItem,
+    timer_15: MenuItem,
+    timer_30: MenuItem,
+    timer_60: MenuItem,
+    timer_120: MenuItem,
+    timer_cancel: MenuItem,
+    quit_item: MenuItem,
+    show_id: MenuId,
+    play_pause_id: MenuId,
+    theme_neuro_id: MenuId,
+    theme_twins_id: MenuId,
+    theme_evil_id: MenuId,
+    timer_5_id: MenuId,
+    timer_15_id: MenuId,
+    timer_30_id: MenuId,
+    timer_60_id: MenuId,
+    timer_120_id: MenuId,
+    timer_cancel_id: MenuId,
+    quit_id: MenuId,
+    is_visible: bool,
+    last_is_paused: Option<bool>,
+    last_theme: Option<SelectableTheme>,
+}
+
+impl TrayIconMenu {
+    pub(crate) fn new(_ctx: &egui::Context) -> Self {
+        let tray_menu = Menu::new();
+        let show_item = MenuItem::new("Hide App", true, None);
+        let play_pause_item = MenuItem::new("Play", true, None);
+
+        let theme_submenu = Submenu::new("Theme", true);
+        let theme_neuro = MenuItem::new("Neuro", true, None);
+        let theme_twins = MenuItem::new("Twins", true, None);
+        let theme_evil = MenuItem::new("Evil", true, None);
+        let _ = theme_submenu.append_items(&[&theme_neuro, &theme_twins, &theme_evil]);
+
+        let timer_submenu = Submenu::new("Sleep Timer", true);
+        let timer_5 = MenuItem::new("5 min", true, None);
+        let timer_15 = MenuItem::new("15 min", true, None);
+        let timer_30 = MenuItem::new("30 min", true, None);
+        let timer_60 = MenuItem::new("60 min", true, None);
+        let timer_120 = MenuItem::new("120 min", true, None);
+        let timer_cancel = MenuItem::new("Cancel Timer", true, None);
+        let _ = timer_submenu.append_items(&[&timer_5, &timer_15, &timer_30, &timer_60, &timer_120, &timer_cancel]);
+
+        let quit_item = MenuItem::new("Quit", true, None);
+
+        let _ = tray_menu.append_items(&[&show_item, &play_pause_item, &theme_submenu, &timer_submenu, &quit_item]);
+
+        let show_id = show_item.id().clone();
+        let play_pause_id = play_pause_item.id().clone();
+        let theme_neuro_id = theme_neuro.id().clone();
+        let theme_twins_id = theme_twins.id().clone();
+        let theme_evil_id = theme_evil.id().clone();
+        let timer_5_id = timer_5.id().clone();
+        let timer_15_id = timer_15.id().clone();
+        let timer_30_id = timer_30.id().clone();
+        let timer_60_id = timer_60.id().clone();
+        let timer_120_id = timer_120.id().clone();
+        let timer_cancel_id = timer_cancel.id().clone();
+        let quit_id = quit_item.id().clone();
+
+        // 2. Load icon from embedded bytes
+        let icon = load_icon();
+
+        // 3. Build the tray icon
+        let _tray_icon = TrayIconBuilder::new()
+            .with_menu(Box::new(tray_menu.clone()))
+            .with_tooltip("Neuro Karaoke")
+            .with_icon(icon)
+            .build()
+            .unwrap();
+
+        Self {
+            _tray_icon,
+            tray_menu,
+            show_item,
+            play_pause_item,
+            theme_submenu,
+            theme_neuro,
+            theme_twins,
+            theme_evil,
+            timer_submenu,
+            timer_5,
+            timer_15,
+            timer_30,
+            timer_60,
+            timer_120,
+            timer_cancel,
+            quit_item,
+            show_id,
+            play_pause_id,
+            theme_neuro_id,
+            theme_twins_id,
+            theme_evil_id,
+            timer_5_id,
+            timer_15_id,
+            timer_30_id,
+            timer_60_id,
+            timer_120_id,
+            timer_cancel_id,
+            quit_id,
+            is_visible: true,
+            last_is_paused: None,
+            last_theme: None,
+        }
+    }
+
+    pub fn poll_events(
+        &mut self,
+        ctx: &egui::Context,
+        player: &crate::audio::Player,
+        config: &mut crate::config::Config,
+        theme: &mut crate::theme::ThemeManager,
+        sleep_timer_end: &mut Option<Instant>,
+    ) {
+        let is_paused = player.get_playback_state().map_or(true, |s| s.paused());
+        if self.last_is_paused != Some(is_paused) {
+            self.last_is_paused = Some(is_paused);
+            if is_paused {
+                self.play_pause_item.set_text("Play");
+            } else {
+                self.play_pause_item.set_text("Pause");
+            }
+        }
+
+        self.timer_cancel.set_enabled(sleep_timer_end.is_some());
+
+
+        let current_theme = config.theme;
+        if self.last_theme != Some(current_theme) {
+            self.last_theme = Some(current_theme);
+            self.theme_neuro.set_text(if current_theme == SelectableTheme::Neuro { "✓ Neuro" } else { "Neuro" });
+            self.theme_twins.set_text(if current_theme == SelectableTheme::Twins { "✓ Twins" } else { "Twins" });
+            self.theme_evil.set_text(if current_theme == SelectableTheme::Evil { "✓ Evil" } else { "Evil" });
+        }
+
+        while let Ok(event) = MenuEvent::receiver().try_recv() {
+            if event.id == self.play_pause_id {
+                if let Some(state) = player.get_playback_state() {
+                    if state.paused() {
+                        player.play();
+                    } else {
+                        player.pause();
+                    }
+                } else {
+                    player.play();
+                }
+                ctx.request_repaint();
+            } else if event.id == self.theme_neuro_id {
+                config.theme = SelectableTheme::Neuro;
+                theme.set(config.theme.as_theme());
+                let _ = config.write_config();
+                ctx.request_repaint();
+            } else if event.id == self.theme_twins_id {
+                config.theme = SelectableTheme::Twins;
+                theme.set(config.theme.as_theme());
+                let _ = config.write_config();
+                ctx.request_repaint();
+            } else if event.id == self.theme_evil_id {
+                config.theme = SelectableTheme::Evil;
+                theme.set(config.theme.as_theme());
+                let _ = config.write_config();
+                ctx.request_repaint();
+            } else if event.id == self.timer_5_id {
+                *sleep_timer_end = Some(Instant::now() + Duration::from_secs(5 * 60));
+                ctx.request_repaint();
+            } else if event.id == self.timer_15_id {
+                *sleep_timer_end = Some(Instant::now() + Duration::from_secs(15 * 60));
+                ctx.request_repaint();
+            } else if event.id == self.timer_30_id {
+                *sleep_timer_end = Some(Instant::now() + Duration::from_secs(30 * 60));
+                ctx.request_repaint();
+            } else if event.id == self.timer_60_id {
+                *sleep_timer_end = Some(Instant::now() + Duration::from_secs(60 * 60));
+                ctx.request_repaint();
+            } else if event.id == self.timer_120_id {
+                *sleep_timer_end = Some(Instant::now() + Duration::from_secs(120 * 60));
+                ctx.request_repaint();
+            } else if event.id == self.timer_cancel_id {
+                *sleep_timer_end = None;
+                ctx.request_repaint();
+            } else if event.id == self.quit_id {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                std::process::exit(0);
+            }
+        }
+    }
+}

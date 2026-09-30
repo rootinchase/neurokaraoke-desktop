@@ -27,6 +27,7 @@ use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc::unbounded_channel;
 use uuid::Uuid;
+use crate::app::system_tray::TrayIconMenu;
 
 macro_rules! build_font_defs {
     ( $( $name:literal => $path:literal ),* $(,)? ) => {{
@@ -71,8 +72,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
     let shared_config = config.to_shared();
     let client = Client::new();
 
-    // 1. Instantiated the updated PersistentMediaCache with connection/concurrency gating caps
-    let cache = Arc::new(PersistentMediaCache::new(client.clone(), 8));
+    let cache = Arc::new(PersistentMediaCache::new(client.clone(), 12));
 
     let profile_activity = ProfileActivity::new(cache.clone());
     let guest_id: Arc<str> = Uuid::new_v4().to_string().into();
@@ -133,7 +133,6 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
         crate::utilities::persistence::handle_signals(signal_player, signal_config).await;
     });
 
-    // 2. Extracted the Song database caching loops into an decoupled, async background task
     let s = songs.clone();
     let cc = config.cache.clone();
     let last_update: Arc<Mutex<Option<Instant>>> = Arc::default();
@@ -187,6 +186,8 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
         shared_config.clone(),
         discord_tx,
     );
+    
+    let tray_icon = TrayIconMenu::new(ctx);
 
     let app = App {
         cache: cache.clone(),
@@ -272,6 +273,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
         sleep_timer_end: None,
         show_timer_menu: false,
         show_queue: false,
+        _tray_icon: tray_icon,
     };
 
     let songs_clone = app.songs.clone();

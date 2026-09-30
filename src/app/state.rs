@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
+use crate::app::system_tray::TrayIconMenu;
 
 use crate::activity::{
     ActivityType, SortOption, favorites::FavoritesActivity, home::HomeActivity,
@@ -65,6 +66,7 @@ pub struct App {
     pub sleep_timer_end: Option<Instant>,
     pub show_timer_menu: bool,
     pub show_queue: bool,
+    pub(crate) _tray_icon: TrayIconMenu,
 }
 
 impl App {

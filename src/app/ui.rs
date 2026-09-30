@@ -17,6 +17,16 @@ use uuid::Uuid;
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx();
+
+        self._tray_icon.poll_events(
+            &ctx,
+            &self.player,
+            &mut self.config,
+            &mut self.theme,
+            &mut self.sleep_timer_end,
+        );
+
         if let Some(end) = self.sleep_timer_end {
             if Instant::now() >= end {
                 self.player.pause();

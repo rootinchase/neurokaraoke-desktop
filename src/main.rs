@@ -52,6 +52,7 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
+            .with_title("Neuro Karaoke App")
             .with_app_id("com.neurokaraoke.desktop")
             .with_icon(icon)
             .with_min_inner_size(Vec2::new(640.0, 480.0)),
