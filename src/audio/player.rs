@@ -155,7 +155,8 @@ impl Player {
 
                         let mut new_pl: Vec<Uuid> = indices.iter().map(|&i| pl[i]).collect();
                         let mut new_upl: Vec<crate::api::SongDTO> = upl
-                            .map(|upl| indices.iter().map(|&i| upl[i].clone()).collect())
+                            .filter(|u| u.len() == len)
+                            .map(|u| indices.iter().filter_map(|&i| u.get(i).cloned()).collect())
                             .unwrap_or_else(|| vec![]);
 
                         if let Some(song) = song {
