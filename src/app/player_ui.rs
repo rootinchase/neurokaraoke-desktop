@@ -457,7 +457,8 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                                 Pos2::new(track_rect.left(), rect.bottom() - filled_height),
                                 Pos2::new(track_rect.right(), rect.bottom()),
                             );
-                            ui.painter().rect_filled(filled_rect, 3.0, app.theme.primary);
+                            ui.painter()
+                                .rect_filled(filled_rect, 3.0, app.theme.primary);
 
                             ui.add_space(10.0);
 

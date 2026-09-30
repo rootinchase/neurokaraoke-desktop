@@ -211,7 +211,10 @@ impl PersistentMediaCache {
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
 
-        debug_log!("📦 [Cache] Downloaded bytes, content-type: {:?}", content_type);
+        debug_log!(
+            "📦 [Cache] Downloaded bytes, content-type: {:?}",
+            content_type
+        );
 
         let body_bytes = response.bytes().await?;
 

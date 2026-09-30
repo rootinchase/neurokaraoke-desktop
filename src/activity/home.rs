@@ -2,7 +2,9 @@ use crate::api::{LazySongDatabase, LoadingState, SongDTO, TrendingTimes};
 use crate::theme::ThemeManager;
 use crate::utilities::cache::{PersistentMediaCache, cache_dir};
 use crate::utilities::persistence::{AppState, load_app_state};
-use eframe::egui::{Button, Frame, Grid, Image, RichText, ScrollArea, Sense, Ui, Vec2, include_image};
+use eframe::egui::{
+    Button, Frame, Grid, Image, RichText, ScrollArea, Sense, Ui, Vec2, include_image,
+};
 use egui_extras::{Column, TableBuilder};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -387,7 +389,10 @@ impl HomeActivity {
                                             );
                                         }
                                     } else {
-                                        ui.allocate_exact_size(Vec2::new(150.0, 150.0), Sense::hover());
+                                        ui.allocate_exact_size(
+                                            Vec2::new(150.0, 150.0),
+                                            Sense::hover(),
+                                        );
                                     }
                                     ui.label(RichText::new("Resume Session").size(18.0).strong());
                                 });

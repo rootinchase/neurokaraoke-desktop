@@ -295,28 +295,40 @@ impl PlaylistActivity {
                                 for (_index, playlist) in sorted_playlists.iter().enumerate() {
                                     // Fetch detail if needed
                                     if !self.playlist_details.contains_key(&playlist.id) {
-                                        self.playlist_details.insert(playlist.id, LoadingState::Loading);
+                                        self.playlist_details
+                                            .insert(playlist.id, LoadingState::Loading);
                                         let p_id = playlist.id;
                                         let p_songs = self.songs.clone();
                                         let p_details = self.playlist_details.clone();
                                         self.rt.spawn(async move {
                                             match p_songs.get_playlist_details(p_id).await {
                                                 Ok(detail) => {
-                                                    p_details.insert(p_id, LoadingState::Loaded(detail));
+                                                    p_details
+                                                        .insert(p_id, LoadingState::Loaded(detail));
                                                 }
                                                 Err(err) => {
-                                                    p_details.insert(p_id, LoadingState::Failed(Arc::new(err)));
+                                                    p_details.insert(
+                                                        p_id,
+                                                        LoadingState::Failed(Arc::new(err)),
+                                                    );
                                                 }
                                             }
                                         });
                                     }
 
-                                    if let Some(detail_state) = self.playlist_details.get(&playlist.id) {
+                                    if let Some(detail_state) =
+                                        self.playlist_details.get(&playlist.id)
+                                    {
                                         match &*detail_state {
                                             LoadingState::Loaded(detail) => {
                                                 render_playlist_box(
                                                     ui,
-                                                    &crate::theme::ThemeManager::new(crate::config::Config::read().unwrap_or_default().theme.as_theme()),
+                                                    &crate::theme::ThemeManager::new(
+                                                        crate::config::Config::read()
+                                                            .unwrap_or_default()
+                                                            .theme
+                                                            .as_theme(),
+                                                    ),
                                                     &format!("playlist_box_{}", playlist.id),
                                                     &detail.name,
                                                     &playlist.creator,
@@ -356,7 +368,9 @@ impl PlaylistActivity {
                                 }
 
                                 // Load more button at the bottom of playlists
-                                if playlist_search.is_none() || playlist_search.as_ref().map_or(true, |s| s.is_empty()) {
+                                if playlist_search.is_none()
+                                    || playlist_search.as_ref().map_or(true, |s| s.is_empty())
+                                {
                                     ui.add_space(10.0);
                                     ui.horizontal(|ui| {
                                         let has_more = *self.has_more.blocking_lock();
@@ -391,8 +405,14 @@ impl PlaylistActivity {
                             //    offset_y, viewport_height, content_height, has_more, loading_more
                             //);
 
-                            if has_more && !loading_more && (offset_y > 0.0 || content_height <= viewport_height + 300.0) && offset_y + viewport_height >= content_height - 300.0 {
-                                debug_log!("🚀 [PlaylistActivity] Auto-triggering load_more() from scroll");
+                            if has_more
+                                && !loading_more
+                                && (offset_y > 0.0 || content_height <= viewport_height + 300.0)
+                                && offset_y + viewport_height >= content_height - 300.0
+                            {
+                                debug_log!(
+                                    "🚀 [PlaylistActivity] Auto-triggering load_more() from scroll"
+                                );
                                 self.load_more();
                             }
                         }
