@@ -514,10 +514,21 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                                     app.theme.text
                                 });
 
-                            let timer_btn_resp = ui
+                            let mut timer_btn_resp = ui
                                 .add(image_button)
                                 .interact(Sense::click())
                                 .on_hover_cursor(CursorIcon::PointingHand);
+
+                            if let Some(end) = app.sleep_timer_end {
+                                let remaining = end.saturating_duration_since(Instant::now());
+                                let mins = remaining.as_secs() / 60;
+                                let secs = remaining.as_secs() % 60;
+                                let time_str = format!("{:02}:{:02}", mins, secs);
+                                timer_btn_resp = timer_btn_resp.on_hover_text(format!("Sleep Timer: {} remaining", time_str));
+                                ui.ctx().request_repaint();
+                            } else {
+                                timer_btn_resp = timer_btn_resp.on_hover_text("Sleep Timer");
+                            }
 
                             if timer_btn_resp.clicked() {
                                 app.show_timer_menu = !app.show_timer_menu;
