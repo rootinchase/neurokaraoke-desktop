@@ -5,8 +5,8 @@ pub mod profile;
 pub mod queue;
 pub mod search;
 pub mod setlist;
-pub mod sidebar;
 pub mod settings;
+pub mod sidebar;
 
 use crate::api::{Artwork, LoadingState, Playlist, PlaylistDetail, SongDTO};
 use crate::theme::ThemeManager;

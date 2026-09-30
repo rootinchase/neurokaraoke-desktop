@@ -1,12 +1,19 @@
-use crate::api::{LazySongDatabase, LoadingState, SongDTO, TrendingTimes};
+use crate::activity::resolve_and_render_art;
+use crate::api::{Artwork, LazySongDatabase, LoadingState, SongDTO, TrendingTimes};
 use crate::theme::ThemeManager;
-use crate::utilities::cache::{PersistentMediaCache, cache_dir, playlist_cache_ttl, is_cache_fresh};
+use crate::utilities::cache::{PersistentMediaCache, cache_dir};
 use crate::utilities::persistence::{AppState, load_app_state};
+use crate::utilities::util::get_playlist_details_cached;
 use eframe::egui::{
-    Button, Frame, Grid, Image, RichText, ScrollArea, Sense, Ui, Vec2, include_image,
+    Button, Context, Frame, Grid, Image, RichText, ScrollArea, Sense, Ui, Vec2, include_image,
 };
 use egui_extras::{Column, TableBuilder};
+use reqwest::Client;
+use ron::de::from_bytes;
+use ron::ser::to_string_pretty;
 use std::sync::Arc;
+use tokio::fs::{read, write};
+use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -17,23 +24,23 @@ struct CachedSetlist {
 }
 
 pub struct HomeActivity {
-    pub ctx: eframe::egui::Context,
+    pub ctx: Context,
     pub cache: Arc<PersistentMediaCache>,
     pub suggested_songs: Arc<Mutex<LoadingState<Vec<SongDTO>>>>,
     pub trending_songs: Arc<Mutex<LoadingState<Vec<SongDTO>>>>,
     pub setlist_songs: Arc<Mutex<LoadingState<Vec<SongDTO>>>>,
     pub setlist_name: Arc<Mutex<Option<String>>>,
-    pub rt: Arc<tokio::runtime::Runtime>,
-    pub client: reqwest::Client,
+    pub rt: Arc<Runtime>,
+    pub client: Client,
     pub songs: LazySongDatabase,
 }
 
 impl HomeActivity {
     pub fn new(
-        ctx: eframe::egui::Context,
+        ctx: Context,
         cache: Arc<PersistentMediaCache>,
-        rt: Arc<tokio::runtime::Runtime>,
-        client: reqwest::Client,
+        rt: Arc<Runtime>,
+        client: Client,
         songs: LazySongDatabase,
     ) -> Self {
         Self {
@@ -56,26 +63,26 @@ impl HomeActivity {
 
         tokio::spawn(async move {
             let cache_path = cache_dir().join("home_suggested.ron");
-            if is_cache_fresh(&cache_path, playlist_cache_ttl()) {
-                if let Ok(data) = tokio::fs::read(&cache_path).await {
-                    if let Ok(cached) = ron::de::from_bytes::<Vec<SongDTO>>(&data) {
-                        *songs_state.lock().await = LoadingState::Loaded(cached);
-                    }
+            let mut has_cached = false;
+            if let Ok(data) = read(&cache_path).await {
+                if let Ok(cached) = from_bytes::<Vec<SongDTO>>(&data) {
+                    *songs_state.lock().await = LoadingState::Loaded(cached);
+                    has_cached = true;
                 }
             }
 
             match songs.get_suggested(20).await {
                 Ok(data) => {
                     *songs_state.lock().await = LoadingState::Loaded(data.clone());
-                    let _ = tokio::fs::write(
+                    let _ = write(
                         cache_path,
-                        ron::ser::to_string_pretty(&data, Default::default()).unwrap(),
+                        to_string_pretty(&data, Default::default()).unwrap(),
                     )
                     .await;
                 }
                 Err(err) => {
                     let mut state_lock = songs_state.lock().await;
-                    if matches!(*state_lock, LoadingState::Loading) {
+                    if !has_cached && matches!(*state_lock, LoadingState::Loading) {
                         *state_lock = LoadingState::Failed(Arc::new(err));
                     }
                 }
@@ -91,26 +98,26 @@ impl HomeActivity {
 
         tokio::spawn(async move {
             let cache_path = cache_dir().join("home_trending.ron");
-            if is_cache_fresh(&cache_path, playlist_cache_ttl()) {
-                if let Ok(data) = tokio::fs::read(&cache_path).await {
-                    if let Ok(cached) = ron::de::from_bytes::<Vec<SongDTO>>(&data) {
-                        *songs_state.lock().await = LoadingState::Loaded(cached);
-                    }
+            let mut has_cached = false;
+            if let Ok(data) = read(&cache_path).await {
+                if let Ok(cached) = from_bytes::<Vec<SongDTO>>(&data) {
+                    *songs_state.lock().await = LoadingState::Loaded(cached);
+                    has_cached = true;
                 }
             }
 
             match songs.get_trending(TrendingTimes::Week).await {
                 Ok(data) => {
                     *songs_state.lock().await = LoadingState::Loaded(data.clone());
-                    let _ = tokio::fs::write(
+                    let _ = write(
                         cache_path,
-                        ron::ser::to_string_pretty(&data, Default::default()).unwrap(),
+                        to_string_pretty(&data, Default::default()).unwrap(),
                     )
                     .await;
                 }
                 Err(err) => {
                     let mut state_lock = songs_state.lock().await;
-                    if matches!(*state_lock, LoadingState::Loading) {
+                    if !has_cached && matches!(*state_lock, LoadingState::Loading) {
                         *state_lock = LoadingState::Failed(Arc::new(err));
                     }
                 }
@@ -127,19 +134,19 @@ impl HomeActivity {
 
         tokio::spawn(async move {
             let cache_path = cache_dir().join("home_recent_setlist.ron");
-            if is_cache_fresh(&cache_path, playlist_cache_ttl()) {
-                if let Ok(data) = tokio::fs::read(&cache_path).await {
-                    if let Ok(cached) = ron::de::from_bytes::<CachedSetlist>(&data) {
-                        *setlist_name.lock().await = cached.name;
-                        *songs_state.lock().await = LoadingState::Loaded(cached.songs);
-                    }
+            let mut has_cached = false;
+            if let Ok(data) = read(&cache_path).await {
+                if let Ok(cached) = from_bytes::<CachedSetlist>(&data) {
+                    *setlist_name.lock().await = cached.name;
+                    *songs_state.lock().await = LoadingState::Loaded(cached.songs);
+                    has_cached = true;
                 }
             }
 
             match songs.get_official_setlists(2026).await {
                 Ok(data) => {
                     if let Some(setlist) = data.first() {
-                        match songs.get_playlist_details(setlist.id).await {
+                        match get_playlist_details_cached(setlist.id, &songs).await {
                             Ok(detail) => {
                                 let name = detail
                                     .name
@@ -155,16 +162,15 @@ impl HomeActivity {
                                     name: Some(name),
                                     songs: detail.songs,
                                 };
-                                let _ = tokio::fs::write(
+                                let _ = write(
                                     cache_path,
-                                    ron::ser::to_string_pretty(&cached, Default::default())
-                                        .unwrap(),
+                                    to_string_pretty(&cached, Default::default()).unwrap(),
                                 )
                                 .await;
                             }
                             Err(err) => {
                                 let mut state_lock = songs_state.lock().await;
-                                if matches!(*state_lock, LoadingState::Loading) {
+                                if !has_cached && matches!(*state_lock, LoadingState::Loading) {
                                     *state_lock = LoadingState::Failed(Arc::new(err));
                                 }
                             }
@@ -175,7 +181,7 @@ impl HomeActivity {
                 }
                 Err(err) => {
                     let mut state_lock = songs_state.lock().await;
-                    if matches!(*state_lock, LoadingState::Loading) {
+                    if !has_cached && matches!(*state_lock, LoadingState::Loading) {
                         *state_lock = LoadingState::Failed(Arc::new(err));
                     }
                 }
@@ -184,8 +190,8 @@ impl HomeActivity {
         });
     }
 
-    fn resolve_and_render_art(&self, ui: &mut Ui, cover_art: &crate::api::Artwork, size: Vec2) {
-        crate::activity::resolve_and_render_art(
+    fn resolve_and_render_art(&self, ui: &mut Ui, cover_art: &Artwork, size: Vec2) {
+        resolve_and_render_art(
             ui,
             &self.cache,
             &self.ctx,

@@ -426,8 +426,10 @@ pub fn render_sidebar(
                                 if let Some(auth) = &config.auth {
                                     let username_str = &auth.user.username;
                                     ui.add(
-                                        Label::new(RichText::new(username_str.to_string()).size(16.0))
-                                            .selectable(false),
+                                        Label::new(
+                                            RichText::new(username_str.to_string()).size(16.0),
+                                        )
+                                        .selectable(false),
                                     );
                                 } else {
                                     ui.add(
@@ -464,7 +466,10 @@ pub fn render_sidebar(
                         if *current_activity == ActivityType::Settings {
                             settings_img = settings_img.tint(theme.primary);
                         }
-                        let settings_resp = ui.add(settings_img).interact(Sense::click()).on_hover_text("Settings");
+                        let settings_resp = ui
+                            .add(settings_img)
+                            .interact(Sense::click())
+                            .on_hover_text("Settings");
                         if settings_resp.hovered() {
                             ui.set_cursor_icon(CursorIcon::PointingHand);
                         }

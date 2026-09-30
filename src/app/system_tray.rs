@@ -1,8 +1,8 @@
-use tray_icon::menu::{Menu, MenuItem, Submenu, MenuEvent, MenuId};
-use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
-use eframe::egui;
 use crate::theme::SelectableTheme;
+use eframe::egui;
 use std::time::{Duration, Instant};
+use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, Submenu};
+use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 
 fn load_icon() -> Icon {
     let image = image::load_from_memory(include_bytes!("../../assets/icon.png"))
@@ -66,11 +66,24 @@ impl TrayIconMenu {
         let timer_60 = MenuItem::new("60 min", true, None);
         let timer_120 = MenuItem::new("120 min", true, None);
         let timer_cancel = MenuItem::new("Cancel Timer", true, None);
-        let _ = timer_submenu.append_items(&[&timer_5, &timer_15, &timer_30, &timer_60, &timer_120, &timer_cancel]);
+        let _ = timer_submenu.append_items(&[
+            &timer_5,
+            &timer_15,
+            &timer_30,
+            &timer_60,
+            &timer_120,
+            &timer_cancel,
+        ]);
 
         let quit_item = MenuItem::new("Quit", true, None);
 
-        let _ = tray_menu.append_items(&[&show_item, &play_pause_item, &theme_submenu, &timer_submenu, &quit_item]);
+        let _ = tray_menu.append_items(&[
+            &show_item,
+            &play_pause_item,
+            &theme_submenu,
+            &timer_submenu,
+            &quit_item,
+        ]);
 
         let show_id = show_item.id().clone();
         let play_pause_id = play_pause_item.id().clone();
@@ -151,13 +164,27 @@ impl TrayIconMenu {
 
         self.timer_cancel.set_enabled(sleep_timer_end.is_some());
 
-
         let current_theme = config.theme;
         if self.last_theme != Some(current_theme) {
             self.last_theme = Some(current_theme);
-            self.theme_neuro.set_text(if current_theme == SelectableTheme::Neuro { "✓ Neuro" } else { "Neuro" });
-            self.theme_twins.set_text(if current_theme == SelectableTheme::Twins { "✓ Twins" } else { "Twins" });
-            self.theme_evil.set_text(if current_theme == SelectableTheme::Evil { "✓ Evil" } else { "Evil" });
+            self.theme_neuro
+                .set_text(if current_theme == SelectableTheme::Neuro {
+                    "✓ Neuro"
+                } else {
+                    "Neuro"
+                });
+            self.theme_twins
+                .set_text(if current_theme == SelectableTheme::Twins {
+                    "✓ Twins"
+                } else {
+                    "Twins"
+                });
+            self.theme_evil
+                .set_text(if current_theme == SelectableTheme::Evil {
+                    "✓ Evil"
+                } else {
+                    "Evil"
+                });
         }
 
         while let Ok(event) = MenuEvent::receiver().try_recv() {

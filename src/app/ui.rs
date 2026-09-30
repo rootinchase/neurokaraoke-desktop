@@ -488,12 +488,8 @@ impl App {
                 &self.rt,
             );
         } else if self.activity == ActivityType::Settings {
-            self.settings_activity.render(
-                ui,
-                &self.theme,
-                &mut self.config,
-                &self.rt,
-            );
+            self.settings_activity
+                .render(ui, &self.theme, &mut self.config, &self.rt);
         }
     }
 }

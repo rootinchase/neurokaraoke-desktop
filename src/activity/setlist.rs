@@ -3,10 +3,17 @@ use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail};
 use crate::debug_log;
 use crate::theme::ThemeManager;
 use crate::utilities::cache::{PersistentMediaCache, cache_dir};
+use crate::utilities::util::get_playlist_details_cached;
 use dashmap::DashMap;
 use eframe::egui::{Context, ScrollArea, Ui};
+use ron::de::from_bytes;
+use ron::ser::to_string_pretty;
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::fs::{read, write};
+use tokio::spawn;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -58,7 +65,7 @@ impl SetlistActivity {
         let details = self.setlist_details.clone();
         let selected = self.selected_setlist.clone();
         let ctx = self.ctx.clone();
-        tokio::spawn(async move {
+        spawn(async move {
             if let Some(detail_state) = details.get(&id) {
                 if let LoadingState::Loaded(detail) = &*detail_state {
                     *selected.lock().await = Some(detail.clone());
@@ -73,16 +80,46 @@ impl SetlistActivity {
         let details = self.setlist_details.clone();
         let songs = self.songs.clone();
         let rt = self.rt.clone();
+        let ctx = self.ctx.clone();
 
-        tokio::spawn(async move {
+        spawn(async move {
             let cache_path = Self::get_cache_path(year);
 
-            // Try loading from cache first if fresh (Tier 2 TTL)
-            if cache::is_cache_fresh(&cache_path, cache::playlist_cache_ttl()) {
-                if let Ok(data) = tokio::fs::read(&cache_path).await {
-                    if let Ok(setlists) = ron::de::from_bytes::<Vec<Playlist>>(&data) {
-                        *s.lock().await = LoadingState::Loaded(setlists);
+            // Try loading from cache first
+            let mut has_cached = false;
+            if let Ok(data) = read(&cache_path).await {
+                if let Ok(setlists) = from_bytes::<Vec<Playlist>>(&data) {
+                    for setlist in &setlists {
+                        if !details.contains_key(&setlist.id) {
+                            details.insert(setlist.id, LoadingState::Loading);
+
+                            let s_id = setlist.id;
+                            let s_name = setlist.name.clone();
+                            let s_songs = songs.clone();
+                            let s_details = details.clone();
+                            let s_ctx = ctx.clone();
+                            rt.spawn(async move {
+                                match get_playlist_details_cached(s_id, &s_songs).await {
+                                    Ok(detail) => {
+                                        s_details.insert(s_id, LoadingState::Loaded(detail));
+                                    }
+                                    Err(_) => {
+                                        s_details.insert(
+                                            s_id,
+                                            LoadingState::Loaded(PlaylistDetail {
+                                                name: s_name,
+                                                songs: vec![],
+                                            }),
+                                        );
+                                    }
+                                }
+                                s_ctx.request_repaint();
+                            });
+                        }
                     }
+                    *s.lock().await = LoadingState::Loaded(setlists);
+                    has_cached = true;
+                    ctx.request_repaint();
                 }
             }
 
@@ -96,8 +133,7 @@ impl SetlistActivity {
                     );
 
                     // Retain only details that exist in the newly fetched setlists
-                    let setlist_ids: std::collections::HashSet<Uuid> =
-                        data.iter().map(|p| p.id).collect();
+                    let setlist_ids: HashSet<Uuid> = data.iter().map(|p| p.id).collect();
 
                     let before_count = details.len();
                     details.retain(|id, _| setlist_ids.contains(id));
@@ -116,34 +152,44 @@ impl SetlistActivity {
 
                             // Spawn fetch for detail
                             let s_id = setlist.id;
+                            let s_name = setlist.name.clone();
                             let s_songs = songs.clone();
                             let s_details = details.clone();
+                            let s_ctx = ctx.clone();
                             rt.spawn(async move {
-                                match s_songs.get_playlist_details(s_id).await {
+                                match get_playlist_details_cached(s_id, &s_songs).await {
                                     Ok(detail) => {
                                         s_details.insert(s_id, LoadingState::Loaded(detail));
                                     }
-                                    Err(err) => {
-                                        s_details.insert(s_id, LoadingState::Failed(Arc::new(err)));
+                                    Err(_) => {
+                                        s_details.insert(
+                                            s_id,
+                                            LoadingState::Loaded(PlaylistDetail {
+                                                name: s_name,
+                                                songs: vec![],
+                                            }),
+                                        );
                                     }
                                 }
+                                s_ctx.request_repaint();
                             });
                         }
                     }
                     *s.lock().await = LoadingState::Loaded(data.clone());
-                    let _ = tokio::fs::write(
+                    let _ = write(
                         cache_path,
-                        ron::ser::to_string_pretty(&data, Default::default()).unwrap(),
+                        to_string_pretty(&data, Default::default()).unwrap(),
                     )
                     .await;
                 }
                 Err(err) => {
                     let mut s_lock = s.lock().await;
-                    if matches!(*s_lock, LoadingState::Loading) {
+                    if !has_cached && matches!(*s_lock, LoadingState::Loading) {
                         *s_lock = LoadingState::Failed(Arc::new(err));
                     }
                 }
             }
+            ctx.request_repaint();
         });
     }
 
@@ -159,7 +205,7 @@ impl SetlistActivity {
         mut play_playlist: impl FnMut(&PlaylistDetail),
         play_song: impl FnMut(Vec<SongDTO>, Uuid) + 'static,
     ) {
-        let play_song = std::cell::RefCell::new(play_song);
+        let play_song = RefCell::new(play_song);
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
                 ui.label("Official Setlists:");

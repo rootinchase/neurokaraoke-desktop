@@ -1,17 +1,20 @@
 use crate::activity::{SortOption, render_playlist_art_advanced, render_playlist_box, search};
 use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongDTO};
-use crate::utilities::cache::{PersistentMediaCache, cache_dir, playlist_cache_ttl, is_cache_fresh };
+use crate::utilities::cache::{PersistentMediaCache, cache_dir};
 use crate::utilities::util::{select_playlist_by_id, sort_items};
 
 use crate::debug_log;
 use dashmap::DashMap;
-use eframe::egui::{Context, ScrollArea, TextEdit, Ui};
+use eframe::egui::{Context, ScrollArea, TextEdit, Ui, Vec2};
+use reqwest::Client;
 use ron::de;
 use ron::ser;
 use std::cell::RefCell;
 use std::fs::read;
 use std::sync::Arc;
+use tokio::fs::write;
 use tokio::runtime::Runtime;
+use tokio::spawn;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -24,7 +27,7 @@ pub struct PlaylistActivity {
     pub cache: Arc<PersistentMediaCache>,
     pub ctx: Context,
     pub rt: Arc<Runtime>,
-    pub client: reqwest::Client,
+    pub client: Client,
     pub is_personal: bool,
     pub has_more: Arc<Mutex<bool>>,
     pub loading_more: Arc<Mutex<bool>>,
@@ -37,7 +40,7 @@ impl PlaylistActivity {
         cache: Arc<PersistentMediaCache>,
         ctx: Context,
         rt: Arc<Runtime>,
-        client: reqwest::Client,
+        client: Client,
     ) -> Self {
         let cache_file = if is_personal {
             "my_playlists.ron"
@@ -45,13 +48,9 @@ impl PlaylistActivity {
             "playlists.ron"
         };
         let cache_path = cache_dir().join(cache_file);
-        let cached_playlists: Option<Vec<Playlist>> = if is_cache_fresh(&cache_path, playlist_cache_ttl()) {
-            read(&cache_path)
-                .ok()
-                .and_then(|data| de::from_bytes(&data).ok())
-        } else {
-            None
-        };
+        let cached_playlists: Option<Vec<Playlist>> = read(&cache_path)
+            .ok()
+            .and_then(|data| de::from_bytes(&data).ok());
 
         let all_playlists = Arc::new(Mutex::new(cached_playlists.clone()));
 
@@ -77,7 +76,7 @@ impl PlaylistActivity {
         let songs_clone = songs.clone();
         let hm = has_more.clone();
         let ctx_clone = ctx.clone();
-        tokio::spawn(async move {
+        spawn(async move {
             let result = if is_personal {
                 songs_clone.get_user_playlists().await
             } else {
@@ -91,7 +90,7 @@ impl PlaylistActivity {
                     *p.lock().await = LoadingState::Loaded(initial);
                     *hm.lock().await = data.len() > 20;
 
-                    let _ = tokio::fs::write(
+                    let _ = write(
                         cache_path,
                         ser::to_string_pretty(&data, Default::default()).unwrap(),
                     )
@@ -164,7 +163,7 @@ impl PlaylistActivity {
         *loading.blocking_lock() = true;
         debug_log!("🚀 [PlaylistActivity] Triggered load_more() execution...");
 
-        tokio::spawn(async move {
+        spawn(async move {
             let mut all_opt = all_playlists.lock().await;
             let all = if let Some(ref list) = *all_opt {
                 list.clone()
@@ -177,7 +176,7 @@ impl PlaylistActivity {
 
                 match fetch_result {
                     Ok(data) => {
-                        let _ = tokio::fs::write(
+                        let _ = write(
                             cache_path.clone(),
                             ser::to_string_pretty(&data, Default::default()).unwrap(),
                         )
@@ -187,13 +186,25 @@ impl PlaylistActivity {
                     }
                     Err(e) => {
                         debug_log!(
-                            "❌ [PlaylistActivity] Error fetching playlists in load_more: {}",
+                            "❌ [PlaylistActivity] Error fetching playlists in load_more: {}. Trying disk cache fallback.",
                             e
                         );
-                        *has_more.lock().await = false;
-                        *loading.lock().await = false;
-                        ctx.request_repaint();
-                        return;
+                        if let Ok(file_data) = tokio::fs::read(&cache_path).await {
+                            if let Ok(cached_data) = de::from_bytes::<Vec<Playlist>>(&file_data) {
+                                *all_opt = Some(cached_data.clone());
+                                cached_data
+                            } else {
+                                *has_more.lock().await = false;
+                                *loading.lock().await = false;
+                                ctx.request_repaint();
+                                return;
+                            }
+                        } else {
+                            *has_more.lock().await = false;
+                            *loading.lock().await = false;
+                            ctx.request_repaint();
+                            return;
+                        }
                     }
                 }
             };
@@ -302,18 +313,22 @@ impl PlaylistActivity {
                                         self.playlist_details
                                             .insert(playlist.id, LoadingState::Loading);
                                         let p_id = playlist.id;
+                                        let p_name = playlist.name.clone();
                                         let p_songs = self.songs.clone();
                                         let p_details = self.playlist_details.clone();
                                         self.rt.spawn(async move {
-                                            match p_songs.get_playlist_details(p_id).await {
+                                            match crate::utilities::util::get_playlist_details_cached(p_id, &p_songs).await {
                                                 Ok(detail) => {
                                                     p_details
                                                         .insert(p_id, LoadingState::Loaded(detail));
                                                 }
-                                                Err(err) => {
+                                                Err(_) => {
                                                     p_details.insert(
                                                         p_id,
-                                                        LoadingState::Failed(Arc::new(err)),
+                                                        LoadingState::Loaded(PlaylistDetail {
+                                                            name: p_name,
+                                                            songs: vec![],
+                                                        }),
                                                     );
                                                 }
                                             }
@@ -349,7 +364,7 @@ impl PlaylistActivity {
                                                             &self.client,
                                                             playlist,
                                                             &detail.songs,
-                                                            eframe::egui::Vec2::new(150.0, 150.0),
+                                                            Vec2::new(150.0, 150.0),
                                                         );
                                                     },
                                                 );

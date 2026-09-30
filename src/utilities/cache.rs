@@ -66,13 +66,21 @@ impl PersistentMediaCache {
         }
 
         // 2. Fallback check for raw files existing on the operating system storage drive
-        let ext = match asset_type {
-            AssetType::Image => Some("webp"),
-            AssetType::Audio => None,
-        };
-        let potential_path = Self::get_asset_path(id, ext);
-        if std::fs::metadata(&potential_path).is_ok() {
-            return Some(potential_path);
+        match asset_type {
+            AssetType::Image => {
+                for ext in &["webp", "jpeg", "jpg", "png", "gif", "bin"] {
+                    let potential_path = Self::get_asset_path(id, Some(ext));
+                    if std::fs::metadata(&potential_path).is_ok() {
+                        return Some(potential_path);
+                    }
+                }
+            }
+            AssetType::Audio => {
+                let potential_path = Self::get_asset_path(id, None);
+                if std::fs::metadata(&potential_path).is_ok() {
+                    return Some(potential_path);
+                }
+            }
         }
 
         None

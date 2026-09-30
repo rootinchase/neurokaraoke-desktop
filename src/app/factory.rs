@@ -1,13 +1,12 @@
-// src/app/factory.rs
-
 use crate::activity::{
-    SortOption, favorites::FavoritesActivity, home::HomeActivity, playlist::PlaylistActivity,
-    profile::ProfileActivity, profile::ProfileMessage, queue::QueueActivity, search,
-    setlist::SetlistActivity,
+    ActivityType, SortOption, favorites::FavoritesActivity, home::HomeActivity,
+    playlist::PlaylistActivity, profile::ProfileActivity, profile::ProfileMessage,
+    queue::QueueActivity, search, setlist::SetlistActivity, settings::SettingsActivity,
 };
 
 use crate::api::LazySongDatabase;
 use crate::app::state::App;
+use crate::app::system_tray::TrayIconMenu;
 use crate::audio::Player;
 use crate::config::Config;
 use crate::debug_log;
@@ -17,6 +16,7 @@ use crate::utilities::{
     discord,
     discord::DiscordPresencePayload,
     integration,
+    persistence::handle_signals,
 };
 use dashmap::DashMap;
 use eframe::egui;
@@ -27,7 +27,6 @@ use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc::unbounded_channel;
 use uuid::Uuid;
-use crate::app::system_tray::TrayIconMenu;
 
 macro_rules! build_font_defs {
     ( $( $name:literal => $path:literal ),* $(,)? ) => {{
@@ -92,9 +91,42 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
         let ctx_clone = ctx.clone();
         let songs_clone = songs.clone();
         rt.spawn(async move {
+            let profile_cache_path = cache::cache_dir().join("profile.ron");
+            let limits_cache_path = cache::cache_dir().join("limits.ron");
+
+            // 1. Try loading cached profile and limits immediately as offline fallback
+            if let Ok(data) = tokio::fs::read(&profile_cache_path).await {
+                if let Ok(profile_response) =
+                    ron::de::from_bytes::<crate::api::ProfileResponse>(&data)
+                {
+                    let _ = startup_tx
+                        .send(ProfileMessage::ProfileHeaderLoaded(
+                            profile_response.profile,
+                        ))
+                        .await;
+                    let _ = startup_tx
+                        .send(ProfileMessage::BadgesLoaded(profile_response.badges))
+                        .await;
+                }
+            }
+            if let Ok(data) = tokio::fs::read(&limits_cache_path).await {
+                if let Ok(limits) = ron::de::from_bytes::<crate::api::UserLimits>(&data) {
+                    let _ = startup_tx
+                        .send(ProfileMessage::UserLimitsLoaded(limits))
+                        .await;
+                }
+            }
+
+            // 2. Try fetching fresh profile and limits from network
             match songs_clone.get_profile(&stored_token).await {
                 Ok(profile_response) => {
                     debug_log!("🟢 Startup profile synchronization complete!");
+                    let _ = tokio::fs::write(
+                        &profile_cache_path,
+                        ron::ser::to_string_pretty(&profile_response, Default::default()).unwrap(),
+                    )
+                    .await;
+
                     let _ = startup_tx
                         .send(ProfileMessage::ProfileHeaderLoaded(
                             profile_response.profile,
@@ -107,6 +139,11 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
 
                     match songs_clone.get_user_limits().await {
                         Ok(limits) => {
+                            let _ = tokio::fs::write(
+                                &limits_cache_path,
+                                ron::ser::to_string_pretty(&limits, Default::default()).unwrap(),
+                            )
+                            .await;
                             let _ = startup_tx
                                 .send(ProfileMessage::UserLimitsLoaded(limits))
                                 .await;
@@ -130,7 +167,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
     let signal_player = player.clone();
     let signal_config = config.clone();
     rt.spawn(async move {
-        crate::utilities::persistence::handle_signals(signal_player, signal_config).await;
+        handle_signals(signal_player, signal_config).await;
     });
 
     let s = songs.clone();
@@ -186,7 +223,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
         shared_config.clone(),
         discord_tx,
     );
-    
+
     let tray_icon = TrayIconMenu::new(ctx);
 
     let app = App {
@@ -199,7 +236,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
 
         theme: ThemeManager::new(config.theme.as_theme()),
 
-        activity: crate::activity::ActivityType::Home,
+        activity: ActivityType::Home,
         home_activity: {
             let ha = HomeActivity::new(
                 ctx.clone(),
@@ -253,7 +290,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
             client.clone(),
         ),
         profile_activity,
-        settings_activity: crate::activity::settings::SettingsActivity::new(cache.clone()),
+        settings_activity: SettingsActivity::new(cache.clone()),
 
         current_playlist_sort: SortOption::Name,
         current_playlist_sort_desc: false,

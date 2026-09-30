@@ -1,10 +1,10 @@
-use eframe::egui;
-use eframe::egui::Ui;
+use eframe::egui::{TextEdit, Ui};
 use egui_extras::{Column, TableBuilder};
 use uuid::Uuid;
 
-use crate::api::LoadingState;
+use crate::api::{LazySongDatabase, LoadingState};
 use crate::audio::types::Player;
+use crate::utilities::util::split_by_space_respecting_quotes;
 
 pub struct SearchActivity {
     search: String,
@@ -43,11 +43,11 @@ impl SearchActivity {
     pub fn render(
         &mut self,
         ui: &mut Ui,
-        songs: &crate::api::LazySongDatabase,
+        songs: &LazySongDatabase,
         player: &mut Player,
         current_song_uuid: &Option<Uuid>,
     ) {
-        ui.add(egui::TextEdit::singleline(&mut self.search));
+        ui.add(TextEdit::singleline(&mut self.search));
 
         ui.add_space(10.0);
 
@@ -301,7 +301,7 @@ pub(crate) fn parse_query(search: &str, is_playlist: bool) -> SearchCriteria {
     let mut creator = None;
     let mut title_parts = Vec::new();
 
-    let tokens = crate::utilities::util::split_by_space_respecting_quotes(search);
+    let tokens = split_by_space_respecting_quotes(search);
 
     for token in tokens {
         if !is_playlist {

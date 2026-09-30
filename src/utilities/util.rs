@@ -6,10 +6,10 @@ use ron::ser::to_string_pretty;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{DeserializeAs, SerializeAs};
 use std::sync::Arc;
-use tokio::task::block_in_place;
-use tokio::runtime::Handle;
 use tokio::fs::{read, write};
+use tokio::runtime::Handle;
 use tokio::sync::Mutex;
+use tokio::task::block_in_place;
 use uuid::Uuid;
 
 pub fn sort_items<T>(
@@ -134,38 +134,62 @@ impl<T: Serialize> SerializeAs<Arc<Mutex<T>>> for AsArcMutex<T> {
     }
 }
 
+pub async fn get_playlist_details_cached(
+    id: Uuid,
+    songs: &LazySongDatabase,
+) -> Result<PlaylistDetail, anyhow::Error> {
+    let cache_path = cache::cache_dir().join(format!("playlist_detail_{}.ron", id));
+
+    let mut cached_detail = None;
+    if let Ok(data) = read(&cache_path).await {
+        if let Ok(detail) = from_bytes::<PlaylistDetail>(&data) {
+            cached_detail = Some(detail);
+        }
+    }
+
+    match songs.get_playlist_details(id).await {
+        Ok(data) => {
+            let _ = write(
+                &cache_path,
+                to_string_pretty(&data, Default::default()).unwrap(),
+            )
+            .await;
+            Ok(data)
+        }
+        Err(err) => {
+            if let Some(detail) = cached_detail {
+                Ok(detail)
+            } else {
+                Err(err)
+            }
+        }
+    }
+}
+
 pub fn select_playlist_by_id(
     id: Uuid,
     selected: Arc<Mutex<Option<LoadingState<PlaylistDetail>>>>,
     songs: LazySongDatabase,
 ) {
     tokio::spawn(async move {
-        let cache_path =
-            cache::cache_dir().join(format!("playlist_detail_{}.ron", id));
-
-        // Optimistically load from cache if available and fresh (Tier 2 TTL)
-        if cache::is_cache_fresh(&cache_path, cache::playlist_cache_ttl()) {
-            if let Ok(data) = read(&cache_path).await {
-                if let Ok(detail) = from_bytes::<PlaylistDetail>(&data) {
-                    *selected.lock().await = Some(LoadingState::Loaded(detail));
-                }
+        let cache_path = cache::cache_dir().join(format!("playlist_detail_{}.ron", id));
+        let mut has_cached = false;
+        if let Ok(data) = read(&cache_path).await {
+            if let Ok(detail) = from_bytes::<PlaylistDetail>(&data) {
+                *selected.lock().await = Some(LoadingState::Loaded(detail));
+                has_cached = true;
             }
         }
 
-        // Fetch fresh playlist details from network
-        match songs.get_playlist_details(id).await {
+        match get_playlist_details_cached(id, &songs).await {
             Ok(data) => {
-                *selected.lock().await = Some(LoadingState::Loaded(data.clone()));
-                let _ = write(
-                    cache_path,
-                    to_string_pretty(&data, Default::default()).unwrap(),
-                )
-                .await;
+                *selected.lock().await = Some(LoadingState::Loaded(data));
             }
             Err(err) => {
                 let mut sel_lock = selected.lock().await;
-                if sel_lock.is_none()
-                    || matches!(*sel_lock.as_ref().unwrap(), LoadingState::Loading)
+                if !has_cached
+                    && (sel_lock.is_none()
+                        || matches!(*sel_lock.as_ref().unwrap(), LoadingState::Loading))
                 {
                     *sel_lock = Some(LoadingState::Failed(Arc::new(err)));
                 }

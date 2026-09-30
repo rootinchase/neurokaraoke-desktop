@@ -164,7 +164,9 @@ impl Player {
                 };
 
                 let next_uuid = pl[next_idx];
-                let next_url_dto = url_playlist.as_ref().and_then(|upl| upl.get(next_idx).cloned());
+                let next_url_dto = url_playlist
+                    .as_ref()
+                    .and_then(|upl| upl.get(next_idx).cloned());
 
                 let cache_worker = cache_for_prefetch.clone();
                 let client_worker = client_for_prefetch.clone();

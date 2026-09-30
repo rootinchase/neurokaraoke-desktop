@@ -3,7 +3,7 @@ use crate::activity::{render_mosaic, render_playlist_art, render_playlist_box};
 use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongDTO};
 use crate::debug_log;
 use crate::theme::ThemeManager;
-use crate::utilities::cache::PersistentMediaCache;
+use crate::utilities::cache::{PersistentMediaCache, cache_dir};
 use dashmap::DashMap;
 use eframe::egui::{Context, ScrollArea, Ui, Vec2};
 use reqwest::Client;
@@ -106,22 +106,87 @@ impl FavoritesActivity {
         *s.blocking_lock() = LoadingState::Loading;
 
         tokio::spawn(async move {
-            // Fetch playlists
-            match db.fetch_favorite_playlists().await {
-                Ok(playlists) => {
+            let playlists_cache_path = cache_dir().join("favorites_playlists.ron");
+            let songs_cache_path = cache_dir().join("favorites_songs.ron");
+
+            let mut has_cached_playlists = false;
+            if let Ok(data) = tokio::fs::read(&playlists_cache_path).await {
+                if let Ok(playlists) = ron::de::from_bytes::<Vec<Playlist>>(&data) {
                     for playlist in &playlists {
                         if !details.contains_key(&playlist.id) {
                             details.insert(playlist.id, LoadingState::Loading);
                             let p_id = playlist.id;
+                            let p_name = playlist.name.clone();
                             let p_songs = db.clone();
                             let p_details = details.clone();
                             rt.spawn(async move {
-                                match p_songs.get_playlist_details(p_id).await {
+                                match crate::utilities::util::get_playlist_details_cached(
+                                    p_id, &p_songs,
+                                )
+                                .await
+                                {
                                     Ok(detail) => {
                                         p_details.insert(p_id, LoadingState::Loaded(detail));
                                     }
-                                    Err(err) => {
-                                        p_details.insert(p_id, LoadingState::Failed(Arc::new(err)));
+                                    Err(_) => {
+                                        p_details.insert(
+                                            p_id,
+                                            LoadingState::Loaded(PlaylistDetail {
+                                                name: p_name,
+                                                songs: vec![],
+                                            }),
+                                        );
+                                    }
+                                }
+                            });
+                        }
+                    }
+                    *p.lock().await = LoadingState::Loaded(playlists);
+                    has_cached_playlists = true;
+                }
+            }
+
+            let mut has_cached_songs = false;
+            if let Ok(data) = tokio::fs::read(&songs_cache_path).await {
+                if let Ok(song_list) = ron::de::from_bytes::<Vec<SongDTO>>(&data) {
+                    *s.lock().await = LoadingState::Loaded(song_list);
+                    has_cached_songs = true;
+                }
+            }
+
+            // Fetch playlists
+            match db.fetch_favorite_playlists().await {
+                Ok(playlists) => {
+                    let _ = tokio::fs::write(
+                        &playlists_cache_path,
+                        ron::ser::to_string_pretty(&playlists, Default::default()).unwrap(),
+                    )
+                    .await;
+
+                    for playlist in &playlists {
+                        if !details.contains_key(&playlist.id) {
+                            details.insert(playlist.id, LoadingState::Loading);
+                            let p_id = playlist.id;
+                            let p_name = playlist.name.clone();
+                            let p_songs = db.clone();
+                            let p_details = details.clone();
+                            rt.spawn(async move {
+                                match crate::utilities::util::get_playlist_details_cached(
+                                    p_id, &p_songs,
+                                )
+                                .await
+                                {
+                                    Ok(detail) => {
+                                        p_details.insert(p_id, LoadingState::Loaded(detail));
+                                    }
+                                    Err(_) => {
+                                        p_details.insert(
+                                            p_id,
+                                            LoadingState::Loaded(PlaylistDetail {
+                                                name: p_name,
+                                                songs: vec![],
+                                            }),
+                                        );
                                     }
                                 }
                             });
@@ -130,17 +195,26 @@ impl FavoritesActivity {
                     *p.lock().await = LoadingState::Loaded(playlists);
                 }
                 Err(err) => {
-                    *p.lock().await = LoadingState::Failed(Arc::new(err));
+                    if !has_cached_playlists {
+                        *p.lock().await = LoadingState::Failed(Arc::new(err));
+                    }
                 }
             }
 
             // Fetch songs
             match db.get_favorite_songs().await {
                 Ok(song_list) => {
+                    let _ = tokio::fs::write(
+                        &songs_cache_path,
+                        ron::ser::to_string_pretty(&song_list, Default::default()).unwrap(),
+                    )
+                    .await;
                     *s.lock().await = LoadingState::Loaded(song_list);
                 }
                 Err(err) => {
-                    *s.lock().await = LoadingState::Failed(Arc::new(err));
+                    if !has_cached_songs {
+                        *s.lock().await = LoadingState::Failed(Arc::new(err));
+                    }
                 }
             }
 
@@ -235,18 +309,28 @@ impl FavoritesActivity {
                                 self.playlist_details
                                     .insert(playlist.id, LoadingState::Loading);
                                 let p_id = playlist.id;
+                                let p_name = playlist.name.clone();
                                 let p_songs = self.db.clone();
                                 let p_details = self.playlist_details.clone();
                                 let rt = self.rt.clone();
                                 let ctx = self.ctx.clone();
                                 rt.spawn(async move {
-                                    match p_songs.get_playlist_details(p_id).await {
+                                    match crate::utilities::util::get_playlist_details_cached(
+                                        p_id, &p_songs,
+                                    )
+                                    .await
+                                    {
                                         Ok(detail) => {
                                             p_details.insert(p_id, LoadingState::Loaded(detail));
                                         }
-                                        Err(err) => {
-                                            p_details
-                                                .insert(p_id, LoadingState::Failed(Arc::new(err)));
+                                        Err(_) => {
+                                            p_details.insert(
+                                                p_id,
+                                                LoadingState::Loaded(PlaylistDetail {
+                                                    name: p_name,
+                                                    songs: vec![],
+                                                }),
+                                            );
                                         }
                                     }
                                     ctx.request_repaint();

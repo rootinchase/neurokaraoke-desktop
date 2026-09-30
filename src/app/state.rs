@@ -1,3 +1,4 @@
+use crate::app::system_tray::TrayIconMenu;
 use dashmap::DashMap;
 use eframe::egui;
 use reqwest::Client;
@@ -5,12 +6,11 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
-use crate::app::system_tray::TrayIconMenu;
 
 use crate::activity::{
     ActivityType, SortOption, favorites::FavoritesActivity, home::HomeActivity,
     playlist::PlaylistActivity, profile::ProfileActivity, queue::QueueActivity, search,
-    settings::SettingsActivity, setlist::SetlistActivity,
+    setlist::SetlistActivity, settings::SettingsActivity,
 };
 use crate::api::{LazySongDatabase, LoadingState};
 use crate::audio::{LoopMode, PlaybackState, Player};

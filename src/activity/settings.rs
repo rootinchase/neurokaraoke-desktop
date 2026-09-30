@@ -2,7 +2,9 @@ use crate::config::Config;
 use crate::debug_log;
 use crate::theme::ThemeManager;
 use crate::utilities::cache::PersistentMediaCache;
-use eframe::egui::{self, Color32, Frame, ProgressBar, RichText, ScrollArea, Ui};
+use eframe::egui::{self, Color32, DragValue, Frame, ProgressBar, RichText, ScrollArea, Ui};
+use std::fs::read_dir;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 
@@ -103,7 +105,7 @@ impl SettingsActivity {
                         ui.label("Cache Size Limit (MB):");
                         let mut limit = cc.cache_size_limit_mb;
                         if ui
-                            .add(egui::DragValue::new(&mut limit).speed(10.0).range(50..=50000))
+                            .add(DragValue::new(&mut limit).speed(10.0).range(50..=50000))
                             .changed()
                         {
                             cc.cache_size_limit_mb = limit;
@@ -116,11 +118,7 @@ impl SettingsActivity {
                         ui.label("Cache Expiration (Seconds):");
                         let mut exp = cc.cache_expiration_secs;
                         if ui
-                            .add(
-                                egui::DragValue::new(&mut exp)
-                                    .speed(3600.0)
-                                    .range(300..=2592000),
-                            )
+                            .add(DragValue::new(&mut exp).speed(3600.0).range(300..=2592000))
                             .changed()
                         {
                             cc.cache_expiration_secs = exp;
@@ -133,11 +131,7 @@ impl SettingsActivity {
                         ui.label("Cache Sweep Interval (Seconds):");
                         let mut sweep = cc.cache_sweep_interval_secs;
                         if ui
-                            .add(
-                                egui::DragValue::new(&mut sweep)
-                                    .speed(10.0)
-                                    .range(10..=3600),
-                            )
+                            .add(DragValue::new(&mut sweep).speed(10.0).range(10..=3600))
                             .changed()
                         {
                             cc.cache_sweep_interval_secs = sweep;
@@ -150,11 +144,7 @@ impl SettingsActivity {
                         ui.label("Song DB Update Interval (Seconds):");
                         let mut db_int = cc.song_database_update_interval_secs;
                         if ui
-                            .add(
-                                egui::DragValue::new(&mut db_int)
-                                    .speed(60.0)
-                                    .range(60..=86400),
-                            )
+                            .add(DragValue::new(&mut db_int).speed(60.0).range(60..=86400))
                             .changed()
                         {
                             cc.song_database_update_interval_secs = db_int;
@@ -168,7 +158,7 @@ impl SettingsActivity {
                         let mut pl_ttl = cc.playlist_cache_ttl_secs;
                         if ui
                             .add(
-                                egui::DragValue::new(&mut pl_ttl)
+                                DragValue::new(&mut pl_ttl)
                                     .speed(3600.0)
                                     .range(300..=604800),
                             )
@@ -213,7 +203,10 @@ impl SettingsActivity {
                         ui.add_space(4.0);
                         ui.label(format!("Our App Cache Usage: {}", format_bytes(our_usage)));
                         ui.add_space(4.0);
-                        ui.label(format!("Other Programs Usage: {}", format_bytes(other_usage)));
+                        ui.label(format!(
+                            "Other Programs Usage: {}",
+                            format_bytes(other_usage)
+                        ));
 
                         ui.add_space(12.0);
 
@@ -225,14 +218,12 @@ impl SettingsActivity {
 
                             ui.label("Storage Breakdown:");
                             ui.add_space(4.0);
-                            ui.add(
-                                ProgressBar::new(used_ratio).text(format!(
-                                    "Used: {:.1}% (Ours: {}, Other: {})",
-                                    used_ratio * 100.0,
-                                    format_bytes(our_usage),
-                                    format_bytes(other_usage)
-                                )),
-                            );
+                            ui.add(ProgressBar::new(used_ratio).text(format!(
+                                "Used: {:.1}% (Ours: {}, Other: {})",
+                                used_ratio * 100.0,
+                                format_bytes(our_usage),
+                                format_bytes(other_usage)
+                            )));
                         }
                     } else {
                         ui.label("Storage info unavailable.");
@@ -275,9 +266,9 @@ impl SettingsActivity {
     }
 }
 
-fn get_dir_size(path: &std::path::Path) -> u64 {
+fn get_dir_size(path: &Path) -> u64 {
     let mut total_size = 0;
-    if let Ok(entries) = std::fs::read_dir(path) {
+    if let Ok(entries) = read_dir(path) {
         for entry in entries.flatten() {
             if let Ok(metadata) = entry.metadata() {
                 if metadata.is_dir() {

@@ -524,7 +524,8 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                                 let mins = remaining.as_secs() / 60;
                                 let secs = remaining.as_secs() % 60;
                                 let time_str = format!("{:02}:{:02}", mins, secs);
-                                timer_btn_resp = timer_btn_resp.on_hover_text(format!("Sleep Timer: {} remaining", time_str));
+                                timer_btn_resp = timer_btn_resp
+                                    .on_hover_text(format!("Sleep Timer: {} remaining", time_str));
                                 ui.ctx().request_repaint();
                             } else {
                                 timer_btn_resp = timer_btn_resp.on_hover_text("Sleep Timer");
