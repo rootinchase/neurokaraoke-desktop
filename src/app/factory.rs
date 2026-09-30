@@ -253,6 +253,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
             client.clone(),
         ),
         profile_activity,
+        settings_activity: crate::activity::settings::SettingsActivity::new(cache.clone()),
 
         current_playlist_sort: SortOption::Name,
         current_playlist_sort_desc: false,

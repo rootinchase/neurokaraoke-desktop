@@ -6,6 +6,7 @@ pub mod queue;
 pub mod search;
 pub mod setlist;
 pub mod sidebar;
+pub mod settings;
 
 use crate::api::{Artwork, LoadingState, Playlist, PlaylistDetail, SongDTO};
 use crate::theme::ThemeManager;
@@ -113,6 +114,7 @@ pub enum ActivityType {
     MyPlaylists,
     Setlists,
     Favorites,
+    Settings,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -133,6 +135,7 @@ impl ActivityType {
             Self::MyPlaylists => "My Playlists",
             Self::Setlists => "Official Setlists",
             Self::Favorites => "Favorites",
+            Self::Settings => "Settings",
         }
     }
 
@@ -145,6 +148,7 @@ impl ActivityType {
             Self::Setlists => Some(include_image!("../../assets/setlist.svg")),
             Self::Favorites => Some(include_image!("../../assets/favorite.svg")),
             Self::Profile => Some(include_image!("../../assets/icon.png")),
+            Self::Settings => Some(include_image!("../../assets/settings.svg")),
         }
     }
 }

@@ -487,6 +487,13 @@ impl App {
                 &auth_service,
                 &self.rt,
             );
+        } else if self.activity == ActivityType::Settings {
+            self.settings_activity.render(
+                ui,
+                &self.theme,
+                &mut self.config,
+                &self.rt,
+            );
         }
     }
 }

@@ -260,7 +260,7 @@ pub fn render_sidebar(
     profile_activity: &ProfileActivity,
     config_theme: &mut SelectableTheme,
 ) {
-    let sidebar_width = if config.compact_sidebar { 72.0 } else { 320.0 };
+    let sidebar_width = if config.compact_sidebar { 72.0 } else { 260.0 };
     Panel::left("sidebar")
         .resizable(false)
         .exact_size(sidebar_width)
@@ -405,54 +405,76 @@ pub fn render_sidebar(
                 "Profile: Guest Account".to_string()
             };
 
-            let resp = ui
-                .scope(|ui| {
-                    if config.compact_sidebar {
-                        ui.horizontal(|ui| {
-                            let available = ui.available_width();
-                            let size = 32.0;
-                            let padding = (available - size) / 2.0;
-                            if padding > 0.0 {
-                                ui.add_space(padding);
-                            }
-                            render_avatar(ui, profile_activity, theme);
-                        });
-                    } else {
-                        ui.horizontal(|ui| {
-                            ui.add_space(4.0);
-                            render_avatar(ui, profile_activity, theme);
-                            ui.add_space(4.0);
-                            if let Some(auth) = &config.auth {
-                                let username_str = &auth.user.username;
-                                ui.add(
-                                    Label::new(RichText::new(username_str.to_string()).size(16.0))
+            ui.horizontal(|ui| {
+                let profile_resp = ui
+                    .scope(|ui| {
+                        if config.compact_sidebar {
+                            ui.horizontal(|ui| {
+                                let available = ui.available_width();
+                                let size = 32.0;
+                                let padding = (available - size) / 2.0;
+                                if padding > 0.0 {
+                                    ui.add_space(padding);
+                                }
+                                render_avatar(ui, profile_activity, theme);
+                            });
+                        } else {
+                            ui.horizontal(|ui| {
+                                ui.add_space(4.0);
+                                render_avatar(ui, profile_activity, theme);
+                                ui.add_space(4.0);
+                                if let Some(auth) = &config.auth {
+                                    let username_str = &auth.user.username;
+                                    ui.add(
+                                        Label::new(RichText::new(username_str.to_string()).size(16.0))
+                                            .selectable(false),
+                                    );
+                                } else {
+                                    ui.add(
+                                        Label::new(
+                                            RichText::new("Guest Account")
+                                                .italics()
+                                                .color(theme.text_muted)
+                                                .size(14.0),
+                                        )
                                         .selectable(false),
-                                );
-                            } else {
-                                ui.add(
-                                    Label::new(
-                                        RichText::new("Guest Account")
-                                            .italics()
-                                            .color(theme.text_muted)
-                                            .size(14.0),
-                                    )
-                                    .selectable(false),
-                                );
-                            }
-                        });
-                    }
-                })
-                .response
-                .interact(Sense::click())
-                .on_hover_text(profile_tooltip);
+                                    );
+                                }
+                            });
+                        }
+                    })
+                    .response
+                    .interact(Sense::click())
+                    .on_hover_text(profile_tooltip);
 
-            if resp.hovered() {
-                ui.set_cursor_icon(CursorIcon::PointingHand);
-            }
+                if profile_resp.hovered() {
+                    ui.set_cursor_icon(CursorIcon::PointingHand);
+                }
 
-            if resp.clicked() {
-                *current_activity = ActivityType::Profile;
-            }
+                if profile_resp.clicked() {
+                    *current_activity = ActivityType::Profile;
+                }
+
+                if !config.compact_sidebar {
+                    // Settings icon on the right side of the profile name
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        ui.add_space(4.0);
+                        let mut settings_img = Image::new(ActivityType::Settings.icon().unwrap())
+                            .fit_to_exact_size(Vec2::new(20.0, 20.0));
+                        if *current_activity == ActivityType::Settings {
+                            settings_img = settings_img.tint(theme.primary);
+                        }
+                        let settings_resp = ui.add(settings_img).interact(Sense::click()).on_hover_text("Settings");
+                        if settings_resp.hovered() {
+                            ui.set_cursor_icon(CursorIcon::PointingHand);
+                        }
+                        if settings_resp.clicked() {
+                            *current_activity = ActivityType::Settings;
+                            *_show_queue = false;
+                        }
+                    });
+                }
+            });
 
             ui.add_space(10.0);
 

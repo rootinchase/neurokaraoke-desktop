@@ -10,7 +10,7 @@ use crate::app::system_tray::TrayIconMenu;
 use crate::activity::{
     ActivityType, SortOption, favorites::FavoritesActivity, home::HomeActivity,
     playlist::PlaylistActivity, profile::ProfileActivity, queue::QueueActivity, search,
-    setlist::SetlistActivity,
+    settings::SettingsActivity, setlist::SetlistActivity,
 };
 use crate::api::{LazySongDatabase, LoadingState};
 use crate::audio::{LoopMode, PlaybackState, Player};
@@ -45,6 +45,7 @@ pub struct App {
     pub favorites_activity: FavoritesActivity,
     pub queue_activity: QueueActivity,
     pub profile_activity: ProfileActivity,
+    pub settings_activity: SettingsActivity,
 
     pub current_playlist_sort: SortOption,
     pub current_playlist_sort_desc: bool,
