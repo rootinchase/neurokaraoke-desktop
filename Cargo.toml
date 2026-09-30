@@ -50,5 +50,5 @@ base64 = "0.23.1"
 chrono = "0.4.45"
 presenceforge = { version = "0.3.0", features = ["tokio-runtime"] }
 futures-util = "0.3.34"
-tray-icon = { version = "0.25.1", features = ["ksni"] }
-fs2 = "0.4"
+tray-icon = { version = "0.26.0", features = ["ksni"] }
+fs2 = "0.4.3"
