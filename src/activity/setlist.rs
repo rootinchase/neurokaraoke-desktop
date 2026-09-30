@@ -4,6 +4,7 @@ use crate::debug_log;
 use crate::theme::ThemeManager;
 use crate::utilities::cache::{PersistentMediaCache, cache_dir};
 use crate::utilities::util::get_playlist_details_cached;
+use chrono::{Datelike, Local, Utc};
 use dashmap::DashMap;
 use eframe::egui::{Context, ScrollArea, Ui};
 use ron::de::from_bytes;
@@ -42,21 +43,22 @@ impl SetlistActivity {
         client: Client,
     ) -> Self {
         let setlists = Arc::new(Mutex::new(LoadingState::Loading));
-        let current_year = Arc::new(Mutex::new(0));
+        let year = Utc::now().year() as u32;
+        let current_year = Arc::new(Mutex::new(year));
 
         let activity = Self {
             setlists: setlists.clone(),
             setlist_details: Arc::new(DashMap::new()),
             selected_setlist: Arc::new(Mutex::new(None)),
             songs: songs.clone(),
-            current_year: current_year.clone(),
+            current_year,
             cache,
             ctx,
             rt,
             client,
         };
 
-        activity.load_setlists(0);
+        activity.load_setlists(year);
 
         activity
     }
@@ -208,7 +210,7 @@ impl SetlistActivity {
         let play_song = RefCell::new(play_song);
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
-                ui.label("Official Setlists:");
+                ui.label("Selected year:");
                 let current_year = *self.current_year.blocking_lock();
                 for &year in &[2026, 2025, 2024, 2023] {
                     if ui

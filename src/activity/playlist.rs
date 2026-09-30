@@ -247,20 +247,9 @@ impl PlaylistActivity {
         ui.vertical(|ui| {
             if let Some(search) = playlist_search {
                 ui.horizontal(|ui| {
-                    ui.label(if is_personal {
-                        "My Playlists:"
-                    } else {
-                        "Public Playlists:"
-                    });
                     ui.add(TextEdit::singleline(*search));
                 });
-            } else {
-                ui.label(if is_personal {
-                    "My Playlists:"
-                } else {
-                    "Public Playlists:"
-                });
-            }
+            } 
 
             // Single lock access per frame
             let playlists_lock = self.playlists.try_lock();
