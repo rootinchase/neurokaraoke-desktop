@@ -248,7 +248,62 @@ impl PlaylistActivity {
             if let Some(search) = playlist_search {
                 ui.horizontal(|ui| {
                     ui.add(TextEdit::singleline(*search));
+                    ui.add_space(15.0);
+                    ui.label("Sort:");
+
+                    for (opt, label) in [
+                        (SortOption::Name, "Name"),
+                        (SortOption::Songs, "Songs"),
+                        (SortOption::Plays, "Plays"),
+                        (SortOption::Date, "Date"),
+                    ] {
+                        let text = if *current_sort == opt {
+                            if *current_sort_desc {
+                                format!("{} ↓", label)
+                            } else {
+                                format!("{} ↑", label)
+                            }
+                        } else {
+                            label.to_string()
+                        };
+
+                        if ui.selectable_label(*current_sort == opt, text).clicked() {
+                            if *current_sort == opt {
+                                *current_sort_desc = !*current_sort_desc;
+                            } else {
+                                *current_sort = opt;
+                                *current_sort_desc = false;
+                            }
+
+                            // Apply sort globally to entire list (all_playlists)
+                            if let Ok(mut all_opt) = self.all_playlists.try_lock() {
+                                if let Some(ref mut all) = *all_opt {
+                                    sort_items(
+                                        all,
+                                        current_sort,
+                                        current_sort_desc,
+                                        |p| p.name.to_string(),
+                                        |p| p.song_count.try_into().unwrap(),
+                                        |p| p.play_count.try_into().unwrap(),
+                                        |p| {
+                                            p.updated_at
+                                                .as_deref()
+                                                .or(p.created_at.as_deref())
+                                                .map(|s| s.to_string())
+                                        },
+                                    );
+                                    if let Ok(mut playlists_guard) = self.playlists.try_lock() {
+                                        if let LoadingState::Loaded(list) = &mut *playlists_guard {
+                                            let current_len = list.len().max(20);
+                                            *list = all.iter().take(current_len).cloned().collect();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 });
+                ui.add_space(8.0);
             } 
 
             // Single lock access per frame

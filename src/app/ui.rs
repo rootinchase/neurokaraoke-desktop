@@ -439,7 +439,7 @@ impl App {
                 .map(|a| a.user.username.to_string());
             self.my_playlist_activity.render(
                 ui,
-                &mut None,
+                &mut Some(&mut self.playlist_search),
                 &mut self.current_playlist_sort,
                 &mut self.current_playlist_sort_desc,
                 move |detail| {
