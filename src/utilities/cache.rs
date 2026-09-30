@@ -26,9 +26,12 @@ static CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 pub fn cache_dir() -> &'static PathBuf {
     CACHE_DIR.get_or_init(|| {
-        dirs::cache_dir()
+        let dir = dirs::cache_dir()
             .expect("OS cache directory must exist")
-            .join("neurokaraoke-desktop")
+            .join("neurokaraoke-desktop");
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = std::fs::create_dir_all(dir.join("assets"));
+        dir
     })
 }
 
@@ -49,9 +52,7 @@ impl PersistentMediaCache {
 
     /// Helper to get the canonical base assets directory path
     fn get_assets_dir() -> PathBuf {
-        dirs::cache_dir()
-            .expect("OS cache directory must exist")
-            .join("neurokaraoke-desktop/assets")
+        cache_dir().join("assets")
     }
 
     pub fn get_cached_path(&self, id: Uuid, asset_type: AssetType) -> Option<PathBuf> {
@@ -128,7 +129,7 @@ impl PersistentMediaCache {
             if let Some(status) = self.in_flight.get(&key) {
                 match status.value() {
                     DownloadStatus::Complete(path) => {
-                        //debug_log!("✅ [Cache] Found in-flight Complete for: {}", cloudflare_id);
+                        debug_log!("✅ [Cache] Found in-flight Complete for: {}", cloudflare_id);
                         return Ok(path.clone());
                     }
                     DownloadStatus::InFlight(notify) => {
@@ -172,7 +173,7 @@ impl PersistentMediaCache {
 
             return match result {
                 Ok(saved_path) => {
-                    //debug_log!("🎉 [Cache] Successfully downloaded: {}", cloudflare_id);
+                    debug_log!("🎉 [Cache] Successfully downloaded: {}", cloudflare_id);
                     self.in_flight
                         .insert(key, DownloadStatus::Complete(saved_path.clone()));
                     notify.notify_waiters();
@@ -191,6 +192,11 @@ impl PersistentMediaCache {
     async fn execute_download(&self, url: String, id: Uuid) -> Result<PathBuf> {
         let _permit = self.network_gate.acquire().await?;
 
+        let dir_path = Self::get_assets_dir();
+        if let Err(e) = tokio::fs::create_dir_all(&dir_path).await {
+            return Err(anyhow::anyhow!("Failed to create assets directory: {}", e));
+        }
+
         debug_log!("🚀 [Cache] Fetching from network: {}", url);
         let response = self.client.get(&url).send().await?;
         let status = response.status();
@@ -205,7 +211,7 @@ impl PersistentMediaCache {
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
 
-        //debug_log!("📦 [Cache] Downloaded bytes, content-type: {:?}", content_type);
+        debug_log!("📦 [Cache] Downloaded bytes, content-type: {:?}", content_type);
 
         let body_bytes = response.bytes().await?;
 
@@ -326,6 +332,11 @@ impl PersistentMediaCache {
             // Limit concurrent network operations through your semaphore gate
             let download_result = async {
                 let _permit = self.network_gate.acquire().await?;
+
+                let dir_path = Self::get_assets_dir();
+                if let Err(e) = tokio::fs::create_dir_all(&dir_path).await {
+                    return Err(anyhow::anyhow!("Failed to create assets directory: {}", e));
+                }
 
                 let response = client.get(&url).send().await?;
                 let status = response.status();
