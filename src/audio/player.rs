@@ -133,6 +133,92 @@ impl Player {
             let mut shuffle = false;
             let mut loop_mode = LoopMode::None;
 
+            let cache_for_prefetch = cache.clone();
+            let client_for_prefetch = client.clone();
+            let database_for_prefetch = database.clone();
+            let player_for_prefetch = player.clone();
+            let rt_for_prefetch = rt.clone();
+
+            let prefetch_next = move |current_uuid: Uuid| {
+                let (playlist, url_playlist) = {
+                    let ps = player_for_prefetch.player_state.lock().unwrap();
+                    (ps.playlist.clone(), ps.url_playlist.clone())
+                };
+
+                let pl = match playlist {
+                    Some(pl) => pl,
+                    None => return,
+                };
+
+                let idx = match pl.iter().position(|&u| u == current_uuid) {
+                    Some(i) => i,
+                    None => return,
+                };
+
+                let next_idx = if idx + 1 < pl.len() {
+                    idx + 1
+                } else if loop_mode == LoopMode::All || loop_mode == LoopMode::One {
+                    0
+                } else {
+                    return;
+                };
+
+                let next_uuid = pl[next_idx];
+                let next_url_dto = url_playlist.as_ref().and_then(|upl| upl.get(next_idx).cloned());
+
+                let cache_worker = cache_for_prefetch.clone();
+                let client_worker = client_for_prefetch.clone();
+                let db_worker = database_for_prefetch.clone();
+
+                rt_for_prefetch.spawn(async move {
+                    debug_log!("🚀 [Prefetch] Preemptively fetching next song audio and cover art (UUID: {})", next_uuid);
+                    if let Some(dto) = next_url_dto {
+                        // Prefetch audio
+                        if let Some(audio_url) = dto.audio_url.as_ref().or(dto.absolute_path.as_ref()) {
+                            let url = if audio_url.starts_with("http://") || audio_url.starts_with("https://") {
+                                audio_url.to_string()
+                            } else {
+                                let clean_path = audio_url.trim_start_matches('/');
+                                format!("{}/{}", API_URLS.storage, clean_path)
+                            };
+                            let url = if url.contains(API_URLS.base) {
+                                url.replace(API_URLS.base, API_URLS.storage)
+                            } else {
+                                url
+                            }.replace(' ', "%20");
+
+                            let _ = cache_worker.get_or_download_audio(&client_worker, next_uuid, url).await;
+                        }
+
+                        // Prefetch cover art
+                        if let Some(cover) = &dto.cover_art {
+                            let cf = cover.cloudflare_id.as_deref().map(|s| s.as_ref());
+                            let img_url = crate::utilities::cache::get_thumbnail_url(cf, &cover.absolute_path, "crop,gravity=auto");
+                            if let Ok(art_uuid) = Uuid::parse_str(&cover.id) {
+                                if !img_url.is_empty() {
+                                    let _ = cache_worker.get_or_download_image(art_uuid, img_url).await;
+                                }
+                            }
+                        } else if let Some(audio_url) = dto.audio_url.as_ref().or(dto.absolute_path.as_ref()) {
+                            let img_url = audio_url.replace("/audio/", "/images/").replace(".mp3", ".webp").replace(".m4a", ".webp");
+                            if img_url.as_str() != audio_url.as_ref() {
+                                let _ = cache_worker.get_or_download_image(next_uuid, img_url).await;
+                            }
+                        }
+                    } else {
+                        // DB song fallback
+                        let path_opt = db_worker.get(&next_uuid, |s| s.opus.clone().or_else(|| s.absolute_path.clone()));
+                        if let LoadingState::Loaded(Some(path_str)) = path_opt {
+                            let url = format!("{}/{}", API_URLS.storage, path_str.as_ref()).replace(' ', "%20");
+                            let _ = cache_worker.get_or_download_audio(&client_worker, next_uuid, url).await;
+
+                            let img_url = format!("{}/{}", API_URLS.storage, path_str.as_ref().replace("audio/", "images/").replace(".mp3", ".webp").replace(".ogg", ".webp"));
+                            let _ = cache_worker.get_or_download_image(next_uuid, img_url).await;
+                        }
+                    }
+                });
+            };
+
             let p = player.clone();
             // 1. UPDATE: Change the closure signature to accept a mutable reference to loop_mode
             let reorder = |playlist: &mut Option<Arc<[Uuid]>>,
@@ -809,6 +895,8 @@ impl Player {
 
                                 mixer.play();
                                 debug_log!("🟢 [Audio API] Mixer play command issued.");
+
+                                prefetch_next(target_uuid);
 
                                 if let Some(cb) = cb {
                                     cb(&player);
