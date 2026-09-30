@@ -403,6 +403,24 @@ impl PersistentMediaCache {
     }
 }
 
+pub fn playlist_cache_ttl() -> std::time::Duration {
+    if let Ok(config) = crate::config::Config::read() {
+        if let Ok(cache_config) = config.cache.try_lock() {
+            return std::time::Duration::from_secs(cache_config.playlist_cache_ttl_secs);
+        }
+    }
+    std::time::Duration::from_secs(12 * 3600) // Default 12 hours
+}
+
+pub fn is_cache_fresh(path: &std::path::Path, max_age: std::time::Duration) -> bool {
+    if let Ok(metadata) = std::fs::metadata(path) {
+        if let Ok(modified) = metadata.modified() {
+            return modified.elapsed().unwrap_or_default() < max_age;
+        }
+    }
+    false
+}
+
 pub fn get_thumbnail_url(cloudflare_id: Option<&str>, absolute_path: &str, fit: &str) -> String {
     let clean_cf = cloudflare_id
         .filter(|s| !s.is_empty() && *s != "null")

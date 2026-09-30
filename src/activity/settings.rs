@@ -161,6 +161,23 @@ impl SettingsActivity {
                             cache_changed = true;
                         }
                     });
+                    ui.add_space(8.0);
+
+                    ui.horizontal(|ui| {
+                        ui.label("Playlist Cache TTL (Seconds):");
+                        let mut pl_ttl = cc.playlist_cache_ttl_secs;
+                        if ui
+                            .add(
+                                egui::DragValue::new(&mut pl_ttl)
+                                    .speed(3600.0)
+                                    .range(300..=604800),
+                            )
+                            .changed()
+                        {
+                            cc.playlist_cache_ttl_secs = pl_ttl;
+                            cache_changed = true;
+                        }
+                    });
 
                     drop(cc);
 

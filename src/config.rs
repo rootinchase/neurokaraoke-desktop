@@ -47,6 +47,9 @@ mod defaults {
     pub fn song_database_update_interval_secs() -> u64 {
         4 * 60 * 60
     }
+    pub fn playlist_cache_ttl_secs() -> u64 {
+        12 * 60 * 60
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,6 +62,8 @@ pub struct CacheConfig {
     pub cache_size_limit_mb: u64,
     #[serde(default = "defaults::song_database_update_interval_secs")]
     pub song_database_update_interval_secs: u64,
+    #[serde(default = "defaults::playlist_cache_ttl_secs")]
+    pub playlist_cache_ttl_secs: u64,
 }
 
 impl Default for CacheConfig {
@@ -68,6 +73,7 @@ impl Default for CacheConfig {
             cache_sweep_interval_secs: defaults::cache_sweep_interval_secs(),
             cache_size_limit_mb: defaults::cache_size_limit_mb(),
             song_database_update_interval_secs: defaults::song_database_update_interval_secs(),
+            playlist_cache_ttl_secs: defaults::playlist_cache_ttl_secs(),
         }
     }
 }

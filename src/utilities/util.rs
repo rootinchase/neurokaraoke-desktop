@@ -1,8 +1,14 @@
 use crate::activity::SortOption;
-use crate::api::LoadingState;
+use crate::api::{LazySongDatabase, LoadingState, PlaylistDetail};
+use crate::utilities::cache;
+use ron::de::from_bytes;
+use ron::ser::to_string_pretty;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{DeserializeAs, SerializeAs};
 use std::sync::Arc;
+use tokio::task::block_in_place;
+use tokio::runtime::Handle;
+use tokio::fs::{read, write};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -119,8 +125,8 @@ impl<T: Serialize> SerializeAs<Arc<Mutex<T>>> for AsArcMutex<T> {
     where
         S: Serializer,
     {
-        let guard = if tokio::runtime::Handle::try_current().is_ok() {
-            tokio::task::block_in_place(|| source.blocking_lock())
+        let guard = if Handle::try_current().is_ok() {
+            block_in_place(|| source.blocking_lock())
         } else {
             source.blocking_lock()
         };
@@ -130,17 +136,19 @@ impl<T: Serialize> SerializeAs<Arc<Mutex<T>>> for AsArcMutex<T> {
 
 pub fn select_playlist_by_id(
     id: Uuid,
-    selected: Arc<Mutex<Option<LoadingState<crate::api::PlaylistDetail>>>>,
-    songs: crate::api::LazySongDatabase,
+    selected: Arc<Mutex<Option<LoadingState<PlaylistDetail>>>>,
+    songs: LazySongDatabase,
 ) {
     tokio::spawn(async move {
         let cache_path =
-            crate::utilities::cache::cache_dir().join(format!("playlist_detail_{}.ron", id));
+            cache::cache_dir().join(format!("playlist_detail_{}.ron", id));
 
-        // Optimistically load from cache if available
-        if let Ok(data) = tokio::fs::read(&cache_path).await {
-            if let Ok(detail) = ron::de::from_bytes::<crate::api::PlaylistDetail>(&data) {
-                *selected.lock().await = Some(LoadingState::Loaded(detail));
+        // Optimistically load from cache if available and fresh (Tier 2 TTL)
+        if cache::is_cache_fresh(&cache_path, cache::playlist_cache_ttl()) {
+            if let Ok(data) = read(&cache_path).await {
+                if let Ok(detail) = from_bytes::<PlaylistDetail>(&data) {
+                    *selected.lock().await = Some(LoadingState::Loaded(detail));
+                }
             }
         }
 
@@ -148,9 +156,9 @@ pub fn select_playlist_by_id(
         match songs.get_playlist_details(id).await {
             Ok(data) => {
                 *selected.lock().await = Some(LoadingState::Loaded(data.clone()));
-                let _ = tokio::fs::write(
+                let _ = write(
                     cache_path,
-                    ron::ser::to_string_pretty(&data, Default::default()).unwrap(),
+                    to_string_pretty(&data, Default::default()).unwrap(),
                 )
                 .await;
             }

@@ -1,6 +1,6 @@
 use crate::api::{LazySongDatabase, LoadingState, SongDTO, TrendingTimes};
 use crate::theme::ThemeManager;
-use crate::utilities::cache::{PersistentMediaCache, cache_dir};
+use crate::utilities::cache::{PersistentMediaCache, cache_dir, playlist_cache_ttl, is_cache_fresh};
 use crate::utilities::persistence::{AppState, load_app_state};
 use eframe::egui::{
     Button, Frame, Grid, Image, RichText, ScrollArea, Sense, Ui, Vec2, include_image,
@@ -56,9 +56,11 @@ impl HomeActivity {
 
         tokio::spawn(async move {
             let cache_path = cache_dir().join("home_suggested.ron");
-            if let Ok(data) = tokio::fs::read(&cache_path).await {
-                if let Ok(cached) = ron::de::from_bytes::<Vec<SongDTO>>(&data) {
-                    *songs_state.lock().await = LoadingState::Loaded(cached);
+            if is_cache_fresh(&cache_path, playlist_cache_ttl()) {
+                if let Ok(data) = tokio::fs::read(&cache_path).await {
+                    if let Ok(cached) = ron::de::from_bytes::<Vec<SongDTO>>(&data) {
+                        *songs_state.lock().await = LoadingState::Loaded(cached);
+                    }
                 }
             }
 
@@ -89,9 +91,11 @@ impl HomeActivity {
 
         tokio::spawn(async move {
             let cache_path = cache_dir().join("home_trending.ron");
-            if let Ok(data) = tokio::fs::read(&cache_path).await {
-                if let Ok(cached) = ron::de::from_bytes::<Vec<SongDTO>>(&data) {
-                    *songs_state.lock().await = LoadingState::Loaded(cached);
+            if is_cache_fresh(&cache_path, playlist_cache_ttl()) {
+                if let Ok(data) = tokio::fs::read(&cache_path).await {
+                    if let Ok(cached) = ron::de::from_bytes::<Vec<SongDTO>>(&data) {
+                        *songs_state.lock().await = LoadingState::Loaded(cached);
+                    }
                 }
             }
 
@@ -123,10 +127,12 @@ impl HomeActivity {
 
         tokio::spawn(async move {
             let cache_path = cache_dir().join("home_recent_setlist.ron");
-            if let Ok(data) = tokio::fs::read(&cache_path).await {
-                if let Ok(cached) = ron::de::from_bytes::<CachedSetlist>(&data) {
-                    *setlist_name.lock().await = cached.name;
-                    *songs_state.lock().await = LoadingState::Loaded(cached.songs);
+            if is_cache_fresh(&cache_path, playlist_cache_ttl()) {
+                if let Ok(data) = tokio::fs::read(&cache_path).await {
+                    if let Ok(cached) = ron::de::from_bytes::<CachedSetlist>(&data) {
+                        *setlist_name.lock().await = cached.name;
+                        *songs_state.lock().await = LoadingState::Loaded(cached.songs);
+                    }
                 }
             }
 

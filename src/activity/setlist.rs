@@ -77,10 +77,12 @@ impl SetlistActivity {
         tokio::spawn(async move {
             let cache_path = Self::get_cache_path(year);
 
-            // Try loading from cache first (optimistic load)
-            if let Ok(data) = tokio::fs::read(&cache_path).await {
-                if let Ok(setlists) = ron::de::from_bytes::<Vec<Playlist>>(&data) {
-                    *s.lock().await = LoadingState::Loaded(setlists);
+            // Try loading from cache first if fresh (Tier 2 TTL)
+            if cache::is_cache_fresh(&cache_path, cache::playlist_cache_ttl()) {
+                if let Ok(data) = tokio::fs::read(&cache_path).await {
+                    if let Ok(setlists) = ron::de::from_bytes::<Vec<Playlist>>(&data) {
+                        *s.lock().await = LoadingState::Loaded(setlists);
+                    }
                 }
             }
 

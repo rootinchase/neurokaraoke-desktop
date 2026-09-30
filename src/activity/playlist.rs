@@ -1,6 +1,6 @@
 use crate::activity::{SortOption, render_playlist_art_advanced, render_playlist_box, search};
 use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongDTO};
-use crate::utilities::cache::{PersistentMediaCache, cache_dir};
+use crate::utilities::cache::{PersistentMediaCache, cache_dir, playlist_cache_ttl, is_cache_fresh };
 use crate::utilities::util::{select_playlist_by_id, sort_items};
 
 use crate::debug_log;
@@ -45,9 +45,13 @@ impl PlaylistActivity {
             "playlists.ron"
         };
         let cache_path = cache_dir().join(cache_file);
-        let cached_playlists: Option<Vec<Playlist>> = read(&cache_path)
-            .ok()
-            .and_then(|data| de::from_bytes(&data).ok());
+        let cached_playlists: Option<Vec<Playlist>> = if is_cache_fresh(&cache_path, playlist_cache_ttl()) {
+            read(&cache_path)
+                .ok()
+                .and_then(|data| de::from_bytes(&data).ok())
+        } else {
+            None
+        };
 
         let all_playlists = Arc::new(Mutex::new(cached_playlists.clone()));
 
