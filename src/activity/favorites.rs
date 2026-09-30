@@ -4,12 +4,16 @@ use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongD
 use crate::debug_log;
 use crate::theme::ThemeManager;
 use crate::utilities::cache::{PersistentMediaCache, cache_dir};
+use crate::utilities::util::get_playlist_details_cached;
 use dashmap::DashMap;
 use eframe::egui::{Context, ScrollArea, Ui, Vec2};
 use reqwest::Client;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use ron::de::from_bytes;
+use ron::ser::to_string_pretty;
+use tokio::fs::{read, write};
 use tokio::runtime::Runtime;
 use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
@@ -110,8 +114,8 @@ impl FavoritesActivity {
             let songs_cache_path = cache_dir().join("favorites_songs.ron");
 
             let mut has_cached_playlists = false;
-            if let Ok(data) = tokio::fs::read(&playlists_cache_path).await {
-                if let Ok(playlists) = ron::de::from_bytes::<Vec<Playlist>>(&data) {
+            if let Ok(data) = read(&playlists_cache_path).await {
+                if let Ok(playlists) = from_bytes::<Vec<Playlist>>(&data) {
                     for playlist in &playlists {
                         if !details.contains_key(&playlist.id) {
                             details.insert(playlist.id, LoadingState::Loading);
@@ -120,7 +124,7 @@ impl FavoritesActivity {
                             let p_songs = db.clone();
                             let p_details = details.clone();
                             rt.spawn(async move {
-                                match crate::utilities::util::get_playlist_details_cached(
+                                match get_playlist_details_cached(
                                     p_id, &p_songs,
                                 )
                                 .await
@@ -147,8 +151,8 @@ impl FavoritesActivity {
             }
 
             let mut has_cached_songs = false;
-            if let Ok(data) = tokio::fs::read(&songs_cache_path).await {
-                if let Ok(song_list) = ron::de::from_bytes::<Vec<SongDTO>>(&data) {
+            if let Ok(data) = read(&songs_cache_path).await {
+                if let Ok(song_list) = from_bytes::<Vec<SongDTO>>(&data) {
                     *s.lock().await = LoadingState::Loaded(song_list);
                     has_cached_songs = true;
                 }
@@ -157,9 +161,9 @@ impl FavoritesActivity {
             // Fetch playlists
             match db.fetch_favorite_playlists().await {
                 Ok(playlists) => {
-                    let _ = tokio::fs::write(
+                    let _ = write(
                         &playlists_cache_path,
-                        ron::ser::to_string_pretty(&playlists, Default::default()).unwrap(),
+                        to_string_pretty(&playlists, Default::default()).unwrap(),
                     )
                     .await;
 
@@ -171,7 +175,7 @@ impl FavoritesActivity {
                             let p_songs = db.clone();
                             let p_details = details.clone();
                             rt.spawn(async move {
-                                match crate::utilities::util::get_playlist_details_cached(
+                                match get_playlist_details_cached(
                                     p_id, &p_songs,
                                 )
                                 .await
@@ -204,9 +208,9 @@ impl FavoritesActivity {
             // Fetch songs
             match db.get_favorite_songs().await {
                 Ok(song_list) => {
-                    let _ = tokio::fs::write(
+                    let _ = write(
                         &songs_cache_path,
-                        ron::ser::to_string_pretty(&song_list, Default::default()).unwrap(),
+                        to_string_pretty(&song_list, Default::default()).unwrap(),
                     )
                     .await;
                     *s.lock().await = LoadingState::Loaded(song_list);
@@ -253,7 +257,6 @@ impl FavoritesActivity {
         let play_song = std::cell::RefCell::new(play_song);
 
         ui.vertical(|ui| {
-            ui.label("My Favorites:");
             ui.add_space(10.0);
 
             let favorites = self.playlists.blocking_lock();
@@ -315,7 +318,7 @@ impl FavoritesActivity {
                                 let rt = self.rt.clone();
                                 let ctx = self.ctx.clone();
                                 rt.spawn(async move {
-                                    match crate::utilities::util::get_playlist_details_cached(
+                                    match get_playlist_details_cached(
                                         p_id, &p_songs,
                                     )
                                     .await
