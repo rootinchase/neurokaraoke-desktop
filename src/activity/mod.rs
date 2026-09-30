@@ -361,11 +361,93 @@ pub fn render_playlist_table(
     });
 }
 
+fn collapse_word_repetitions(title: &str) -> String {
+    let words: Vec<&str> = title.split_whitespace().collect();
+    if words.len() < 4 {
+        return title.to_string();
+    }
+
+    for sub_len in 1..=(words.len() / 2) {
+        let mut i = 0;
+        let mut repeat_count = 0;
+        while i + sub_len <= words.len() {
+            let chunk = &words[i..i + sub_len];
+            let next_chunk = if i + 2 * sub_len <= words.len() {
+                Some(&words[i + sub_len..i + 2 * sub_len])
+            } else {
+                None
+            };
+
+            if let Some(nc) = next_chunk {
+                if chunk == nc {
+                    repeat_count += 1;
+                    i += sub_len;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        if repeat_count >= 1 {
+            let unique_words = &words[..sub_len];
+            let combined = unique_words.join(" ");
+            if combined.len() < title.len() {
+                return format!("{}...", combined);
+            }
+        }
+    }
+
+    title.to_string()
+}
+
+fn detect_and_collapse_repetition(title: &str) -> String {
+    let chars: Vec<char> = title.chars().collect();
+    let n = chars.len();
+    if n < 6 {
+        return title.to_string();
+    }
+
+    let mut pi = vec![0; n];
+    let mut j = 0;
+    for i in 1..n {
+        while j > 0 && chars[i] != chars[j] {
+            j = pi[j - 1];
+        }
+        if chars[i] == chars[j] {
+            j += 1;
+        }
+        pi[i] = j;
+    }
+
+    let len_pi = pi[n - 1];
+    if len_pi > 0 {
+        let k = n - len_pi;
+        if (n % k == 0 || n % k < k) && n / k >= 2 && k >= 3 {
+            let unit: String = chars[..k].iter().collect();
+            return format!("{}...", unit.trim());
+        }
+    }
+
+    title.to_string()
+}
+
 fn truncate_title(title: &str) -> String {
-    if title.chars().count() > 50 {
-        format!("{}...", title.chars().take(97).collect::<String>())
+    let cleaned = collapse_word_repetitions(title);
+    let cleaned = detect_and_collapse_repetition(&cleaned);
+
+    let is_cuneiform = cleaned.chars().any(|c| {
+        let code = c as u32;
+        (0x12000..=0x12543).contains(&code)
+    });
+
+    let max_len = if is_cuneiform { 10 } else { 50 };
+
+    if cleaned.chars().count() > max_len {
+        format!("{}...", cleaned.chars().take(max_len).collect::<String>())
     } else {
-        title.to_string()
+        cleaned
     }
 }
 
