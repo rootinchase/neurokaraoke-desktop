@@ -8,6 +8,7 @@ use crate::utilities::util::get_playlist_details_cached;
 use dashmap::DashMap;
 use eframe::egui::{Context, ScrollArea, Ui, Vec2};
 use reqwest::Client;
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -254,7 +255,7 @@ impl FavoritesActivity {
             self.fetch_favorites();
         }
 
-        let play_song = std::cell::RefCell::new(play_song);
+        let play_song = RefCell::new(play_song);
 
         ui.vertical(|ui| {
             ui.add_space(10.0);

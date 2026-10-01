@@ -4,7 +4,7 @@ use crate::debug_log;
 use crate::theme::ThemeManager;
 use crate::utilities::cache::{PersistentMediaCache, cache_dir};
 use crate::utilities::util::get_playlist_details_cached;
-use chrono::{Datelike, Local, Utc};
+use chrono::{Datelike, Utc};
 use dashmap::DashMap;
 use eframe::egui::{Context, ScrollArea, Ui};
 use ron::de::from_bytes;
@@ -18,12 +18,15 @@ use tokio::spawn;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct SetlistActivity {
     pub setlists: Arc<Mutex<LoadingState<Vec<Playlist>>>>,
     pub setlist_details: Arc<DashMap<Uuid, LoadingState<PlaylistDetail>>>,
     pub selected_setlist: Arc<Mutex<Option<PlaylistDetail>>>,
     pub songs: LazySongDatabase,
     pub current_year: Arc<Mutex<u32>>,
+    pub available_years: Arc<Mutex<Vec<u32>>>,
+    pub last_total_count: Arc<Mutex<Option<u64>>>,
     pub cache: Arc<PersistentMediaCache>,
     pub ctx: Context,
     pub rt: Arc<Runtime>,
@@ -45,6 +48,8 @@ impl SetlistActivity {
         let setlists = Arc::new(Mutex::new(LoadingState::Loading));
         let year = Utc::now().year() as u32;
         let current_year = Arc::new(Mutex::new(year));
+        let available_years = Arc::new(Mutex::new(vec![]));
+        let last_total_count = Arc::new(Mutex::new(None));
 
         let activity = Self {
             setlists: setlists.clone(),
@@ -52,6 +57,8 @@ impl SetlistActivity {
             selected_setlist: Arc::new(Mutex::new(None)),
             songs: songs.clone(),
             current_year,
+            available_years,
+            last_total_count,
             cache,
             ctx,
             rt,
@@ -61,6 +68,20 @@ impl SetlistActivity {
         activity.load_setlists(year);
 
         activity
+    }
+
+    pub async fn check_and_update_stats(&self, remote_total_count: u64) {
+        let mut last_count = self.last_total_count.lock().await;
+        if last_count.map_or(true, |c| c != remote_total_count) {
+            debug_log!(
+                "Setlist count mismatch: remote totalCount={}, previous={:?}. Retrieving setlists again...",
+                remote_total_count,
+                *last_count
+            );
+            *last_count = Some(remote_total_count);
+            let year = *self.current_year.lock().await;
+            self.load_setlists(year);
+        }
     }
 
     pub fn select_setlist(&self, id: Uuid) {
@@ -80,6 +101,8 @@ impl SetlistActivity {
     fn load_setlists(&self, year: u32) {
         let s = self.setlists.clone();
         let details = self.setlist_details.clone();
+        let available_years = self.available_years.clone();
+        let last_total_count = self.last_total_count.clone();
         let songs = self.songs.clone();
         let rt = self.rt.clone();
         let ctx = self.ctx.clone();
@@ -122,6 +145,24 @@ impl SetlistActivity {
                     *s.lock().await = LoadingState::Loaded(setlists);
                     has_cached = true;
                     ctx.request_repaint();
+                }
+            }
+
+            // Poll setlist stats before updating cached setlists
+            match songs.get_setlist_stats().await {
+                Ok(stats) => {
+                    debug_log!(
+                        "Fetched setlist stats: totalCount={}, years={:?}",
+                        stats.total_count,
+                        stats.years
+                    );
+                    *last_total_count.lock().await = Some(stats.total_count);
+                    if !stats.years.is_empty() {
+                        *available_years.lock().await = stats.years.clone();
+                    }
+                }
+                Err(err) => {
+                    debug_log!("Failed to fetch setlist stats: {}", err);
                 }
             }
 
@@ -212,7 +253,13 @@ impl SetlistActivity {
             ui.horizontal(|ui| {
                 ui.label("Selected year:");
                 let current_year = *self.current_year.blocking_lock();
-                for &year in &[2026, 2025, 2024, 2023] {
+                let available_years = self.available_years.blocking_lock();
+                let years = if available_years.is_empty() {
+                    vec![2026, 2025, 2024, 2023]
+                } else {
+                    available_years.clone()
+                };
+                for &year in &years {
                     if ui
                         .selectable_label(current_year == year, year.to_string())
                         .clicked()

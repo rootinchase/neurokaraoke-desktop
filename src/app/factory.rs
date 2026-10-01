@@ -3,6 +3,7 @@ use crate::activity::{
     playlist::PlaylistActivity, profile::ProfileActivity, profile::ProfileMessage,
     queue::QueueActivity, search, setlist::SetlistActivity, settings::SettingsActivity,
 };
+use chrono::{Timelike, Utc};
 
 use crate::api::LazySongDatabase;
 use crate::app::state::App;
@@ -268,13 +269,48 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
             rt.clone(),
             client.clone(),
         ),
-        setlist_activity: SetlistActivity::new(
-            songs.clone(),
-            cache.clone(),
-            ctx.clone(),
-            rt.clone(),
-            client.clone(),
-        ),
+        setlist_activity: {
+            let setlist_activity = SetlistActivity::new(
+                songs.clone(),
+                cache.clone(),
+                ctx.clone(),
+                rt.clone(),
+                client.clone(),
+            );
+
+            let setlist_activity_clone = setlist_activity.clone();
+            let songs_clone = songs.clone();
+            rt.spawn(async move {
+                loop {
+                    let now = Utc::now();
+                    let hour = now.hour();
+
+                    if hour >= 21 {
+                        match songs_clone.get_setlist_stats().await {
+                            Ok(stats) => {
+                                debug_log!("[Setlist Poller] Polled stats: totalCount={}", stats.total_count);
+                                setlist_activity_clone.check_and_update_stats(stats.total_count).await;
+                            }
+                            Err(e) => {
+                                debug_log!("[Setlist Poller] Failed to fetch stats: {}", e);
+                            }
+                        }
+                        tokio::time::sleep(Duration::from_secs(15 * 60)).await;
+                    } else {
+                        let target = now.date_naive().and_hms_opt(21, 0, 0).unwrap();
+                        let target_utc = target.and_utc();
+                        let duration = if target_utc > now {
+                            (target_utc - now).to_std().unwrap_or(Duration::from_secs(60 * 60))
+                        } else {
+                            Duration::from_secs(60 * 60)
+                        };
+                        tokio::time::sleep(duration).await;
+                    }
+                }
+            });
+
+            setlist_activity
+        },
         favorites_activity: FavoritesActivity::new(
             ctx.clone(),
             cache.clone(),

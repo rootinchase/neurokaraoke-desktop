@@ -368,6 +368,13 @@ pub struct UserLimits {
     pub song_per_playlist_limit: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetlistStats {
+    pub total_count: u64,
+    pub years: Vec<u32>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortOption {
     Name,

@@ -1,6 +1,6 @@
 use crate::api::{
     API_URLS, FavoriteEntry, FavoriteItem, LazySongDatabase, LoadingState, Playlist,
-    PlaylistDetail, ProfileResponse, Song, SongDTO, TrendingTimes, UploadSong, UserLimits,
+    PlaylistDetail, ProfileResponse, SetlistStats, Song, SongDTO, TrendingTimes, UploadSong, UserLimits,
 };
 use crate::config::SharedConfig;
 use crate::debug_log;
@@ -14,6 +14,22 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 impl LazySongDatabase {
+
+
+    pub fn new(
+        client: Client,
+        map: Arc<DashMap<Uuid, LoadingState<Song>>>,
+        guest_id: Arc<str>,
+        shared_config: SharedConfig,
+    ) -> Self {
+        Self {
+            client,
+            map,
+            guest_id,
+            shared_config,
+        }
+    }
+
     pub async fn get_profile(&self, token: &str) -> anyhow::Result<ProfileResponse> {
         let request = self
             .client
@@ -28,6 +44,7 @@ impl LazySongDatabase {
         let profile: ProfileResponse = response.json().await?;
         Ok(profile)
     }
+
 
     pub async fn get_user_limits(&self) -> anyhow::Result<UserLimits> {
         let request = self
@@ -45,20 +62,6 @@ impl LazySongDatabase {
 
         let limits: UserLimits = response.json().await?;
         Ok(limits)
-    }
-
-    pub fn new(
-        client: Client,
-        map: Arc<DashMap<Uuid, LoadingState<Song>>>,
-        guest_id: Arc<str>,
-        shared_config: SharedConfig,
-    ) -> Self {
-        Self {
-            client,
-            map,
-            guest_id,
-            shared_config,
-        }
     }
 
     pub async fn fetch_favorite_playlists(&self) -> anyhow::Result<Vec<Playlist>> {
@@ -131,7 +134,7 @@ impl LazySongDatabase {
         let mut request = self
             .client
             .get(format!("{}/api/user/playlists", API_URLS.api));
-        request = self.apply_auth(request).await; // <-- Inject headers
+        request = self.apply_auth(request).await;
 
         let response = request.send().await?;
         if !response.status().is_success() {
@@ -145,11 +148,11 @@ impl LazySongDatabase {
 
     pub async fn get_official_setlists(&self, year: u32) -> anyhow::Result<Vec<Playlist>> {
         let url = format!(
-            "{}/api/playlists?isSetlist=True&year={}",
+            "{}/api/playlists?pageSize=75&isSetlist=True&year={}",
             API_URLS.api, year
         );
         let mut request = self.client.get(url);
-        request = self.apply_auth(request).await; // <-- Inject headers
+        request = self.apply_auth(request).await;
 
         let response = request.send().await?;
         if !response.status().is_success() {
@@ -159,6 +162,20 @@ impl LazySongDatabase {
         let json: Value = response.json().await?;
         let playlists: Vec<Playlist> = serde_json::from_value(json)?;
         Ok(playlists)
+    }
+
+    pub async fn get_setlist_stats(&self) -> anyhow::Result<SetlistStats> {
+        let url = format!("{}/api/setlists/stats", API_URLS.api);
+        let mut request = self.client.get(url);
+        request = self.apply_auth(request).await;
+
+        let response = request.send().await?;
+        if !response.status().is_success() {
+            return Err(anyhow!("Failed to fetch setlist stats: {}", response.status()));
+        }
+
+        let stats: SetlistStats = response.json().await?;
+        Ok(stats)
     }
 
     pub async fn add_to_favorites(&self, song_id: Uuid) -> anyhow::Result<()> {
