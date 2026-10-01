@@ -389,7 +389,7 @@ pub fn render_sidebar(
             nav_button(ui, ActivityType::Setlists);
 
             // Push bottom area to the very bottom of the sidebar panel
-            let bottom_height = if config.compact_sidebar { 140.0 } else { 90.0 };
+            let bottom_height = if config.compact_sidebar { 152.0 } else { 90.0 };
             let spacing = ui.available_height() - bottom_height;
             if spacing > 0.0 {
                 ui.add_space(spacing);
@@ -548,6 +548,10 @@ pub fn render_sidebar(
                     let spacing = ui.spacing_mut();
                     (spacing.item_spacing, spacing.button_padding) = old_spacing;
                 });
+            }
+
+            if config.compact_sidebar {
+                ui.add_space(10.0);
             }
         });
 }
