@@ -135,17 +135,9 @@ impl eframe::App for App {
 
                     self.songs.map.clear();
 
-                    let fav_playlists = self.favorites_activity.playlists.clone();
-                    let fav_songs = self.favorites_activity.songs.clone();
-                    let fav_selected = self.favorites_activity.selected_playlist.clone();
-                    let fav_fetching = self.favorites_activity.is_fetching.clone();
-                    let fav_hashes = self.favorites_activity.favorite_songs.clone();
-
-                    let public_playlists = self.playlist_activity.playlists.clone();
-                    let public_selected = self.playlist_activity.selected_playlist.clone();
-
-                    let private_playlists = self.my_playlist_activity.playlists.clone();
-                    let private_selected = self.my_playlist_activity.selected_playlist.clone();
+                    let favorites_activity = self.favorites_activity.clone();
+                    let playlist_activity = self.playlist_activity.clone();
+                    let my_playlist_activity = self.my_playlist_activity.clone();
 
                     let home_suggested = self.home_activity.suggested_songs.clone();
                     let home_trending = self.home_activity.trending_songs.clone();
@@ -165,17 +157,9 @@ impl eframe::App for App {
                             eprintln!("❌ Failed to fully wipe cache directory on logout: {}", e);
                         }
 
-                        *fav_playlists.lock().await = LoadingState::Loading;
-                        *fav_songs.lock().await = LoadingState::Loading;
-                        *fav_selected.lock().await = None;
-                        fav_fetching.store(false, std::sync::atomic::Ordering::SeqCst);
-                        fav_hashes.write().await.clear();
-
-                        *public_playlists.lock().await = LoadingState::Loading;
-                        *public_selected.lock().await = None;
-
-                        *private_playlists.lock().await = LoadingState::Loading;
-                        *private_selected.lock().await = None;
+                        favorites_activity.clear().await;
+                        playlist_activity.clear().await;
+                        my_playlist_activity.clear().await;
 
                         *home_suggested.lock().await = LoadingState::Loading;
                         *home_trending.lock().await = LoadingState::Loading;

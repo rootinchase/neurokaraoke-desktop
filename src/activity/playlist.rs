@@ -1,7 +1,7 @@
 use crate::activity::{SortOption, render_playlist_art_advanced, render_playlist_box, search};
 use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongDTO};
 use crate::utilities::cache::{PersistentMediaCache, cache_dir};
-use crate::utilities::util::{select_playlist_by_id, sort_items};
+use crate::utilities::util::sort_items;
 
 use crate::debug_log;
 use dashmap::DashMap;
@@ -18,6 +18,7 @@ use tokio::spawn;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct PlaylistActivity {
     pub playlists: Arc<Mutex<LoadingState<Vec<Playlist>>>>,
     pub all_playlists: Arc<Mutex<Option<Vec<Playlist>>>>,
@@ -226,10 +227,6 @@ impl PlaylistActivity {
             *loading.lock().await = false;
             ctx.request_repaint();
         });
-    }
-
-    pub fn select_playlist(&self, id: Uuid) {
-        select_playlist_by_id(id, self.selected_playlist.clone(), self.songs.clone());
     }
 
     pub fn render(

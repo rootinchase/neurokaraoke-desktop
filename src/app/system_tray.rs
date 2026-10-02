@@ -15,22 +15,22 @@ fn load_icon() -> Icon {
 
 pub struct TrayIconMenu {
     _tray_icon: TrayIcon,
-    tray_menu: Menu,
-    show_item: MenuItem,
+    _tray_menu: Menu,
+    _show_item: MenuItem,
     play_pause_item: MenuItem,
-    theme_submenu: Submenu,
+    _theme_submenu: Submenu,
     theme_neuro: MenuItem,
     theme_twins: MenuItem,
     theme_evil: MenuItem,
-    timer_submenu: Submenu,
-    timer_5: MenuItem,
-    timer_15: MenuItem,
-    timer_30: MenuItem,
-    timer_60: MenuItem,
-    timer_120: MenuItem,
+    _timer_submenu: Submenu,
+    _timer_5: MenuItem,
+    _timer_15: MenuItem,
+    _timer_30: MenuItem,
+    _timer_60: MenuItem,
+    _timer_120: MenuItem,
     timer_cancel: MenuItem,
-    quit_item: MenuItem,
-    show_id: MenuId,
+    _quit_item: MenuItem,
+    _show_id: MenuId,
     play_pause_id: MenuId,
     theme_neuro_id: MenuId,
     theme_twins_id: MenuId,
@@ -42,68 +42,68 @@ pub struct TrayIconMenu {
     timer_120_id: MenuId,
     timer_cancel_id: MenuId,
     quit_id: MenuId,
-    is_visible: bool,
+    _is_visible: bool,
     last_is_paused: Option<bool>,
     last_theme: Option<SelectableTheme>,
 }
 
 impl TrayIconMenu {
     pub(crate) fn new(_ctx: &egui::Context) -> Self {
-        let tray_menu = Menu::new();
-        let show_item = MenuItem::new("Hide App", true, None);
+        let _tray_menu = Menu::new();
+        let _show_item = MenuItem::new("Hide App", true, None);
         let play_pause_item = MenuItem::new("Play", true, None);
 
-        let theme_submenu = Submenu::new("Theme", true);
+        let _theme_submenu = Submenu::new("Theme", true);
         let theme_neuro = MenuItem::new("Neuro", true, None);
         let theme_twins = MenuItem::new("Twins", true, None);
         let theme_evil = MenuItem::new("Evil", true, None);
-        let _ = theme_submenu.append_items(&[&theme_neuro, &theme_twins, &theme_evil]);
+        let _ = _theme_submenu.append_items(&[&theme_neuro, &theme_twins, &theme_evil]);
 
-        let timer_submenu = Submenu::new("Sleep Timer", true);
-        let timer_5 = MenuItem::new("5 min", true, None);
-        let timer_15 = MenuItem::new("15 min", true, None);
-        let timer_30 = MenuItem::new("30 min", true, None);
-        let timer_60 = MenuItem::new("60 min", true, None);
-        let timer_120 = MenuItem::new("120 min", true, None);
+        let _timer_submenu = Submenu::new("Sleep Timer", true);
+        let _timer_5 = MenuItem::new("5 min", true, None);
+        let _timer_15 = MenuItem::new("15 min", true, None);
+        let _timer_30 = MenuItem::new("30 min", true, None);
+        let _timer_60 = MenuItem::new("60 min", true, None);
+        let _timer_120 = MenuItem::new("120 min", true, None);
         let timer_cancel = MenuItem::new("Cancel Timer", true, None);
-        let _ = timer_submenu.append_items(&[
-            &timer_5,
-            &timer_15,
-            &timer_30,
-            &timer_60,
-            &timer_120,
+        let _ = _timer_submenu.append_items(&[
+            &_timer_5,
+            &_timer_15,
+            &_timer_30,
+            &_timer_60,
+            &_timer_120,
             &timer_cancel,
         ]);
 
-        let quit_item = MenuItem::new("Quit", true, None);
+        let _quit_item = MenuItem::new("Quit", true, None);
 
-        let _ = tray_menu.append_items(&[
-            &show_item,
+        let _ = _tray_menu.append_items(&[
+            &_show_item,
             &play_pause_item,
-            &theme_submenu,
-            &timer_submenu,
-            &quit_item,
+            &_theme_submenu,
+            &_timer_submenu,
+            &_quit_item,
         ]);
 
-        let show_id = show_item.id().clone();
+        let _show_id = _show_item.id().clone();
         let play_pause_id = play_pause_item.id().clone();
         let theme_neuro_id = theme_neuro.id().clone();
         let theme_twins_id = theme_twins.id().clone();
         let theme_evil_id = theme_evil.id().clone();
-        let timer_5_id = timer_5.id().clone();
-        let timer_15_id = timer_15.id().clone();
-        let timer_30_id = timer_30.id().clone();
-        let timer_60_id = timer_60.id().clone();
-        let timer_120_id = timer_120.id().clone();
+        let timer_5_id = _timer_5.id().clone();
+        let timer_15_id = _timer_15.id().clone();
+        let timer_30_id = _timer_30.id().clone();
+        let timer_60_id = _timer_60.id().clone();
+        let timer_120_id = _timer_120.id().clone();
         let timer_cancel_id = timer_cancel.id().clone();
-        let quit_id = quit_item.id().clone();
+        let quit_id = _quit_item.id().clone();
 
         // 2. Load icon from embedded bytes
         let icon = load_icon();
 
         // 3. Build the tray icon
         let _tray_icon = TrayIconBuilder::new()
-            .with_menu(Box::new(tray_menu.clone()))
+            .with_menu(Box::new(_tray_menu.clone()))
             .with_tooltip("Neuro Karaoke")
             .with_icon(icon)
             .build()
@@ -111,22 +111,22 @@ impl TrayIconMenu {
 
         Self {
             _tray_icon,
-            tray_menu,
-            show_item,
+            _tray_menu,
+            _show_item,
             play_pause_item,
-            theme_submenu,
+            _theme_submenu,
             theme_neuro,
             theme_twins,
             theme_evil,
-            timer_submenu,
-            timer_5,
-            timer_15,
-            timer_30,
-            timer_60,
-            timer_120,
+            _timer_submenu,
+            _timer_5,
+            _timer_15,
+            _timer_30,
+            _timer_60,
+            _timer_120,
             timer_cancel,
-            quit_item,
-            show_id,
+            _quit_item,
+            _show_id,
             play_pause_id,
             theme_neuro_id,
             theme_twins_id,
@@ -138,7 +138,7 @@ impl TrayIconMenu {
             timer_120_id,
             timer_cancel_id,
             quit_id,
-            is_visible: true,
+            _is_visible: true,
             last_is_paused: None,
             last_theme: None,
         }

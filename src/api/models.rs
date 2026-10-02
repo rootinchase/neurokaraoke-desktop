@@ -402,19 +402,3 @@ pub struct SetlistStats {
     pub years: Vec<u32>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SortOption {
-    Name,
-    Songs,
-    Plays,
-    Date,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SearchSortOption {
-    Name,
-    OriginalArtist,
-    CoverArtist,
-    Plays,
-    Length,
-}

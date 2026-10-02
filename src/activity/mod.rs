@@ -8,7 +8,7 @@ pub mod setlist;
 pub mod settings;
 pub mod sidebar;
 
-use crate::api::{Artwork, LoadingState, Playlist, PlaylistDetail, SongDTO};
+use crate::api::{Artwork, Playlist, PlaylistDetail, SongDTO};
 use crate::theme::ThemeManager;
 use crate::utilities::cache::{self, PersistentMediaCache};
 use crate::utilities::util::format_duration;
@@ -21,89 +21,8 @@ use reqwest::Client;
 use std::fs::read;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
-use tokio::sync::Mutex;
 use uuid::Uuid;
 
-pub fn render_song_list(
-    ui: &mut Ui,
-    theme: &ThemeManager,
-    cache: &Arc<PersistentMediaCache>,
-    ctx: &Context,
-    rt: &Runtime,
-    client: &Client,
-    id: &str,
-    title: &str,
-    label: &str,
-    songs_state: &Mutex<LoadingState<Vec<SongDTO>>>,
-    on_play_suggested: &mut impl FnMut(Vec<SongDTO>, Uuid),
-    playlist_art: Option<Artwork>,
-) {
-    let songs_list = songs_state.blocking_lock();
-
-    let playlist = match &*songs_list {
-        LoadingState::Loaded(songs) => Some(PlaylistDetail {
-            name: title.to_string().into(),
-            songs: songs.clone(),
-        }),
-        _ => None,
-    };
-
-    if let Some(playlist) = playlist {
-        render_playlist_box(
-            ui,
-            theme,
-            id,
-            title,
-            label,
-            &playlist,
-            on_play_suggested,
-            |ui| {
-                if let Some(art) = &playlist_art {
-                    resolve_and_render_art(
-                        ui,
-                        cache,
-                        ctx,
-                        rt,
-                        client,
-                        art,
-                        Vec2::new(150.0, 150.0),
-                    );
-                } else {
-                    render_mosaic(ui, cache, ctx, rt, client, id, &playlist.songs);
-                }
-            },
-        );
-    } else {
-        // Handle loading/failed states if needed, currently duplicating the old box structure for consistency
-        Frame::new()
-            .fill(theme.background_elevated)
-            .corner_radius(8.0)
-            .inner_margin(10.0)
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.vertical(|ui| {
-                        ui.set_width(170.0);
-                        ui.allocate_exact_size(Vec2::new(150.0, 150.0), Sense::hover());
-                        ui.heading(truncate_title(title));
-                        ui.label(label);
-                    });
-
-                    ui.add_space(20.0);
-                    ui.vertical(|ui| {
-                        ui.set_width(ui.available_width());
-                        ui.set_height(200.0);
-
-                        // Placeholder table or indicator for loading/failed
-                        ui.label(match &*songs_list {
-                            LoadingState::Loading => "Loading...",
-                            LoadingState::Failed(_) => "Failed to load.",
-                            _ => "",
-                        });
-                    });
-                });
-            });
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ActivityType {

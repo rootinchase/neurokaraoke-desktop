@@ -84,20 +84,6 @@ impl SetlistActivity {
         }
     }
 
-    pub fn select_setlist(&self, id: Uuid) {
-        let details = self.setlist_details.clone();
-        let selected = self.selected_setlist.clone();
-        let ctx = self.ctx.clone();
-        spawn(async move {
-            if let Some(detail_state) = details.get(&id) {
-                if let LoadingState::Loaded(detail) = &*detail_state {
-                    *selected.lock().await = Some(detail.clone());
-                }
-            }
-            ctx.request_repaint();
-        });
-    }
-
     fn load_setlists(&self, year: u32) {
         let s = self.setlists.clone();
         let details = self.setlist_details.clone();

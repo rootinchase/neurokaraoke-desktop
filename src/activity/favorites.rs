@@ -19,6 +19,7 @@ use tokio::runtime::Runtime;
 use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct FavoritesActivity {
     pub ctx: Context,
     pub cache: Arc<PersistentMediaCache>,
@@ -54,20 +55,6 @@ impl FavoritesActivity {
             is_fetching: Arc::new(AtomicBool::new(false)),
             favorite_songs: Arc::new(RwLock::new(HashSet::new())),
         }
-    }
-
-    pub fn select_playlist(&self, id: Uuid) {
-        let details = self.playlist_details.clone();
-        let selected = self.selected_playlist.clone();
-        let ctx = self.ctx.clone();
-        tokio::spawn(async move {
-            if let Some(detail_state) = details.get(&id) {
-                if let LoadingState::Loaded(detail) = &*detail_state {
-                    *selected.lock().await = Some(detail.clone());
-                }
-            }
-            ctx.request_repaint();
-        });
     }
 
     pub fn is_favorite(&self, id: &Uuid) -> bool {
