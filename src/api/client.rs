@@ -1,6 +1,7 @@
 use crate::api::{
     API_URLS, FavoriteEntry, FavoriteItem, LazySongDatabase, LoadingState, Playlist,
-    PlaylistDetail, ProfileResponse, SetlistStats, Song, SongDTO, TrendingTimes, UploadSong, UserLimits,
+    PlaylistDetail, ProfileResponse, SetlistStats, Song, SongDTO, TrendingTimes, UploadSong,
+    UserLimits,
 };
 use crate::config::SharedConfig;
 use crate::debug_log;
@@ -14,8 +15,6 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 impl LazySongDatabase {
-
-
     pub fn new(
         client: Client,
         map: Arc<DashMap<Uuid, LoadingState<Song>>>,
@@ -44,7 +43,6 @@ impl LazySongDatabase {
         let profile: ProfileResponse = response.json().await?;
         Ok(profile)
     }
-
 
     pub async fn get_user_limits(&self) -> anyhow::Result<UserLimits> {
         let request = self
@@ -171,7 +169,10 @@ impl LazySongDatabase {
 
         let response = request.send().await?;
         if !response.status().is_success() {
-            return Err(anyhow!("Failed to fetch setlist stats: {}", response.status()));
+            return Err(anyhow!(
+                "Failed to fetch setlist stats: {}",
+                response.status()
+            ));
         }
 
         let stats: SetlistStats = response.json().await?;

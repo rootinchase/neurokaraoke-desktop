@@ -1,5 +1,5 @@
 use crate::activity::SortOption;
-use crate::api::{LazySongDatabase, LoadingState, PlaylistDetail};
+use crate::api::{LazySongDatabase, PlaylistDetail};
 use crate::utilities::cache;
 use ron::de::from_bytes;
 use ron::ser::to_string_pretty;
@@ -164,36 +164,4 @@ pub async fn get_playlist_details_cached(
             }
         }
     }
-}
-
-pub fn select_playlist_by_id(
-    id: Uuid,
-    selected: Arc<Mutex<Option<LoadingState<PlaylistDetail>>>>,
-    songs: LazySongDatabase,
-) {
-    tokio::spawn(async move {
-        let cache_path = cache::cache_dir().join(format!("playlist_detail_{}.ron", id));
-        let mut has_cached = false;
-        if let Ok(data) = read(&cache_path).await {
-            if let Ok(detail) = from_bytes::<PlaylistDetail>(&data) {
-                *selected.lock().await = Some(LoadingState::Loaded(detail));
-                has_cached = true;
-            }
-        }
-
-        match get_playlist_details_cached(id, &songs).await {
-            Ok(data) => {
-                *selected.lock().await = Some(LoadingState::Loaded(data));
-            }
-            Err(err) => {
-                let mut sel_lock = selected.lock().await;
-                if !has_cached
-                    && (sel_lock.is_none()
-                        || matches!(*sel_lock.as_ref().unwrap(), LoadingState::Loading))
-                {
-                    *sel_lock = Some(LoadingState::Failed(Arc::new(err)));
-                }
-            }
-        }
-    });
 }

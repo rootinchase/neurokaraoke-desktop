@@ -77,7 +77,10 @@ pub struct SongDTO {
     #[serde(default)]
     #[serde_as(as = "DefaultOnNull")]
     pub oss: Option<Arc<str>>,
-    #[serde(default = "default_cover_art", deserialize_with = "deserialize_cover_art")]
+    #[serde(
+        default = "default_cover_art",
+        deserialize_with = "deserialize_cover_art"
+    )]
     pub cover_art: Option<Artwork>,
     #[serde(default, deserialize_with = "deserialize_artists")]
     pub original_artists: Arc<[Arc<str>]>,
@@ -165,7 +168,10 @@ pub struct Song {
     pub cover_artists: Arc<[Arc<str>]>,
     #[serde(default, deserialize_with = "deserialize_artists")]
     pub original_artists: Arc<[Arc<str>]>,
-    #[serde(default = "default_cover_art", deserialize_with = "deserialize_cover_art")]
+    #[serde(
+        default = "default_cover_art",
+        deserialize_with = "deserialize_cover_art"
+    )]
     pub cover_art: Option<Artwork>,
     #[serde(rename = "playCount", default)]
     pub play_count: Option<u64>,
@@ -401,4 +407,3 @@ pub struct SetlistStats {
     pub total_count: u64,
     pub years: Vec<u32>,
 }
-

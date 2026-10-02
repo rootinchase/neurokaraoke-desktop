@@ -23,7 +23,6 @@ use std::sync::Arc;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
 
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ActivityType {
     Home,

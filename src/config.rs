@@ -124,7 +124,7 @@ impl Default for Config {
 /// Thread-safe lock-free mirror used across concurrent background processes.
 #[derive(Clone)]
 pub struct SharedConfig {
-    pub volume: Arc<AtomicU32>, // Scaled bits integer representation
+    pub _volume: Arc<AtomicU32>, // Scaled bits integer representation
     pub shuffle: Arc<AtomicBool>,
     pub loop_mode: Arc<AtomicU32>, // 0: None, 1: One, 2: All
     pub auth_token: Arc<RwLock<Option<Arc<str>>>>,
@@ -154,7 +154,7 @@ impl Config {
             LoopMode::All => 2,
         };
         SharedConfig {
-            volume: Arc::new(AtomicU32::new(self.volume.to_bits())),
+            _volume: Arc::new(AtomicU32::new(self.volume.to_bits())),
             shuffle: Arc::new(AtomicBool::new(self.shuffle)),
             loop_mode: Arc::new(AtomicU32::new(mode_u32)),
             auth_token: Arc::new(RwLock::new(self.auth.as_ref().map(|a| a.token.clone()))),

@@ -493,7 +493,11 @@ impl PersistentMediaCache {
                     let size = meta.len();
                     let modified = meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
                     total_size += size;
-                    files.push(FileInfo { path, size, modified });
+                    files.push(FileInfo {
+                        path,
+                        size,
+                        modified,
+                    });
                 }
             }
         }
@@ -549,7 +553,10 @@ mod tests {
             tokio::fs::write(&file2, b"new file content").await.unwrap();
 
             let old_time = std::time::SystemTime::now() - Duration::from_secs(7200);
-            let _ = std::fs::File::options().write(true).open(&file1).and_then(|f| f.set_modified(old_time));
+            let _ = std::fs::File::options()
+                .write(true)
+                .open(&file1)
+                .and_then(|f| f.set_modified(old_time));
 
             let client = Client::new();
             let cache = PersistentMediaCache::new(client, 4);

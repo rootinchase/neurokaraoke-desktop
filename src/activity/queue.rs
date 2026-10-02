@@ -1,6 +1,6 @@
 use crate::api::{LazySongDatabase, LoadingState, PlaylistDetail, SongDTO};
 use crate::audio::types::Player;
-use eframe::egui::{Ui};
+use eframe::egui::Ui;
 use egui_extras::{Column, TableBuilder};
 use uuid::Uuid;
 
@@ -12,9 +12,7 @@ pub struct QueueActivity {
 }
 
 impl QueueActivity {
-    pub fn new(
-        songs: LazySongDatabase,
-    ) -> Self {
+    pub fn new(songs: LazySongDatabase) -> Self {
         Self {
             songs,
             show_queue: true,

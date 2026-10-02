@@ -8,12 +8,12 @@ use crate::utilities::util::get_playlist_details_cached;
 use dashmap::DashMap;
 use eframe::egui::{Context, ScrollArea, Ui, Vec2};
 use reqwest::Client;
+use ron::de::from_bytes;
+use ron::ser::to_string_pretty;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use ron::de::from_bytes;
-use ron::ser::to_string_pretty;
 use tokio::fs::{read, write};
 use tokio::runtime::Runtime;
 use tokio::sync::{Mutex, RwLock};
@@ -29,7 +29,7 @@ pub struct FavoritesActivity {
     pub playlists: Arc<Mutex<LoadingState<Vec<Playlist>>>>,
     pub songs: Arc<Mutex<LoadingState<Vec<SongDTO>>>>,
     pub playlist_details: Arc<DashMap<Uuid, LoadingState<PlaylistDetail>>>,
-    pub selected_playlist: Arc<Mutex<Option<PlaylistDetail>>>,
+    pub _selected_playlist: Arc<Mutex<Option<PlaylistDetail>>>,
     pub is_fetching: Arc<AtomicBool>,
     pub favorite_songs: Arc<RwLock<HashSet<Uuid>>>,
 }
@@ -51,7 +51,7 @@ impl FavoritesActivity {
             playlists: Arc::new(Mutex::new(LoadingState::Loading)),
             songs: Arc::new(Mutex::new(LoadingState::Loading)),
             playlist_details: Arc::new(DashMap::new()),
-            selected_playlist: Arc::new(Mutex::new(None)),
+            _selected_playlist: Arc::new(Mutex::new(None)),
             is_fetching: Arc::new(AtomicBool::new(false)),
             favorite_songs: Arc::new(RwLock::new(HashSet::new())),
         }
@@ -112,11 +112,7 @@ impl FavoritesActivity {
                             let p_songs = db.clone();
                             let p_details = details.clone();
                             rt.spawn(async move {
-                                match get_playlist_details_cached(
-                                    p_id, &p_songs,
-                                )
-                                .await
-                                {
+                                match get_playlist_details_cached(p_id, &p_songs).await {
                                     Ok(detail) => {
                                         p_details.insert(p_id, LoadingState::Loaded(detail));
                                     }
@@ -163,11 +159,7 @@ impl FavoritesActivity {
                             let p_songs = db.clone();
                             let p_details = details.clone();
                             rt.spawn(async move {
-                                match get_playlist_details_cached(
-                                    p_id, &p_songs,
-                                )
-                                .await
-                                {
+                                match get_playlist_details_cached(p_id, &p_songs).await {
                                     Ok(detail) => {
                                         p_details.insert(p_id, LoadingState::Loaded(detail));
                                     }
@@ -306,11 +298,7 @@ impl FavoritesActivity {
                                 let rt = self.rt.clone();
                                 let ctx = self.ctx.clone();
                                 rt.spawn(async move {
-                                    match get_playlist_details_cached(
-                                        p_id, &p_songs,
-                                    )
-                                    .await
-                                    {
+                                    match get_playlist_details_cached(p_id, &p_songs).await {
                                         Ok(detail) => {
                                             p_details.insert(p_id, LoadingState::Loaded(detail));
                                         }

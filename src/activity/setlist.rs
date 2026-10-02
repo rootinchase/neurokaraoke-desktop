@@ -22,7 +22,7 @@ use uuid::Uuid;
 pub struct SetlistActivity {
     pub setlists: Arc<Mutex<LoadingState<Vec<Playlist>>>>,
     pub setlist_details: Arc<DashMap<Uuid, LoadingState<PlaylistDetail>>>,
-    pub selected_setlist: Arc<Mutex<Option<PlaylistDetail>>>,
+    pub _selected_setlist: Arc<Mutex<Option<PlaylistDetail>>>,
     pub songs: LazySongDatabase,
     pub current_year: Arc<Mutex<u32>>,
     pub available_years: Arc<Mutex<Vec<u32>>>,
@@ -54,7 +54,7 @@ impl SetlistActivity {
         let activity = Self {
             setlists: setlists.clone(),
             setlist_details: Arc::new(DashMap::new()),
-            selected_setlist: Arc::new(Mutex::new(None)),
+            _selected_setlist: Arc::new(Mutex::new(None)),
             songs: songs.clone(),
             current_year,
             available_years,

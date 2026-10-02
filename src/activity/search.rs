@@ -10,7 +10,7 @@ pub struct SearchActivity {
     search: String,
     current_search_sort: SearchSortOption,
     current_search_sort_desc: bool,
-    current_song_uuid: Option<Uuid>,
+    _current_song_uuid: Option<Uuid>,
 }
 
 #[derive(Debug)]
@@ -36,7 +36,7 @@ impl SearchActivity {
             search: "".to_string(),
             current_search_sort: SearchSortOption::Name,
             current_search_sort_desc: false,
-            current_song_uuid: None,
+            _current_song_uuid: None,
         }
     }
 

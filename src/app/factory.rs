@@ -191,7 +191,9 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
             };
 
             // Run cache eviction sweep
-            let _ = cache_clone.evict(Duration::from_secs(expiration), size_limit_bytes).await;
+            let _ = cache_clone
+                .evict(Duration::from_secs(expiration), size_limit_bytes)
+                .await;
 
             let d = Duration::from_secs(expiration);
 
@@ -296,8 +298,13 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
                     if hour >= 21 {
                         match songs_clone.get_setlist_stats().await {
                             Ok(stats) => {
-                                debug_log!("[Setlist Poller] Polled stats: totalCount={}", stats.total_count);
-                                setlist_activity_clone.check_and_update_stats(stats.total_count).await;
+                                debug_log!(
+                                    "[Setlist Poller] Polled stats: totalCount={}",
+                                    stats.total_count
+                                );
+                                setlist_activity_clone
+                                    .check_and_update_stats(stats.total_count)
+                                    .await;
                             }
                             Err(e) => {
                                 debug_log!("[Setlist Poller] Failed to fetch stats: {}", e);
@@ -308,7 +315,9 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
                         let target = now.date_naive().and_hms_opt(21, 0, 0).unwrap();
                         let target_utc = target.and_utc();
                         let duration = if target_utc > now {
-                            (target_utc - now).to_std().unwrap_or(Duration::from_secs(60 * 60))
+                            (target_utc - now)
+                                .to_std()
+                                .unwrap_or(Duration::from_secs(60 * 60))
                         } else {
                             Duration::from_secs(60 * 60)
                         };
@@ -326,9 +335,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
             client.clone(),
             songs.clone(),
         ),
-        queue_activity: QueueActivity::new(
-            songs.clone(),
-        ),
+        queue_activity: QueueActivity::new(songs.clone()),
         profile_activity,
         settings_activity: SettingsActivity::new(cache.clone()),
 

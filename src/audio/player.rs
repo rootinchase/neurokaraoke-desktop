@@ -32,17 +32,6 @@ impl PlaybackState {
         self.song
     }
 
-    fn new(duration: Duration, song: Uuid, is_playing: bool) -> Self {
-        let now = Instant::now();
-        Self {
-            start: now,
-            paused: if is_playing { None } else { Some(now) },
-            duration,
-            song,
-            loading: false,
-        }
-    }
-
     fn new_loading(song: Uuid) -> Self {
         let now = Instant::now();
         Self {
@@ -542,7 +531,16 @@ impl Player {
                             reorder(&mut ordered_playlist, shuffle, true, &mut loop_mode);
                         }
 
-                        PlaybackCommand::AppendToPlaylist(_) => {}
+                        PlaybackCommand::AppendToPlaylist(uuid) => {
+                            let mut ps = player.player_state.lock().unwrap();
+                            let mut pl = ps
+                                .playlist
+                                .as_ref()
+                                .map(|x| x.to_vec())
+                                .unwrap_or_else(Vec::new);
+                            pl.push(uuid);
+                            ps.playlist = Some(pl.into());
+                        }
 
                         PlaybackCommand::Seek(mut position) => {
                             if let Some(state) = player.state.lock().unwrap().as_mut() {
@@ -967,15 +965,9 @@ impl Player {
     }
 
     pub fn append_to_playlist(&self, uuid: Uuid) {
-        let mut player_state = self.player_state.lock().unwrap();
-        let mut pl = player_state
-            .playlist
-            .as_ref()
-            .map(|x| x.to_vec())
-            .unwrap_or_else(Vec::new);
-        pl.push(uuid);
-        player_state.playlist = Some(pl.into());
-        // Do not send a `PlaybackCommand::Playlist` or reset playback here
+        self.sender
+            .try_send(PlaybackCommand::AppendToPlaylist(uuid))
+            .ok();
     }
 
     pub fn playlists(

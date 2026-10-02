@@ -1,7 +1,7 @@
 use crate::activity::{SortOption, render_playlist_art_advanced, render_playlist_box, search};
 use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongDTO};
 use crate::utilities::cache::{PersistentMediaCache, cache_dir};
-use crate::utilities::util::sort_items;
+use crate::utilities::util::{get_playlist_details_cached, sort_items};
 
 use crate::debug_log;
 use dashmap::DashMap;
@@ -301,7 +301,7 @@ impl PlaylistActivity {
                     }
                 });
                 ui.add_space(8.0);
-            } 
+            }
 
             // Single lock access per frame
             let playlists_lock = self.playlists.try_lock();
@@ -358,7 +358,7 @@ impl PlaylistActivity {
                                         let p_songs = self.songs.clone();
                                         let p_details = self.playlist_details.clone();
                                         self.rt.spawn(async move {
-                                            match crate::utilities::util::get_playlist_details_cached(p_id, &p_songs).await {
+                                            match get_playlist_details_cached(p_id, &p_songs).await {
                                                 Ok(detail) => {
                                                     p_details
                                                         .insert(p_id, LoadingState::Loaded(detail));
@@ -459,11 +459,6 @@ impl PlaylistActivity {
                             let viewport_height = scroll_output.inner_rect.height();
                             let has_more = *self.has_more.blocking_lock();
                             let loading_more = *self.loading_more.blocking_lock();
-
-                            //debug_log!(
-                            //    "📜 [PlaylistActivity] Scroll check: offset_y={}, viewport_height={}, content_height={}, has_more={}, loading_more={}",
-                            //    offset_y, viewport_height, content_height, has_more, loading_more
-                            //);
 
                             if has_more
                                 && !loading_more

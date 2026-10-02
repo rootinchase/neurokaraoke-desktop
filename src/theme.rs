@@ -271,14 +271,6 @@ pub enum SelectableTheme {
 }
 
 impl SelectableTheme {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Neuro => "Neuro",
-            Self::Evil => "Evil",
-            Self::Twins => "Twins",
-        }
-    }
-
     pub fn karaoke_str(&self) -> &'static str {
         match self {
             Self::Neuro => "Neuro Karaoke",
