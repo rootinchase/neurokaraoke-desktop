@@ -77,6 +77,7 @@ pub struct SongDTO {
     #[serde(default)]
     #[serde_as(as = "DefaultOnNull")]
     pub oss: Option<Arc<str>>,
+    #[serde(default = "default_cover_art", deserialize_with = "deserialize_cover_art")]
     pub cover_art: Option<Artwork>,
     #[serde(default, deserialize_with = "deserialize_artists")]
     pub original_artists: Arc<[Arc<str>]>,
@@ -106,6 +107,18 @@ pub struct Artist {
     pub user_id: Option<Uuid>,
 }
 
+pub fn default_cover_art() -> Option<Artwork> {
+    Some(Artwork::default_art())
+}
+
+pub fn deserialize_cover_art<'de, D>(deserializer: D) -> Result<Option<Artwork>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt = Option::<Artwork>::deserialize(deserializer)?;
+    Ok(Some(opt.unwrap_or_else(Artwork::default_art)))
+}
+
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -125,6 +138,19 @@ pub struct Artwork {
     pub is_sensitive: bool,
 }
 
+impl Artwork {
+    pub fn default_art() -> Self {
+        Self {
+            id: "277232b2-e00e-426b-ffb8-bb8664a73600".to_string(),
+            file_name: Arc::from(""),
+            cloudflare_id: Some(Arc::from("277232b2-e00e-426b-ffb8-bb8664a73600")),
+            absolute_path: Arc::from(""),
+            artist: None,
+            is_sensitive: false,
+        }
+    }
+}
+
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -139,6 +165,7 @@ pub struct Song {
     pub cover_artists: Arc<[Arc<str>]>,
     #[serde(default, deserialize_with = "deserialize_artists")]
     pub original_artists: Arc<[Arc<str>]>,
+    #[serde(default = "default_cover_art", deserialize_with = "deserialize_cover_art")]
     pub cover_art: Option<Artwork>,
     #[serde(rename = "playCount", default)]
     pub play_count: Option<u64>,
