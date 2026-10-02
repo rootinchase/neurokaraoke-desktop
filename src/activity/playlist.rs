@@ -358,7 +358,8 @@ impl PlaylistActivity {
                                         let p_songs = self.songs.clone();
                                         let p_details = self.playlist_details.clone();
                                         self.rt.spawn(async move {
-                                            match get_playlist_details_cached(p_id, &p_songs).await {
+                                            match get_playlist_details_cached(p_id, &p_songs).await
+                                            {
                                                 Ok(detail) => {
                                                     p_details
                                                         .insert(p_id, LoadingState::Loaded(detail));

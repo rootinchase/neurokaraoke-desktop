@@ -182,7 +182,7 @@ impl LazySongDatabase {
     pub async fn add_to_favorites(&self, song_id: Uuid) -> anyhow::Result<()> {
         debug_log!("Adding song to favorites: {}", song_id);
         let url = format!("{}/api/user/favorites/{}", API_URLS.api, song_id);
-        let request = self.client.put(url);
+        let request = self.client.put(url).header("content-length", "0");
         let request = self.apply_auth(request).await;
 
         let response = request.send().await?;
@@ -210,7 +210,7 @@ impl LazySongDatabase {
     pub async fn remove_from_favorites(&self, song_id: Uuid) -> anyhow::Result<()> {
         debug_log!("Removing song from favorites: {}", song_id);
         let url = format!("{}/api/user/favorites/{}", API_URLS.api, song_id);
-        let request = self.client.delete(url);
+        let request = self.client.delete(url).header("content-length", "0");
         let request = self.apply_auth(request).await;
 
         let response = request.send().await?;
@@ -226,7 +226,7 @@ impl LazySongDatabase {
     pub async fn report_play_count(&self, song_id: Uuid) -> anyhow::Result<()> {
         debug_log!("🎵 Reporting play count for song: {}", song_id);
         let url = format!("{}/api/songs/playCount/{}", API_URLS.api, song_id);
-        let request = self.client.put(url);
+        let request = self.client.put(url).header("content-length", "0");
         let request = self.apply_auth(request).await;
 
         let response = request.send().await?;

@@ -69,12 +69,22 @@ impl FavoritesActivity {
         tokio::spawn(async move {
             let is_favorite = favs.read().await.contains(&id);
             if is_favorite {
-                if db.remove_from_favorites(id).await.is_ok() {
-                    favs.write().await.remove(&id);
+                match db.remove_from_favorites(id).await {
+                    Ok(()) => {
+                        favs.write().await.remove(&id);
+                    }
+                    Err(e) => {
+                        debug_log!("❌ Failed to remove from favorites: {}", e);
+                    }
                 }
             } else {
-                if db.add_to_favorites(id).await.is_ok() {
-                    favs.write().await.insert(id);
+                match db.add_to_favorites(id).await {
+                    Ok(()) => {
+                        favs.write().await.insert(id);
+                    }
+                    Err(e) => {
+                        debug_log!("❌ Failed to add to favorites: {}", e);
+                    }
                 }
             }
             ctx.request_repaint();
