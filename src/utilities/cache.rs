@@ -61,6 +61,7 @@ impl PersistentMediaCache {
         // 1. Check in-flight status for completed records
         if let Some(status) = self.in_flight.get(&key) {
             if let DownloadStatus::Complete(path) = status.value() {
+                touch_file(path);
                 return Some(path.clone());
             }
         }
@@ -71,6 +72,7 @@ impl PersistentMediaCache {
                 for ext in &["webp", "jpeg", "jpg", "png", "gif", "bin"] {
                     let potential_path = Self::get_asset_path(id, Some(ext));
                     if std::fs::metadata(&potential_path).is_ok() {
+                        touch_file(&potential_path);
                         return Some(potential_path);
                     }
                 }
@@ -78,6 +80,7 @@ impl PersistentMediaCache {
             AssetType::Audio => {
                 let potential_path = Self::get_asset_path(id, None);
                 if std::fs::metadata(&potential_path).is_ok() {
+                    touch_file(&potential_path);
                     return Some(potential_path);
                 }
             }
@@ -457,5 +460,11 @@ pub fn get_thumbnail_url(cloudflare_id: Option<&str>, absolute_path: &str, fit: 
         }
     } else {
         "".to_string()
+    }
+}
+
+pub fn touch_file(path: &std::path::Path) {
+    if let Ok(file) = std::fs::File::options().write(true).open(path) {
+        let _ = file.set_modified(std::time::SystemTime::now());
     }
 }
