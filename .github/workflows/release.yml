@@ -9,6 +9,11 @@ on:
         description: 'Tag to build'
         required: true
 
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0 # Disables incremental compilation for CI speed
+
+
 jobs:
   build:
     permissions:
@@ -44,6 +49,13 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
+      - name: Disable Windows Defender for Build Directory
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          Set-MpPreference -DisableRealtimeMonitoring $true
+          Add-MpPreference -ExclusionPath "${{ github.workspace }}
+
       - uses: actions/checkout@v7
 
       - name: Install Rust
@@ -57,8 +69,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libasound2-dev pkg-config libssl-dev libgtk-3-dev libglib2.0-dev
-
-
 
       - name: Build
         run: cargo build --target ${{ matrix.target }} --release
