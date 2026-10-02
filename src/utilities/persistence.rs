@@ -1,6 +1,7 @@
 use crate::audio::Player;
 use crate::audio::types::LoopMode;
 use crate::config::{Config, config_dir};
+use crate::utilities::cache::PersistentMediaCache;
 use serde::{Deserialize, Serialize};
 use std::fs::{read_to_string, remove_file, write};
 use std::sync::Arc;
@@ -76,6 +77,7 @@ pub async fn handle_signals(player: Player, config: Config) {
         }
 
         let _ = config.write_config();
+        let _ = PersistentMediaCache::cleanup_stale_downloads_sync();
     })
     .await;
 

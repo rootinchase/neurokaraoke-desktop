@@ -3,6 +3,7 @@ use crate::api::{API_URLS, LazySongDatabase, LoadingState, ProfileResponse, Song
 use crate::app::{player_ui::render_player_controls, state::App};
 use crate::audio::Player;
 use crate::auth::AuthService;
+use crate::utilities::cache::PersistentMediaCache;
 use crate::debug_log;
 use crate::utilities::{cache, persistence};
 use rand::prelude::SliceRandom;
@@ -335,6 +336,7 @@ impl eframe::App for App {
             };
             let _ = persistence::save_app_state(&app_state);
         }
+        let _ = PersistentMediaCache::cleanup_stale_downloads_sync();
     }
 }
 
@@ -343,6 +345,7 @@ impl Drop for App {
         if let Err(e) = self.config.write_config() {
             debug_log!("config write failed: {}", e);
         }
+        let _ = PersistentMediaCache::cleanup_stale_downloads_sync();
     }
 }
 

@@ -128,6 +128,26 @@ impl PersistentMediaCache {
         Ok(())
     }
 
+    pub fn cleanup_stale_downloads_sync() -> Result<()> {
+        let dir_path = Self::get_assets_dir();
+        if !dir_path.exists() {
+            std::fs::create_dir_all(&dir_path)?;
+            return Ok(());
+        }
+        for entry in std::fs::read_dir(&dir_path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    if ext == "tmp" {
+                        let _ = remove_file(&path);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub async fn get_or_download_image(&self, cloudflare_id: Uuid, url: String) -> Result<PathBuf> {
         debug_log!(
             "🔍 [Cache] Requesting image: {} (URL: {})",
@@ -285,21 +305,22 @@ impl PersistentMediaCache {
             }
         }
 
-        // 3. Clean up user-specific serialized indexes sitting inside the cache directory
-        // FIXED: Binding the owned PathBuf to assets_dir keeps the underlying data alive long enough!
+        // 3. Clean up all cached files and .ron files sitting inside the cache directory
         let assets_dir = Self::get_assets_dir();
         let cache_base = assets_dir.parent().expect("Should have a parent directory");
 
-        let files_to_purge = ["songs.ron", "playlists.ron", "my_playlists.ron"];
-        for file_name in files_to_purge {
-            let path = cache_base.join(file_name);
-            if metadata(&path).await.is_ok() {
-                let _ = remove_file(path).await;
+        if metadata(&cache_base).await.is_ok() {
+            let mut entries = read_dir(&cache_base).await?;
+            while let Some(entry) = entries.next_entry().await? {
+                let path = entry.path();
+                if path.is_file() {
+                    let _ = remove_file(&path).await;
+                }
             }
         }
 
         debug_log!(
-            "🧹 [Cache System] Global asset storage and serialized playlist state permanently cleared."
+            "🧹 [Cache System] Global asset storage and all cached state files permanently cleared."
         );
         Ok(())
     }

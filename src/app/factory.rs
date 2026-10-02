@@ -73,6 +73,9 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
     let client = Client::new();
 
     let cache = Arc::new(PersistentMediaCache::new(client.clone(), 12));
+    rt.spawn(async {
+        let _ = PersistentMediaCache::cleanup_stale_downloads().await;
+    });
 
     let profile_activity = ProfileActivity::new(cache.clone());
     let guest_id: Arc<str> = Uuid::new_v4().to_string().into();
