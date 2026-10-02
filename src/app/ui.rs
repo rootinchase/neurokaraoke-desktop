@@ -349,8 +349,8 @@ impl Drop for App {
 impl App {
     fn render_activity(&mut self, ui: &mut Ui) {
         if self.show_queue {
-            let mut player1 = self.player.clone();
-            let mut player2 = self.player.clone();
+            let player1 = self.player.clone();
+            let player2 = self.player.clone();
             let player_ref = self.player.clone();
             self.queue_activity.render(
                 ui,
@@ -379,8 +379,8 @@ impl App {
                 &player_ref,
             );
         } else if self.activity == ActivityType::Home {
-            let mut player1 = self.player.clone();
-            let mut player2 = self.player.clone();
+            let player1 = self.player.clone();
+            let player2 = self.player.clone();
             let rt = self.rt.clone();
             self.home_activity.render(
                 ui,

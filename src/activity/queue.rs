@@ -1,18 +1,12 @@
 use crate::activity::*;
 use crate::api::{LazySongDatabase, LoadingState, PlaylistDetail, SongDTO};
 use crate::audio::types::Player;
-use crate::utilities::cache::PersistentMediaCache;
-use eframe::egui::{Context, Ui};
+use eframe::egui::{Ui};
 use egui_extras::{Column, TableBuilder};
-use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct QueueActivity {
     pub songs: LazySongDatabase,
-    pub cache: Arc<PersistentMediaCache>,
-    pub ctx: Context,
-    pub rt: Arc<Runtime>,
-    pub client: Client,
     pub show_queue: bool,
     pub activity: String,
     pub current_song_uuid: Option<Uuid>,
@@ -21,17 +15,9 @@ pub struct QueueActivity {
 impl QueueActivity {
     pub fn new(
         songs: LazySongDatabase,
-        cache: Arc<PersistentMediaCache>,
-        ctx: Context,
-        rt: Arc<Runtime>,
-        client: Client,
     ) -> Self {
         Self {
             songs,
-            cache,
-            ctx,
-            rt,
-            client,
             show_queue: true,
             activity: "Queue".to_string(),
             current_song_uuid: None,

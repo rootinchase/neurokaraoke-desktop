@@ -320,10 +320,6 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
         ),
         queue_activity: QueueActivity::new(
             songs.clone(),
-            cache.clone(),
-            ctx.clone(),
-            rt.clone(),
-            client.clone(),
         ),
         profile_activity,
         settings_activity: SettingsActivity::new(cache.clone()),
