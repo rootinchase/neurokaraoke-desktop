@@ -5,6 +5,7 @@ use dashmap::DashMap;
 use reqwest::Client;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 use tokio::fs::{File, metadata, read_dir, remove_file, rename}; // Added read_dir
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{Notify, Semaphore};
@@ -426,12 +427,236 @@ impl PersistentMediaCache {
         }
     }
 
-    pub async fn cache_pass(&self, _client: Client, _config: &crate::config::CacheConfig) {
-        let _ = Self::cleanup_stale_downloads().await;
+    pub async fn evict_expired(&self, max_age: Duration) -> Result<usize> {
+        let dir_path = Self::get_assets_dir();
+        if !metadata(&dir_path).await.is_ok() {
+            return Ok(0);
+        }
+
+        let mut evicted_count = 0;
+        let mut entries = read_dir(&dir_path).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if path.is_file() {
+                if path.extension().and_then(|s| s.to_str()) == Some("tmp") {
+                    continue;
+                }
+                if let Ok(meta) = metadata(&path).await {
+                    if let Ok(modified) = meta.modified() {
+                        let age = modified.elapsed().unwrap_or_default();
+                        if age > max_age {
+                            if remove_file(&path).await.is_ok() {
+                                evicted_count += 1;
+                                self.in_flight.retain(|_, status| {
+                                    if let DownloadStatus::Complete(p) = status {
+                                        p != &path
+                                    } else {
+                                        true
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(evicted_count)
     }
 
-    pub fn is_online(&self) -> bool {
-        true
+    pub async fn evict_to_fit_size(&self, max_size_bytes: u64) -> Result<usize> {
+        let dir_path = Self::get_assets_dir();
+        if !metadata(&dir_path).await.is_ok() {
+            return Ok(0);
+        }
+
+        struct FileInfo {
+            path: PathBuf,
+            size: u64,
+            modified: std::time::SystemTime,
+        }
+
+        let mut files = Vec::new();
+        let mut total_size: u64 = 0;
+
+        let mut entries = read_dir(&dir_path).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if path.is_file() {
+                if path.extension().and_then(|s| s.to_str()) == Some("tmp") {
+                    continue;
+                }
+                if let Ok(meta) = metadata(&path).await {
+                    let size = meta.len();
+                    let modified = meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                    total_size += size;
+                    files.push(FileInfo { path, size, modified });
+                }
+            }
+        }
+
+        let mut evicted_count = 0;
+        if total_size > max_size_bytes {
+            files.sort_by(|a, b| a.modified.cmp(&b.modified));
+
+            for file in files {
+                if total_size <= max_size_bytes {
+                    break;
+                }
+                if remove_file(&file.path).await.is_ok() {
+                    total_size = total_size.saturating_sub(file.size);
+                    evicted_count += 1;
+                    self.in_flight.retain(|_, status| {
+                        if let DownloadStatus::Complete(p) = status {
+                            p != &file.path
+                        } else {
+                            true
+                        }
+                    });
+                }
+            }
+        }
+
+        Ok(evicted_count)
+    }
+
+    pub async fn evict(&self, max_age: Duration, max_size_bytes: u64) -> Result<usize> {
+        let _ = Self::cleanup_stale_downloads().await;
+        let expired_count = self.evict_expired(max_age).await?;
+        let size_count = self.evict_to_fit_size(max_size_bytes).await?;
+        Ok(expired_count + size_count)
+    }
+
+    pub fn evict_expired_sync(&self, max_age: Duration) -> Result<usize> {
+        let dir_path = Self::get_assets_dir();
+        if !dir_path.exists() {
+            return Ok(0);
+        }
+
+        let mut evicted_count = 0;
+        for entry in std::fs::read_dir(&dir_path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                if path.extension().and_then(|s| s.to_str()) == Some("tmp") {
+                    continue;
+                }
+                if let Ok(meta) = std::fs::metadata(&path) {
+                    if let Ok(modified) = meta.modified() {
+                        let age = modified.elapsed().unwrap_or_default();
+                        if age > max_age {
+                            if std::fs::remove_file(&path).is_ok() {
+                                evicted_count += 1;
+                                self.in_flight.retain(|_, status| {
+                                    if let DownloadStatus::Complete(p) = status {
+                                        p != &path
+                                    } else {
+                                        true
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(evicted_count)
+    }
+
+    pub fn evict_to_fit_size_sync(&self, max_size_bytes: u64) -> Result<usize> {
+        let dir_path = Self::get_assets_dir();
+        if !dir_path.exists() {
+            return Ok(0);
+        }
+
+        struct FileInfo {
+            path: PathBuf,
+            size: u64,
+            modified: std::time::SystemTime,
+        }
+
+        let mut files = Vec::new();
+        let mut total_size: u64 = 0;
+
+        for entry in std::fs::read_dir(&dir_path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                if path.extension().and_then(|s| s.to_str()) == Some("tmp") {
+                    continue;
+                }
+                if let Ok(meta) = std::fs::metadata(&path) {
+                    let size = meta.len();
+                    let modified = meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                    total_size += size;
+                    files.push(FileInfo { path, size, modified });
+                }
+            }
+        }
+
+        let mut evicted_count = 0;
+        if total_size > max_size_bytes {
+            files.sort_by(|a, b| a.modified.cmp(&b.modified));
+
+            for file in files {
+                if total_size <= max_size_bytes {
+                    break;
+                }
+                if std::fs::remove_file(&file.path).is_ok() {
+                    total_size = total_size.saturating_sub(file.size);
+                    evicted_count += 1;
+                    self.in_flight.retain(|_, status| {
+                        if let DownloadStatus::Complete(p) = status {
+                            p != &file.path
+                        } else {
+                            true
+                        }
+                    });
+                }
+            }
+        }
+
+        Ok(evicted_count)
+    }
+
+    pub fn evict_sync(&self, max_age: Duration, max_size_bytes: u64) -> Result<usize> {
+        let _ = Self::cleanup_stale_downloads_sync();
+        let expired_count = self.evict_expired_sync(max_age)?;
+        let size_count = self.evict_to_fit_size_sync(max_size_bytes)?;
+        Ok(expired_count + size_count)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cache_eviction_sync() {
+        let dir = PersistentMediaCache::get_assets_dir();
+        let _ = std::fs::create_dir_all(&dir);
+
+        let file1 = dir.join("test_old.bin");
+        let file2 = dir.join("test_new.bin");
+
+        std::fs::write(&file1, b"old file content").unwrap();
+        std::fs::write(&file2, b"new file content").unwrap();
+
+        let old_time = std::time::SystemTime::now() - Duration::from_secs(7200);
+        let _ = std::fs::File::options().write(true).open(&file1).and_then(|f| f.set_modified(old_time));
+
+        let client = Client::new();
+        let cache = PersistentMediaCache::new(client, 4);
+
+        let evicted = cache.evict_expired_sync(Duration::from_secs(3600)).unwrap();
+        assert_eq!(evicted, 1);
+        assert!(!file1.exists());
+        assert!(file2.exists());
+
+        let evicted_size = cache.evict_to_fit_size_sync(1).unwrap();
+        assert_eq!(evicted_size, 1);
+        assert!(!file2.exists());
+
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap());
     }
 }
 

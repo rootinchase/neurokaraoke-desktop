@@ -176,19 +176,24 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
 
     let s = songs.clone();
     let cc = config.cache.clone();
+    let cache_clone = cache.clone();
     let last_update: Arc<Mutex<Option<Instant>>> = Arc::default();
 
     rt.spawn(async move {
         loop {
-            let interval = {
+            let (interval, expiration, size_limit_bytes) = {
                 let guard = cc.lock().await;
-                guard.cache_sweep_interval_secs
+                (
+                    guard.cache_sweep_interval_secs,
+                    guard.cache_expiration_secs,
+                    guard.cache_size_limit_mb * 1024 * 1024,
+                )
             };
 
-            let d = {
-                let guard = cc.lock().await;
-                Duration::from_secs(guard.cache_expiration_secs)
-            };
+            // Run cache eviction sweep
+            let _ = cache_clone.evict(Duration::from_secs(expiration), size_limit_bytes).await;
+
+            let d = Duration::from_secs(expiration);
 
             if last_update
                 .lock()
