@@ -4,6 +4,7 @@ pub use playwire::{
 
 use crate::audio::{LoopMode, Player};
 use crate::config::SharedConfig;
+use crate::debug_log;
 
 pub(crate) fn init_playwire(player: Player, shared_config: SharedConfig) -> Option<MediaControls> {
     // Windows uses this, but macOS and windows don't.
@@ -20,12 +21,18 @@ pub(crate) fn init_playwire(player: Player, shared_config: SharedConfig) -> Opti
 
         let our_pid = unsafe { GetCurrentProcessId() };
 
-        let hwnd = unsafe { GetActiveWindow() };
+        let mut hwnd = unsafe { GetActiveWindow() };
 
-        if hwnd_ptr.is_none() {
-            let title = b"Karaoke App\0";
-            let hwnd = unsafe { FindWindowA(std::ptr::null(), title.as_ptr()) };
+        let mut pid = 0;
+        if !hwnd.is_null() {
+            unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
         }
+
+        if hwnd.is_null() || pid != our_pid {
+            let title = b"Neuro Karaoke App\0";
+            hwnd = unsafe { FindWindowA(std::ptr::null(), title.as_ptr()) };
+        }
+
         if !hwnd.is_null() {
             let mut pid = 0;
             unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
@@ -35,7 +42,7 @@ pub(crate) fn init_playwire(player: Player, shared_config: SharedConfig) -> Opti
         }
 
         if hwnd_ptr.is_none() {
-            eprintln!("Warning: Windows HWND could not be resolved. Media controls disabled.");
+            debug_log!("⚠️ [Playwire] Warning: Windows HWND could not be resolved yet. Media controls will retry.");
             return None;
         }
     }
@@ -101,10 +108,13 @@ pub(crate) fn init_playwire(player: Player, shared_config: SharedConfig) -> Opti
             _ => {}
         }
     }) {
-        Ok(controls) => Some(controls),
+        Ok(controls) => {
+            debug_log!("✨ [Playwire] Media controls initialized successfully.");
+            Some(controls)
+        }
         Err(e) => {
-            eprintln!(
-                "Failed to initialize playwire media controls: {:?}. Disabling media controls.",
+            debug_log!(
+                "❌ [Playwire] Failed to initialize playwire media controls: {:?}. Disabling media controls.",
                 e
             );
             None

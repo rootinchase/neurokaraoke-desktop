@@ -251,7 +251,10 @@ impl eframe::App for App {
                                 .cache
                                 .get_cached_path(target_uuid, cache::AssetType::Image)
                             {
-                                Some(path.to_string_lossy().into_owned())
+                                match url::Url::from_file_path(&path) {
+                                    Ok(url) => Some(url.to_string()),
+                                    Err(()) => Some(format!("file:///{}", path.to_string_lossy().replace('\\', "/"))),
+                                }
                             } else {
                                 self.resolve_artwork_uri(
                                     ui,
