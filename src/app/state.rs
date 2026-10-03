@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::activity::{
     ActivityType, SortOption, favorites::FavoritesActivity, home::HomeActivity,
-    playlist::PlaylistActivity, profile::ProfileActivity, queue::QueueActivity, search,
+    playlist::PlaylistActivity, profile::ProfileActivity, queue::QueueActivity, radio, search,
     setlist::SetlistActivity, settings::SettingsActivity,
 };
 use crate::api::{LazySongDatabase, LoadingState};
@@ -39,6 +39,7 @@ pub struct App {
     // activity stuff
     pub activity: ActivityType,
     pub home_activity: HomeActivity,
+    pub radio_activity: radio::RadioActivity,
     pub playlist_activity: PlaylistActivity,
     pub my_playlist_activity: PlaylistActivity,
     pub setlist_activity: SetlistActivity,

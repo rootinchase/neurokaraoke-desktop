@@ -1,7 +1,7 @@
 use crate::activity::{
     ActivityType, SortOption, favorites::FavoritesActivity, home::HomeActivity,
     playlist::PlaylistActivity, profile::ProfileActivity, profile::ProfileMessage,
-    queue::QueueActivity, search, setlist::SetlistActivity, settings::SettingsActivity,
+    queue::QueueActivity, radio, search, setlist::SetlistActivity, settings::SettingsActivity,
 };
 use chrono::{Timelike, Utc};
 
@@ -240,7 +240,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
     let app = App {
         cache: cache.clone(),
         songs: songs.clone(),
-        player,
+        player: player.clone(),
         integration,
         playlist_search: "".to_string(),
         dragging_seeker: false,
@@ -263,6 +263,14 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
             }
             ha
         },
+        radio_activity: radio::RadioActivity::new(
+            ctx.clone(),
+            cache.clone(),
+            rt.clone(),
+            client.clone(),
+            songs.clone(),
+            player.clone(),
+        ),
         playlist_activity: PlaylistActivity::new(
             songs.clone(),
             false,

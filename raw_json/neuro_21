@@ -1,0 +1,223 @@
+{
+  "station": {
+    "id": 1,
+    "name": "Neuro 21 Station",
+    "shortcode": "neuro_21",
+    "description": "Neuro 21 Station  - 24/7 live radio streaming Neuro & Evil karaoke covers",
+    "frontend": "icecast",
+    "backend": "liquidsoap",
+    "timezone": "UTC",
+    "listen_url": "https://radio.twinskaraoke.com/listen/neuro_21/radio.mp3",
+    "url": "https://radio.twinskaraoke.com/",
+    "public_player_url": "https://radio.twinskaraoke.com/public/neuro_21",
+    "playlist_pls_url": "https://radio.twinskaraoke.com/public/neuro_21/playlist.pls",
+    "playlist_m3u_url": "https://radio.twinskaraoke.com/public/neuro_21/playlist.m3u",
+    "is_public": true,
+    "requests_enabled": true,
+    "mounts": [
+      {
+        "id": 1,
+        "name": "320kbps MP3",
+        "url": "https://radio.twinskaraoke.com/listen/neuro_21/radio.mp3",
+        "bitrate": 320,
+        "format": "mp3",
+        "listeners": {
+          "total": 13,
+          "unique": 12,
+          "current": 13
+        },
+        "path": "/radio.mp3",
+        "is_default": true
+      },
+      {
+        "id": 2,
+        "name": "Opus",
+        "url": "https://radio.twinskaraoke.com/listen/neuro_21/radio.ogg",
+        "bitrate": 128,
+        "format": "opus",
+        "listeners": {
+          "total": 0,
+          "unique": 0,
+          "current": 0
+        },
+        "path": "/radio.ogg",
+        "is_default": false
+      }
+    ],
+    "remotes": [],
+    "hls_enabled": true,
+    "hls_is_default": true,
+    "hls_url": "https://radio.twinskaraoke.com/hls/neuro_21/live.m3u8",
+    "hls_listeners": 4
+  },
+  "listeners": {
+    "total": 17,
+    "unique": 16,
+    "current": 17
+  },
+  "live": {
+    "is_live": false,
+    "streamer_name": "",
+    "broadcast_start": null,
+    "art": null
+  },
+  "now_playing": {
+    "sh_id": 150864,
+    "played_at": 1790925711,
+    "duration": 238,
+    "playlist": "Feel-Good Friday - Party & Dance",
+    "streamer": "",
+    "is_request": false,
+    "song": {
+      "id": "8e64b25cb38ef49a7e0539f9f8724a85",
+      "art": "https://radio.twinskaraoke.com/api/station/neuro_21/art/d0bbd8e119c345a94c8a8ffd-1770404736.jpg",
+      "custom_fields": {
+        "songId": "c5e3742e-1009-46ea-91ab-2497cee85d7b"
+      },
+      "text": "Eve - ドラマツルギー (Dramaturgy) (Evil)",
+      "artist": "Eve",
+      "title": "ドラマツルギー (Dramaturgy) (Evil)",
+      "album": "",
+      "genre": "",
+      "isrc": "",
+      "lyrics": ""
+    },
+    "elapsed": 160,
+    "remaining": 78
+  },
+  "playing_next": {
+    "cued_at": 1790925468,
+    "played_at": 1790925942,
+    "duration": 235.25877585249,
+    "playlist": "Feel-Good Friday - Party & Dance",
+    "is_request": false,
+    "song": {
+      "id": "36c45cea3c4518371bb302518e631a2c",
+      "art": "https://radio.twinskaraoke.com/api/station/neuro_21/art/3163c1ebf533f0d09050c6f8-1784752045.jpg",
+      "custom_fields": {
+        "songId": "3704dcb3-b0f5-4602-ae1d-a2bb858b12eb"
+      },
+      "text": "The Romantics - Talking In Your Sleep (Neuro)",
+      "artist": "The Romantics",
+      "title": "Talking In Your Sleep (Neuro)",
+      "album": "",
+      "genre": "",
+      "isrc": "",
+      "lyrics": ""
+    }
+  },
+  "song_history": [
+    {
+      "sh_id": 150862,
+      "played_at": 1790925474,
+      "duration": 239,
+      "playlist": "Feel-Good Friday - Party & Dance",
+      "streamer": "",
+      "is_request": false,
+      "song": {
+        "id": "6eb4b2a1a6d425444f01280cc8410298",
+        "art": "https://radio.twinskaraoke.com/api/station/neuro_21/art/4bc69bd80b42fd8697abe0f7-1779926003.jpg",
+        "custom_fields": {
+          "songId": "57ae2fe1-68b7-4e00-8ef2-8447b0f5de49"
+        },
+        "text": "Ankou Team - エンターエンター ミッション！ (Enter Enter MISSION!) (Neuro & Evil)",
+        "artist": "Ankou Team",
+        "title": "エンターエンター ミッション！ (Enter Enter MISSION!) (Neuro & Evil)",
+        "album": "",
+        "genre": "",
+        "isrc": "",
+        "lyrics": ""
+      }
+    },
+    {
+      "sh_id": 150860,
+      "played_at": 1790925343,
+      "duration": 134,
+      "playlist": "Feel-Good Friday - Party & Dance",
+      "streamer": "",
+      "is_request": false,
+      "song": {
+        "id": "d20acb869b3acc39bb599de60f5f6f1c",
+        "art": "https://radio.twinskaraoke.com/api/station/neuro_21/art/8ee7e3a13103e6ac2539682f-1770404984.jpg",
+        "custom_fields": {
+          "songId": "f09ad85c-5f5c-4011-a424-eb0de0297258"
+        },
+        "text": "Kanaria - KING (Neuro)",
+        "artist": "Kanaria",
+        "title": "KING (Neuro)",
+        "album": "",
+        "genre": "",
+        "isrc": "",
+        "lyrics": ""
+      }
+    },
+    {
+      "sh_id": 150858,
+      "played_at": 1790925187,
+      "duration": 158,
+      "playlist": "Feel-Good Friday - Party & Dance",
+      "streamer": "",
+      "is_request": false,
+      "song": {
+        "id": "0988124a2f74c0700e9122735ac0d6d7",
+        "art": "https://radio.twinskaraoke.com/api/station/neuro_21/art/4cce20bb7f13c1bfdba59756-1770404662.jpg",
+        "custom_fields": {
+          "songId": "55d48741-421c-4abb-9cbe-b1acdc47876e"
+        },
+        "text": "DECO*27 - モザイクロール (Mozaik Role) (Neuro)",
+        "artist": "DECO*27",
+        "title": "モザイクロール (Mozaik Role) (Neuro)",
+        "album": "",
+        "genre": "",
+        "isrc": "",
+        "lyrics": ""
+      }
+    },
+    {
+      "sh_id": 150856,
+      "played_at": 1790924956,
+      "duration": 234,
+      "playlist": "Feel-Good Friday - Party & Dance",
+      "streamer": "",
+      "is_request": false,
+      "song": {
+        "id": "448f8328866c3b7e093ff2bb834e29ba",
+        "art": "https://radio.twinskaraoke.com/api/station/neuro_21/art/b7011ed22c72b33f34a82d29-1770404646.jpg",
+        "custom_fields": {
+          "songId": "5ceb1b3d-0d93-4bac-8b06-40accb8a18d8"
+        },
+        "text": "David Guetta/Sia - Titanium (Evil)",
+        "artist": "David Guetta/Sia",
+        "title": "Titanium (Evil)",
+        "album": "",
+        "genre": "",
+        "isrc": "",
+        "lyrics": ""
+      }
+    },
+    {
+      "sh_id": 150855,
+      "played_at": 1790924786,
+      "duration": 171,
+      "playlist": "Feel-Good Friday - Party & Dance",
+      "streamer": "",
+      "is_request": false,
+      "song": {
+        "id": "76a92a68526119404f6d3d8c781f5058",
+        "art": "https://radio.twinskaraoke.com/api/station/neuro_21/art/016b95972d130f5d978d42ff-1770405700.jpg",
+        "custom_fields": {
+          "songId": "a0ba984d-309e-4fef-85c5-a099ab5aa315"
+        },
+        "text": "u32 - Blur (feat. u32) (Neuro)",
+        "artist": "u32",
+        "title": "Blur (feat. u32) (Neuro)",
+        "album": "",
+        "genre": "",
+        "isrc": "",
+        "lyrics": ""
+      }
+    }
+  ],
+  "is_online": true,
+  "cache": null
+}

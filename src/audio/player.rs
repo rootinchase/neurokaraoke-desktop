@@ -910,6 +910,102 @@ impl Player {
                                 );
                             }
                         }
+
+                        PlaybackCommand::RadioStream(url, cb) => {
+                            let mut lock = player.state.lock().unwrap();
+                            mixer.pause();
+                            mixer.clear();
+                            mixer.set_volume(0.0);
+
+                            let target_uuid = Uuid::new_v4();
+                            *lock = Some(PlaybackState {
+                                start: Instant::now(),
+                                paused: None,
+                                duration: Duration::from_secs(3600 * 24),
+                                song: target_uuid,
+                                loading: true,
+                            });
+                            drop(lock);
+                            *player.current_url_metadata.lock().unwrap() = None;
+                            ctx.request_repaint();
+
+                            let handle = player.clone();
+                            let temp_path = crate::utilities::cache::cache_dir().join("radio_stream.tmp");
+                            let mut cb_opt = Some(cb);
+
+                            thread::spawn(move || {
+                                match reqwest::blocking::get(&url) {
+                                    Ok(mut resp) => {
+                                        if let Ok(mut file) = std::fs::File::create(&temp_path) {
+                                            let mut buf = [0u8; 8192];
+                                            use std::io::{Read, Write};
+                                            let mut ready_sent = false;
+                                            loop {
+                                                match resp.read(&mut buf) {
+                                                    Ok(0) => break,
+                                                    Ok(n) => {
+                                                        if let Ok(()) = file.write_all(&buf[..n]) {
+                                                            let _ = file.flush();
+                                                            if !ready_sent {
+                                                                ready_sent = true;
+                                                                if let Some(callback) = cb_opt.take() {
+                                                                    if let Ok(read_file) = std::fs::File::open(&temp_path) {
+                                                                        handle.sender.try_send(PlaybackCommand::RadioStreamReady(read_file, callback)).ok();
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    Err(_) => break,
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        debug_log!("Failed to connect to radio stream {}: {}", url, e);
+                                    }
+                                }
+                            });
+                        }
+
+                        PlaybackCommand::RadioStreamReady(file, cb) => {
+                            let len = match file.metadata() {
+                                Ok(meta) => meta.len(),
+                                Err(_) => 1024 * 1024 * 100, // fallback
+                            };
+
+                            if let Ok(decoder) = DecoderBuilder::new()
+                                .with_data(BufReader::new(file))
+                                .with_byte_len(len)
+                                .build()
+                            {
+                                let mut lock = player.state.lock().unwrap();
+                                mixer.pause();
+                                mixer.clear();
+
+                                let current_vol = player.player_state.lock().unwrap().volume;
+                                mixer.set_volume(current_vol.powi(3));
+
+                                *lock = Some(PlaybackState {
+                                    start: Instant::now(),
+                                    paused: None,
+                                    duration: Duration::from_secs(3600 * 24),
+                                    song: Uuid::nil(),
+                                    loading: false,
+                                });
+
+                                drop(mixer);
+                                mixer = rodio::Player::connect_new(&handle.mixer());
+                                mixer.set_volume(current_vol.powi(3));
+                                mixer.append(decoder);
+                                mixer.play();
+
+                                cb(&player);
+                                ctx.request_repaint();
+                            } else {
+                                debug_log!("Failed to decode radio stream");
+                            }
+                        }
                     },
 
                     Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {}
@@ -1043,6 +1139,18 @@ impl Player {
             .try_send(PlaybackCommand::UrlPlayback(
                 uuid,
                 song_dto,
+                Box::new(commands_after_load),
+            ))
+            .ok();
+    }
+    pub fn radio_stream(
+        &self,
+        url: String,
+        commands_after_load: impl FnOnce(&Player) + Send + 'static,
+    ) {
+        self.sender
+            .try_send(PlaybackCommand::RadioStream(
+                url,
                 Box::new(commands_after_load),
             ))
             .ok();

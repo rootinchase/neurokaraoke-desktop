@@ -400,10 +400,305 @@ pub struct UserLimits {
     pub playlist_limit: u64,
     pub song_per_playlist_limit: u64,
 }
-
+#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetlistStats {
     pub total_count: u64,
     pub years: Vec<u32>,
+}
+
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RadioCurrentStateResponse {
+    pub current: Option<SongDTO>,
+    #[serde(default)]
+    pub upcoming: Vec<SongDTO>,
+    #[serde(default)]
+    pub history: Vec<SongDTO>,
+    #[serde(default)]
+    pub listener_count: u64,
+    #[serde(default)]
+    pub offline: bool,
+    pub playlist_name: Option<Arc<str>>,
+}
+
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AzuraCastNowPlayingResponse {
+    pub station: Option<AzuraCastStation>,
+    pub listeners: Option<AzuraCastListeners>,
+    pub now_playing: Option<AzuraCastTrackInfo>,
+    pub playing_next: Option<AzuraCastTrackInfo>,
+    #[serde(default)]
+    pub song_history: Vec<AzuraCastTrackInfo>,
+    pub is_online: bool,
+}
+
+impl AzuraCastNowPlayingResponse {
+    pub fn effective_now_playing(&self) -> Option<AzuraCastTrackInfo> {
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        if let Some(next) = &self.playing_next {
+            if let Some(played_at) = next.played_at {
+                if now_secs >= played_at {
+                    return Some(next.clone());
+                }
+            }
+        }
+
+        self.now_playing.clone()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AzuraCastStation {
+    pub id: u64,
+    pub name: Option<String>,
+    pub shortcode: Option<String>,
+    pub listen_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AzuraCastListeners {
+    pub total: u64,
+    pub unique: u64,
+    pub current: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AzuraCastTrackInfo {
+    pub sh_id: Option<u64>,
+    #[serde(deserialize_with = "deserialize_opt_u64_flexible", default)]
+    pub played_at: Option<u64>,
+    #[serde(deserialize_with = "deserialize_opt_u64_flexible", default)]
+    pub duration: Option<u64>,
+    pub playlist: Option<String>,
+    pub streamer: Option<String>,
+    pub is_request: Option<bool>,
+    pub song: Option<AzuraCastSong>,
+    #[serde(deserialize_with = "deserialize_opt_u64_flexible", default)]
+    pub elapsed: Option<u64>,
+    #[serde(deserialize_with = "deserialize_opt_u64_flexible", default)]
+    pub remaining: Option<u64>,
+}
+
+impl AzuraCastTrackInfo {
+    pub fn elapsed_secs(&self) -> u64 {
+        let base_elapsed = self.elapsed.unwrap_or(0);
+        let duration = self.duration.unwrap_or(0);
+
+        if let (Some(played_at), Some(dur)) = (self.played_at, self.duration) {
+            if let Ok(duration_since_epoch) = std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH) {
+                let now_secs = duration_since_epoch.as_secs();
+                if now_secs >= played_at {
+                    let elapsed = now_secs - played_at;
+                    if elapsed <= dur + 30 {
+                        return elapsed.min(dur);
+                    }
+                }
+            }
+        }
+
+        if duration > 0 {
+            base_elapsed.min(duration)
+        } else {
+            base_elapsed
+        }
+    }
+
+    pub fn duration_secs(&self) -> u64 {
+        self.duration.unwrap_or(0)
+    }
+
+    pub fn remaining_secs(&self) -> u64 {
+        let dur = self.duration_secs();
+        let el = self.elapsed_secs();
+        dur.saturating_sub(el)
+    }
+}
+
+pub fn deserialize_opt_u64_flexible<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct OptU64Visitor;
+    impl<'de> serde::de::Visitor<'de> for OptU64Visitor {
+        type Value = Option<u64>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("an integer, float, or null")
+        }
+
+        fn visit_unit<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            deserializer.deserialize_any(self)
+        }
+
+        fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(Some(v))
+        }
+
+        fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(Some(v.max(0) as u64))
+        }
+
+        fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(Some(v.round().max(0.0) as u64))
+        }
+    }
+
+    deserializer.deserialize_option(OptU64Visitor)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_azuracast_neuro_21() {
+        let json_data = std::fs::read_to_string("raw_json/neuro_21")
+            .expect("Failed to read raw_json/neuro_21");
+        let parsed: AzuraCastNowPlayingResponse = serde_json::from_str(&json_data)
+            .expect("Failed to deserialize AzuraCastNowPlayingResponse");
+
+        assert!(parsed.is_online);
+        let np = parsed.now_playing.expect("Expected now_playing");
+        assert_eq!(np.duration, Some(238));
+        assert_eq!(np.elapsed, Some(160));
+        assert_eq!(np.remaining, Some(78));
+        assert_eq!(np.duration_secs(), 238);
+        assert!(np.elapsed_secs() >= 160);
+        assert_eq!(np.remaining_secs(), np.duration_secs() - np.elapsed_secs());
+
+        let next = parsed.playing_next.expect("Expected playing_next");
+        // Float duration 235.25877585249 should round to 235
+        assert_eq!(next.duration, Some(235));
+    }
+
+    #[test]
+    fn test_effective_now_playing_transition() {
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let mut response = AzuraCastNowPlayingResponse {
+            station: None,
+            listeners: None,
+            now_playing: Some(AzuraCastTrackInfo {
+                sh_id: Some(1),
+                played_at: Some(now_secs - 100),
+                duration: Some(200),
+                playlist: None,
+                streamer: None,
+                is_request: None,
+                song: Some(AzuraCastSong {
+                    id: Some("song1".into()),
+                    text: Some("Song 1".into()),
+                    artist: Some("Artist 1".into()),
+                    title: Some("Title 1".into()),
+                    art: None,
+                    custom_fields: None,
+                }),
+                elapsed: Some(100),
+                remaining: Some(100),
+            }),
+            playing_next: Some(AzuraCastTrackInfo {
+                sh_id: Some(2),
+                played_at: Some(now_secs + 100),
+                duration: Some(200),
+                playlist: None,
+                streamer: None,
+                is_request: None,
+                song: Some(AzuraCastSong {
+                    id: Some("song2".into()),
+                    text: Some("Song 2".into()),
+                    artist: Some("Artist 2".into()),
+                    title: Some("Title 2".into()),
+                    art: None,
+                    custom_fields: None,
+                }),
+                elapsed: Some(0),
+                remaining: Some(200),
+            }),
+            song_history: vec![],
+            is_online: true,
+        };
+
+        let effective = response.effective_now_playing().unwrap();
+        assert_eq!(effective.sh_id, Some(1));
+
+        response.playing_next.as_mut().unwrap().played_at = Some(now_secs - 10);
+        let promoted = response.effective_now_playing().unwrap();
+        assert_eq!(promoted.sh_id, Some(2));
+    }
+
+    #[test]
+    fn test_elapsed_secs_fallback() {
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let track = AzuraCastTrackInfo {
+            sh_id: Some(1),
+            played_at: Some(now_secs - 100000),
+            duration: Some(200),
+            playlist: None,
+            streamer: None,
+            is_request: None,
+            song: None,
+            elapsed: Some(75),
+            remaining: Some(125),
+        };
+
+        assert_eq!(track.elapsed_secs(), 75);
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AzuraCastSong {
+    pub id: Option<String>,
+    pub text: Option<String>,
+    pub artist: Option<String>,
+    pub title: Option<String>,
+    pub art: Option<String>,
+    #[serde(default)]
+    pub custom_fields: Option<std::collections::HashMap<String, String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameHubScheduledInfo {
+    pub active: bool,
 }

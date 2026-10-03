@@ -399,6 +399,8 @@ impl App {
                     player2.play_song(song_id);
                 },
             );
+        } else if self.activity == ActivityType::Radio {
+            self.radio_activity.render(ui, &self.theme);
         } else if self.activity == ActivityType::Search {
             self.search_activity
                 .render(ui, &self.songs, &mut self.player, &self.current_song_uuid);

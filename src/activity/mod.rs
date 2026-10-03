@@ -3,6 +3,7 @@ pub mod home;
 pub mod playlist;
 pub mod profile;
 pub mod queue;
+pub mod radio;
 pub mod search;
 pub mod setlist;
 pub mod settings;
@@ -27,6 +28,7 @@ use uuid::Uuid;
 pub enum ActivityType {
     Home,
     Search,
+    Radio,
     Profile,
     Playlists,
     MyPlaylists,
@@ -48,6 +50,7 @@ impl ActivityType {
         match self {
             Self::Home => "Home",
             Self::Search => "Search",
+            Self::Radio => "Radio",
             Self::Profile => "Profile",
             Self::Playlists => "Public Playlists",
             Self::MyPlaylists => "My Playlists",
@@ -61,6 +64,7 @@ impl ActivityType {
         match self {
             Self::Home => Some(include_image!("../../assets/home.svg")),
             Self::Search => Some(include_image!("../../assets/search.svg")),
+            Self::Radio => Some(include_image!("../../assets/radio.svg")),
             Self::Playlists => Some(include_image!("../../assets/playlist.svg")),
             Self::MyPlaylists => Some(include_image!("../../assets/playlist.svg")),
             Self::Setlists => Some(include_image!("../../assets/setlist.svg")),

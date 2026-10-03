@@ -381,6 +381,7 @@ pub fn render_sidebar(
             // nav buttons
             nav_button(ui, ActivityType::Home);
             nav_button(ui, ActivityType::Search);
+            nav_button(ui, ActivityType::Radio);
             nav_button(ui, ActivityType::Playlists);
             if config.auth.is_some() {
                 nav_button(ui, ActivityType::MyPlaylists);

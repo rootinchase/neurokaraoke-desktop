@@ -3,9 +3,6 @@ name = "neurokaraoke-desktop"
 version = "0.4.0"
 edition = "2024"
 
-[target.x86_64-pc-windows-msvc]
-linker = "lld-link.exe"
-rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
 [profile.dev]
 opt-level = 1
@@ -34,9 +31,9 @@ eframe = "=0.36"
 egui_extras = { version = "0.36", features = [ "file", "image", "http", "svg"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 # magnum wasn't working, but OMG THIS GOT MERGED https://github.com/RustAudio/rodio/pull/851
-rodio = { git = "https://github.com/RustAudio/rodio", rev = "4aa22e8", features = ["default", "symphonia-libopus"] }
+rodio = { git = "https://github.com/RustAudio/rodio", rev = "4aa22e8", features = ["default", "playback", "symphonia-libopus"] }
 uuid = { version = "1.26", features = ["serde", "v4", "v5"] }
-reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls", "blocking"] }
 rand = "0.10"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"

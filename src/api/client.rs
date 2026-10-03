@@ -1,7 +1,7 @@
 use crate::api::{
-    API_URLS, FavoriteEntry, FavoriteItem, LazySongDatabase, LoadingState, Playlist,
-    PlaylistDetail, ProfileResponse, SetlistStats, Song, SongDTO, TrendingTimes, UploadSong,
-    UserLimits,
+    API_URLS, AzuraCastNowPlayingResponse, FavoriteEntry, FavoriteItem, GameHubScheduledInfo,
+    LazySongDatabase, LoadingState, Playlist, PlaylistDetail, ProfileResponse,
+    RadioCurrentStateResponse, SetlistStats, Song, SongDTO, TrendingTimes, UploadSong, UserLimits,
 };
 use crate::config::SharedConfig;
 use crate::debug_log;
@@ -12,7 +12,7 @@ use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use serde_json::{Value, json};
 use std::sync::Arc;
-use uuid::Uuid;
+use uuid::{uuid, Uuid};
 
 impl LazySongDatabase {
     pub fn new(
@@ -224,6 +224,9 @@ impl LazySongDatabase {
     }
 
     pub async fn report_play_count(&self, song_id: Uuid) -> anyhow::Result<()> {
+        if song_id == uuid!("00000000-0000-0000-0000-000000000000")  {
+            return Ok(())
+        }
         debug_log!("🎵 Reporting play count for song: {}", song_id);
         let url = format!("{}/api/songs/playCount/{}", API_URLS.api, song_id);
         let request = self.client.put(url).header("content-length", "0");
@@ -460,6 +463,45 @@ impl LazySongDatabase {
 
     pub fn get_map(&self) -> &Arc<DashMap<Uuid, LoadingState<Song>>> {
         &self.map
+    }
+
+    pub async fn get_radio_current_state(&self) -> anyhow::Result<RadioCurrentStateResponse> {
+        let url = format!("{}/api/radio/current-state", API_URLS.socket);
+        let response = self.client.get(&url).send().await?;
+        if !response.status().is_success() {
+            return Err(anyhow!(
+                "Failed to fetch radio current state: {}",
+                response.status()
+            ));
+        }
+        let data = response.json().await?;
+        Ok(data)
+    }
+
+    pub async fn get_azuracast_now_playing(&self) -> anyhow::Result<AzuraCastNowPlayingResponse> {
+        let url = format!("{}/api/nowplaying/neuro_21", API_URLS.radio);
+        let response = self.client.get(&url).send().await?;
+        if !response.status().is_success() {
+            return Err(anyhow!(
+                "Failed to fetch AzuraCast now playing: {}",
+                response.status()
+            ));
+        }
+        let data = response.json().await?;
+        Ok(data)
+    }
+
+    pub async fn get_gamehub_schedule(&self) -> anyhow::Result<GameHubScheduledInfo> {
+        let url = format!("{}/api/gamehub/scheduled/info", API_URLS.socket);
+        let response = self.client.get(&url).send().await?;
+        if !response.status().is_success() {
+            return Err(anyhow!(
+                "Failed to fetch gamehub schedule: {}",
+                response.status()
+            ));
+        }
+        let data = response.json().await?;
+        Ok(data)
     }
 }
 
