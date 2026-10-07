@@ -2,6 +2,8 @@ use crate::api::internal::deserialize_artists;
 use crate::config::SharedConfig;
 use dashmap::DashMap;
 use reqwest::Client;
+use serde::de::Error;
+use std::fmt::Formatter;
 use serde::{Deserialize, Serialize};
 use serde_with::{DefaultOnNull, serde_as};
 use std::sync::Arc;
@@ -587,20 +589,34 @@ where
     impl<'de> serde::de::Visitor<'de> for OptU64Visitor {
         type Value = Option<u64>;
 
-        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
             formatter.write_str("an integer, float, or null")
         }
 
-        fn visit_unit<E>(self) -> Result<Self::Value, E>
+        fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
         where
-            E: serde::de::Error,
+            E: Error,
         {
-            Ok(None)
+            Ok(Some(v.max(0) as u64))
+        }
+
+        fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            Ok(Some(v))
+        }
+
+        fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            Ok(Some(v.round().max(0.0) as u64))
         }
 
         fn visit_none<E>(self) -> Result<Self::Value, E>
         where
-            E: serde::de::Error,
+            E: Error,
         {
             Ok(None)
         }
@@ -612,25 +628,11 @@ where
             deserializer.deserialize_any(self)
         }
 
-        fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+        fn visit_unit<E>(self) -> Result<Self::Value, E>
         where
-            E: serde::de::Error,
+            E: Error,
         {
-            Ok(Some(v))
-        }
-
-        fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error,
-        {
-            Ok(Some(v.max(0) as u64))
-        }
-
-        fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error,
-        {
-            Ok(Some(v.round().max(0.0) as u64))
+            Ok(None)
         }
     }
 
