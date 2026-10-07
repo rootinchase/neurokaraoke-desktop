@@ -311,17 +311,21 @@ impl eframe::App for App {
 
     fn on_exit(&mut self) {
         if let Some(state) = self.player.get_playback_state() {
-            let app_state = persistence::AppState {
-                current_song_uuid: Some(state.song()),
-                current_position_secs: state.position().as_secs(),
-                playlist: self.player.get_playlist(),
-                playlist_name: self.player.get_playlist_name(),
-                url_playlist: self.player.get_url_playlist(),
-                volume: self.player.get_volume(),
-                shuffle: self.player.get_shuffle(),
-                loop_mode: self.player.get_loop_mode(),
-            };
-            let _ = persistence::save_app_state(&app_state);
+            if state.song() == Uuid::nil() {
+                let _ = persistence::clear_app_state();
+            } else {
+                let app_state = persistence::AppState {
+                    current_song_uuid: Some(state.song()),
+                    current_position_secs: state.position().as_secs(),
+                    playlist: self.player.get_playlist(),
+                    playlist_name: self.player.get_playlist_name(),
+                    url_playlist: self.player.get_url_playlist(),
+                    volume: self.player.get_volume(),
+                    shuffle: self.player.get_shuffle(),
+                    loop_mode: self.player.get_loop_mode(),
+                };
+                let _ = persistence::save_app_state(&app_state);
+            }
         }
         let _ = PersistentMediaCache::cleanup_stale_downloads_sync();
     }
@@ -372,6 +376,30 @@ impl App {
             let player1 = self.player.clone();
             let player2 = self.player.clone();
             let rt = self.rt.clone();
+
+            let azuracast_guard = self.radio_activity.azuracast_state.try_lock();
+            let current_guard = self.radio_activity.current_state.try_lock();
+
+            let az_np = if let Ok(LoadingState::Loaded(az)) = azuracast_guard.as_deref() {
+                az.effective_now_playing()
+            } else {
+                None
+            };
+
+            let socket_curr = if let Ok(LoadingState::Loaded(curr)) = current_guard.as_deref() {
+                curr.current.as_ref()
+            } else {
+                None
+            };
+
+            let player = self.player.clone();
+            let cache = self.cache.clone();
+            let rt_radio = self.rt.clone();
+            let client = self.client.clone();
+            let config = &self.config;
+            let theme_ref = &self.theme;
+            let home_ctx = self.home_activity.ctx.clone();
+
             self.home_activity.render(
                 ui,
                 &self.songs,
@@ -398,9 +426,24 @@ impl App {
                     player2.playlists(Some(pl.clone().into()), Some(songs.into()), None);
                     player2.play_song(song_id);
                 },
+                move |ui| {
+                    crate::activity::radio::render_radio_now_playing(
+                        ui,
+                        theme_ref,
+                        &cache,
+                        &home_ctx,
+                        &rt_radio,
+                        &client,
+                        &player,
+                        config,
+                        az_np.as_ref(),
+                        socket_curr,
+                    );
+                    ui.add_space(20.0);
+                },
             );
         } else if self.activity == ActivityType::Radio {
-            self.radio_activity.render(ui, &self.theme);
+            self.radio_activity.render(ui, &self.theme, &mut self.config);
         } else if self.activity == ActivityType::Search {
             self.search_activity
                 .render(ui, &self.songs, &mut self.player, &self.current_song_uuid);

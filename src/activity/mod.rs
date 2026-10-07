@@ -102,7 +102,8 @@ pub fn resolve_and_render_art(
 
     let art_uuid_str = cloudflare_id.map(|s| s).unwrap_or(&cover_art.id);
 
-    let art_uuid = Uuid::parse_str(art_uuid_str).unwrap_or_else(|_| Uuid::new_v4());
+    let art_uuid = Uuid::parse_str(art_uuid_str)
+        .unwrap_or_else(|_| Uuid::new_v5(&Uuid::NAMESPACE_URL, art_uuid_str.as_bytes()));
 
     // FIXED: Use the new helper method to safely query the persistent cache setup
     if let Some(path) = cache.get_cached_path(art_uuid, cache::AssetType::Image) {

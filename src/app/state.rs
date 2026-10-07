@@ -89,7 +89,18 @@ impl App {
             return Some(path_str.value().clone());
         }
 
-        // 2. Prevent UI dispatch duplication locks
+        // 3. Extract or synthesize a stable, unique internal UUID for the asset file name
+        let target_uuid = Uuid::parse_str(&key_str)
+            .unwrap_or_else(|_| Uuid::new_v5(&Uuid::NAMESPACE_URL, key_str.as_bytes()));
+
+        // 2. Check persistent disk cache before downloading
+        if let Some(path) = self.cache.get_cached_path(target_uuid, cache::AssetType::Image) {
+            let path_str = path.to_string_lossy().into_owned();
+            self.cached_art_paths.insert(key_str.clone(), path_str.clone());
+            return Some(path_str);
+        }
+
+        // 4. Prevent UI dispatch duplication locks
         if self.active_art_downloads.insert(key_str.clone()) {
             let cache = self.cache.clone();
             let cached_paths = self.cached_art_paths.clone();
@@ -107,13 +118,9 @@ impl App {
                 return None;
             }
 
-            // 3. Extract or synthesize a stable, unique internal UUID for the asset file name
-            let target_uuid = Uuid::parse_str(&key_str)
-                .unwrap_or_else(|_| Uuid::new_v5(&Uuid::NAMESPACE_URL, key_str.as_bytes()));
-
             debug_log!("⚡ [Image Pipeline] Checking/Downloading artwork: {}", url);
 
-            // 4. Dispatch tasks safely onto the background executor thread pool
+            // 5. Dispatch tasks safely onto the background executor thread pool
             self.rt.spawn(async move {
                 match cache.get_or_download_image(target_uuid, url).await {
                     Ok(path) => {

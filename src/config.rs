@@ -78,6 +78,29 @@ impl Default for CacheConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum RadioUrl {
+    #[default]
+    Mp3320Kbps,
+    Opus,
+}
+
+impl RadioUrl {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Mp3320Kbps => "320kbps MP3",
+            Self::Opus => "Opus",
+        }
+    }
+
+    pub fn url(&self) -> &'static str {
+        match self {
+            Self::Mp3320Kbps => "https://radio.twinskaraoke.com/listen/neuro_21/radio.mp3",
+            Self::Opus => "https://radio.twinskaraoke.com/listen/neuro_21/radio.ogg",
+        }
+    }
+}
+
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -87,6 +110,8 @@ pub struct Config {
     pub shuffle: bool,
     #[serde(default)]
     pub loop_mode: LoopMode,
+    #[serde(default)]
+    pub radio_url: RadioUrl,
 
     #[serde(default)]
     pub theme: SelectableTheme,
@@ -112,6 +137,7 @@ impl Default for Config {
             volume: defaults::volume(),
             shuffle: false,
             loop_mode: LoopMode::None,
+            radio_url: Default::default(),
             theme: Default::default(),
             cache: Default::default(),
             framerate_when_not_focused: defaults::framerate_when_not_focused(),

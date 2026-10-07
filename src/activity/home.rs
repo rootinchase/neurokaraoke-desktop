@@ -362,6 +362,7 @@ impl HomeActivity {
         theme: &ThemeManager,
         on_restore: impl FnOnce(AppState),
         on_play_suggested: impl Fn(Vec<SongDTO>, Uuid),
+        mut render_header: impl FnMut(&mut Ui),
     ) {
         ScrollArea::vertical().show(ui, |ui| {
             ui.vertical(|ui| {
@@ -456,6 +457,8 @@ impl HomeActivity {
                         });
                     ui.add_space(20.0);
                 }
+
+                render_header(ui);
 
                 // Suggested Songs UI
                 self.render_song_list(

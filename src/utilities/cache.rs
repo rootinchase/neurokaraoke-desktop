@@ -109,6 +109,17 @@ impl PersistentMediaCache {
         }
     }
 
+    pub fn remove_asset(&self, id: Uuid, asset_type: AssetType) {
+        let key = (id, asset_type);
+        self.in_flight.remove(&key);
+        for ext in &["webp", "jpeg", "jpg", "png", "gif", "bin", "tmp"] {
+            let path = Self::get_asset_path(id, Some(ext));
+            if path.exists() {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+    }
+
     /// Scans the cache assets directory, ensures it exists, and purges all incomplete `.tmp` files.
     pub async fn cleanup_stale_downloads() -> Result<()> {
         let dir_path = Self::get_assets_dir();
@@ -579,6 +590,12 @@ pub fn get_thumbnail_url(cloudflare_id: Option<&str>, absolute_path: &str, fit: 
     } else {
         Some(absolute_path.trim())
     };
+
+    if let Some(abs) = clean_abs {
+        if abs.starts_with("http://") || abs.starts_with("https://") {
+            return abs.to_string();
+        }
+    }
 
     if let Some(id) = clean_cf {
         format!(

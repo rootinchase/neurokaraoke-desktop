@@ -33,11 +33,30 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                         az_elapsed = np.elapsed_secs();
                         az_duration = np.duration_secs();
                         if let Some(az_song) = &np.song {
+                            let song_id_uuid = az_song.custom_fields.as_ref()
+                                .and_then(|cf| cf.get("songId"))
+                                .and_then(|sid| {
+                                    let trimmed = sid.trim();
+                                    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("null") {
+                                        None
+                                    } else {
+                                        Uuid::parse_str(trimmed).ok()
+                                    }
+                                });
+
+                            let art_uuid = song_id_uuid.unwrap_or_else(|| {
+                                if let Some(art_url) = &az_song.art {
+                                    Uuid::new_v5(&Uuid::NAMESPACE_URL, art_url.as_bytes())
+                                } else {
+                                    Uuid::nil()
+                                }
+                            });
+
                             let art = if let Some(art_url) = &az_song.art {
                                 Artwork {
-                                    id: art_url.clone(),
+                                    id: art_uuid.to_string(),
                                     file_name: art_url.clone().into(),
-                                    cloudflare_id: None,
+                                    cloudflare_id: Some(art_uuid.to_string().into()),
                                     absolute_path: art_url.clone().into(),
                                     artist: None,
                                     is_sensitive: false,
@@ -367,7 +386,6 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
 
                     // Center control
                     ui.allocate_ui(vec2(center_width, ui.available_height()), |ui| {
-                        debug_log!("player center width: {}", ui.available_width());
                         ui.with_layout(Layout::left_to_right(Align::Center).with_main_align(Align::Center), |ui| {
 
                             if !is_radio {
@@ -417,12 +435,16 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                             // Play/Pause
                             let resp = ui.add(
                                 Button::image(
-                                    Image::new(if state.paused() {
-                                        include_image!("../../assets/play.svg")
-                                    } else {
-                                        include_image!("../../assets/pause.svg")
-                                    })
-                                    .fit_to_exact_size(Vec2::new(24.0, 24.0)),
+                                    Image::new(
+                                        if state.paused() { include_image!("../../assets/play.svg")}
+                                        else if is_radio { include_image!("../../assets/stop.svg")}
+                                        else { include_image!("../../assets/pause.svg") }
+                                        )
+                                    .fit_to_exact_size(
+                                        if !is_radio { Vec2::new(24.0, 24.0) }
+                                        else if !state.paused() { Vec2::new(16.0, 16.0) }
+                                        else { Vec2::new(24.0, 24.0) }
+                                    ),
                                 )
                                 .min_size(Vec2::new(40.0, 40.0))
                                 .corner_radius(20.0)
@@ -437,7 +459,7 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                                 if is_radio {
                                     if state.paused() {
                                         app.player.radio_stream(
-                                            "https://radio.twinskaraoke.com/listen/neuro_21/radio.mp3".to_string(),
+                                            app.config.radio_url.url().to_string(),
                                             crate::audio::Player::play,
                                         );
                                     } else {
@@ -509,7 +531,6 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
 
                     // Right Side controls
                     ui.allocate_ui(vec2(right_width, ui.available_height()), |ui| {
-                        debug_log!("player column 2 width: {}", ui.available_width());
                         ui.horizontal_centered(|ui| {
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             // Volume control progress bar

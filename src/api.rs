@@ -2,6 +2,7 @@ pub mod client;
 pub mod internal;
 pub mod models;
 pub mod urls;
+pub mod tests;
 
 pub(crate) use crate::api::models::*;
 pub(crate) use crate::api::urls::API_URLS;

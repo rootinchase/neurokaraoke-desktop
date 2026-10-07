@@ -63,17 +63,21 @@ pub async fn handle_signals(player: Player, config: Config) {
 
     let _ = tokio::task::spawn_blocking(move || {
         if let Some(state) = player.get_playback_state() {
-            let app_state = AppState {
-                current_song_uuid: Some(state.song()),
-                current_position_secs: state.position().as_secs(),
-                playlist: player.get_playlist(),
-                playlist_name: player.get_playlist_name(),
-                url_playlist: player.get_url_playlist(),
-                volume: player.get_volume(),
-                shuffle: player.get_shuffle(),
-                loop_mode: player.get_loop_mode(),
-            };
-            let _ = save_app_state(&app_state);
+            if state.song() == Uuid::nil() {
+                let _ = clear_app_state();
+            } else {
+                let app_state = AppState {
+                    current_song_uuid: Some(state.song()),
+                    current_position_secs: state.position().as_secs(),
+                    playlist: player.get_playlist(),
+                    playlist_name: player.get_playlist_name(),
+                    url_playlist: player.get_url_playlist(),
+                    volume: player.get_volume(),
+                    shuffle: player.get_shuffle(),
+                    loop_mode: player.get_loop_mode(),
+                };
+                let _ = save_app_state(&app_state);
+            }
         }
 
         let _ = config.write_config();

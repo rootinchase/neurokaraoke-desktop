@@ -8,6 +8,7 @@ pub struct ApiUrls {
     pub socket: &'static str,
     pub radio: &'static str,
 }
+
 pub const API_URLS: ApiUrls = ApiUrls {
     base: "https://neurokaraoke.com",
     api: "https://api.neurokaraoke.com",
