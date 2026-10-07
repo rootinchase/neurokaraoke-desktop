@@ -5,7 +5,7 @@ use crate::activity::{
 };
 use chrono::{Timelike, Utc};
 
-use crate::api::LazySongDatabase;
+use crate::api::{LazySongDatabase, ProfileResponse, UserLimits};
 use crate::app::state::App;
 use crate::app::system_tray::TrayIconMenu;
 use crate::audio::Player;
@@ -18,6 +18,7 @@ use crate::utilities::{
     discord::DiscordPresencePayload,
     integration,
     persistence::handle_signals,
+    util::create_reqwest_client,
 };
 use dashmap::DashMap;
 use eframe::egui;
@@ -68,10 +69,17 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
     ctx.global_style_mut(|s| s.debug.warn_if_rect_changes_id = false);
 
     let config = Config::read().unwrap_or_default();
-    let initial_min_width = if config.compact_sidebar { 852.0 } else { 1040.0 };
-    ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::Vec2::new(initial_min_width, 610.0)));
+    let initial_min_width = if config.compact_sidebar {
+        852.0
+    } else {
+        1040.0
+    };
+    ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::Vec2::new(
+        initial_min_width,
+        610.0,
+    )));
     let shared_config = config.to_shared();
-    let client = crate::utilities::util::create_reqwest_client();
+    let client = create_reqwest_client();
 
     let cache = Arc::new(PersistentMediaCache::new(client.clone(), 12));
     rt.spawn(async {
@@ -101,9 +109,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
 
             // 1. Try loading cached profile and limits immediately as offline fallback
             if let Ok(data) = tokio::fs::read(&profile_cache_path).await {
-                if let Ok(profile_response) =
-                    ron::de::from_bytes::<crate::api::ProfileResponse>(&data)
-                {
+                if let Ok(profile_response) = ron::de::from_bytes::<ProfileResponse>(&data) {
                     let _ = startup_tx
                         .send(ProfileMessage::ProfileHeaderLoaded(
                             profile_response.profile,
@@ -115,7 +121,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
                 }
             }
             if let Ok(data) = tokio::fs::read(&limits_cache_path).await {
-                if let Ok(limits) = ron::de::from_bytes::<crate::api::UserLimits>(&data) {
+                if let Ok(limits) = ron::de::from_bytes::<UserLimits>(&data) {
                     let _ = startup_tx
                         .send(ProfileMessage::UserLimitsLoaded(limits))
                         .await;

@@ -1,5 +1,7 @@
 use crate::activity::{SortOption, render_playlist_art_advanced, render_playlist_box, search};
 use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongDTO};
+use crate::config::Config;
+use crate::theme::ThemeManager;
 use crate::utilities::cache::{PersistentMediaCache, playlist_cache_dir};
 use crate::utilities::util::{get_playlist_details_cached, sort_items};
 
@@ -391,8 +393,8 @@ impl PlaylistActivity {
                                             LoadingState::Loaded(detail) => {
                                                 render_playlist_box(
                                                     ui,
-                                                    &crate::theme::ThemeManager::new(
-                                                        crate::config::Config::read()
+                                                    &ThemeManager::new(
+                                                        Config::read()
                                                             .unwrap_or_default()
                                                             .theme
                                                             .as_theme(),

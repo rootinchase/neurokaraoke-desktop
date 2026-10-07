@@ -2,6 +2,7 @@ use crate::config::Config;
 use crate::debug_log;
 use crate::theme::ThemeManager;
 use crate::utilities::cache::PersistentMediaCache;
+use crate::utilities::cache::cache_dir;
 use eframe::egui::{self, Color32, DragValue, Frame, ProgressBar, RichText, ScrollArea, Ui};
 use std::fs::read_dir;
 use std::path::Path;
@@ -26,7 +27,7 @@ impl SettingsActivity {
     }
 
     pub fn refresh_storage(&mut self) {
-        let base_dir = crate::utilities::cache::cache_dir();
+        let base_dir = cache_dir();
 
         let total = fs2::total_space(base_dir).unwrap_or(0);
         let free = fs2::free_space(base_dir).unwrap_or(0);

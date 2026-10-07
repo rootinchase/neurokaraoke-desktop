@@ -1,7 +1,8 @@
-use crate::api::{API_URLS, LazySongDatabase, LoadingState};
+use crate::api::{API_URLS, LazySongDatabase, LoadingState, SongDTO};
 use crate::audio::types::*;
 use crate::debug_log;
-use crate::utilities::cache::{PersistentMediaCache, cache_dir};
+use crate::utilities::cache::{PersistentMediaCache, cache_dir, get_thumbnail_url};
+use crate::utilities::util::create_reqwest_client;
 use eframe::egui;
 use rand::prelude::SliceRandom;
 use rodio::Source;
@@ -144,7 +145,7 @@ impl Player {
                     mixer.set_volume(init_vol.powi(3));
                     mixer.pause();
 
-                    let client = crate::utilities::util::create_reqwest_client();
+                    let client = create_reqwest_client();
 
                     let mut ordered_playlist: Option<Arc<[Uuid]>> = None;
                     let mut shuffle = false;
@@ -213,7 +214,7 @@ impl Player {
                                 // Prefetch cover art
                                 if let Some(cover) = &dto.cover_art {
                                     let cf = cover.cloudflare_id.as_deref().map(|s| s.as_ref());
-                                    let img_url = crate::utilities::cache::get_thumbnail_url(cf, &cover.absolute_path, "crop,gravity=auto");
+                                    let img_url = get_thumbnail_url(cf, &cover.absolute_path, "crop,gravity=auto");
                                     if let Ok(art_uuid) = Uuid::parse_str(&cover.id) {
                                         if !img_url.is_empty() {
                                             let _ = cache_worker.get_or_download_image(art_uuid, img_url).await;
@@ -261,7 +262,7 @@ impl Player {
 
                                 let mut new_pl: Vec<Uuid> =
                                     indices.iter().map(|&i| pl[i]).collect();
-                                let mut new_upl: Vec<crate::api::SongDTO> = upl
+                                let mut new_upl: Vec<SongDTO> = upl
                                     .filter(|u| u.len() == len)
                                     .map(|u| {
                                         indices.iter().filter_map(|&i| u.get(i).cloned()).collect()
@@ -1041,7 +1042,11 @@ impl Player {
                                                 url
                                             );
                                             let client = reqwest::blocking::Client::builder()
-                                                .user_agent(concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION")))
+                                                .user_agent(concat!(
+                                                    env!("CARGO_PKG_NAME"),
+                                                    "/",
+                                                    env!("CARGO_PKG_VERSION")
+                                                ))
                                                 .timeout(Duration::from_secs(30))
                                                 .build()
                                                 .unwrap_or_default();
@@ -1256,7 +1261,7 @@ impl Player {
     pub fn playlists(
         &self,
         playlist: Option<Arc<[Uuid]>>,
-        url_playlist: Option<Arc<[crate::api::SongDTO]>>,
+        url_playlist: Option<Arc<[SongDTO]>>,
         playlist_name: Option<String>,
     ) {
         let mut ps = self.player_state.lock().unwrap();
@@ -1284,7 +1289,7 @@ impl Player {
             player_state.playlist = Some(new_pl.into());
         }
         if let Some(url_pl) = &player_state.url_playlist {
-            let new_url_pl: Vec<crate::api::SongDTO> = url_pl
+            let new_url_pl: Vec<SongDTO> = url_pl
                 .iter()
                 .cloned()
                 .zip(
@@ -1307,7 +1312,7 @@ impl Player {
             .ok();
     }
 
-    pub fn url_playlist(&self, playlist: Option<Arc<[crate::api::SongDTO]>>) {
+    pub fn url_playlist(&self, playlist: Option<Arc<[SongDTO]>>) {
         self.sender
             .try_send(PlaybackCommand::UrlPlaylist(playlist))
             .ok();
@@ -1319,7 +1324,7 @@ impl Player {
     pub fn url_playback(
         &self,
         uuid: Option<Uuid>,
-        song_dto: crate::api::SongDTO,
+        song_dto: SongDTO,
         commands_after_load: impl FnOnce(&Player) + Send + 'static,
     ) {
         self.sender
@@ -1413,7 +1418,7 @@ impl Player {
         self.player_state.lock().unwrap().playlist.clone()
     }
 
-    pub fn get_url_playlist(&self) -> Option<Arc<[crate::api::SongDTO]>> {
+    pub fn get_url_playlist(&self) -> Option<Arc<[SongDTO]>> {
         self.player_state.lock().unwrap().url_playlist.clone()
     }
 

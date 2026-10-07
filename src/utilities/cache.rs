@@ -3,9 +3,9 @@ use crate::debug_log;
 use anyhow::Result;
 use dashmap::DashMap;
 use reqwest::Client;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use tokio::fs::{File, metadata, read_dir, remove_file, rename}; // Added read_dir
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{Notify, Semaphore};
@@ -43,7 +43,7 @@ pub fn playlist_cache_dir() -> PathBuf {
     p
 }
 
-pub fn is_cache_fresh(path: &std::path::Path, max_age: Duration) -> bool {
+pub fn is_cache_fresh(path: &Path, max_age: Duration) -> bool {
     if let Ok(metadata) = std::fs::metadata(path) {
         if let Ok(modified) = metadata.modified() {
             return modified.elapsed().unwrap_or_default() < max_age;
@@ -494,7 +494,7 @@ impl PersistentMediaCache {
         struct FileInfo {
             path: PathBuf,
             size: u64,
-            modified: std::time::SystemTime,
+            modified: SystemTime,
         }
 
         let mut files = Vec::new();
@@ -509,7 +509,7 @@ impl PersistentMediaCache {
                 }
                 if let Ok(meta) = metadata(&path).await {
                     let size = meta.len();
-                    let modified = meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                    let modified = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
                     total_size += size;
                     files.push(FileInfo {
                         path,
@@ -556,27 +556,32 @@ impl PersistentMediaCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utilities::util::create_reqwest_client;
+    use std::fs::File;
+    use std::time::SystemTime;
+    use tokio::fs::{create_dir_all, write};
+    use tokio::runtime::Runtime;
 
     #[test]
     fn test_cache_eviction_async() {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = Runtime::new().unwrap();
         rt.block_on(async {
             let dir = PersistentMediaCache::get_assets_dir();
-            let _ = tokio::fs::create_dir_all(&dir).await;
+            let _ = create_dir_all(&dir).await;
 
             let file1 = dir.join("test_old.bin");
             let file2 = dir.join("test_new.bin");
 
-            tokio::fs::write(&file1, b"old file content").await.unwrap();
-            tokio::fs::write(&file2, b"new file content").await.unwrap();
+            write(&file1, b"old file content").await.unwrap();
+            write(&file2, b"new file content").await.unwrap();
 
-            let old_time = std::time::SystemTime::now() - Duration::from_secs(7200);
-            let _ = std::fs::File::options()
+            let old_time = SystemTime::now() - Duration::from_secs(7200);
+            let _ = File::options()
                 .write(true)
                 .open(&file1)
                 .and_then(|f| f.set_modified(old_time));
 
-            let client = crate::utilities::util::create_reqwest_client();
+            let client = create_reqwest_client();
             let cache = PersistentMediaCache::new(client, 4);
 
             let evicted = cache.evict(Duration::from_secs(3600), 1).await.unwrap();
@@ -634,8 +639,8 @@ pub fn get_thumbnail_url(cloudflare_id: Option<&str>, absolute_path: &str, fit: 
     }
 }
 
-pub fn touch_file(path: &std::path::Path) {
+pub fn touch_file(path: &Path) {
     if let Ok(file) = std::fs::File::options().write(true).open(path) {
-        let _ = file.set_modified(std::time::SystemTime::now());
+        let _ = file.set_modified(SystemTime::now());
     }
 }

@@ -1,6 +1,6 @@
 use crate::api::{Artwork, LoadingState, Song};
 use crate::app::state::App;
-use crate::audio::LoopMode;
+use crate::audio::{LoopMode, Player};
 use crate::debug_log;
 use crate::theme::ThemeManager;
 use crate::utilities::util::format_duration;
@@ -462,7 +462,7 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                                         if state.paused() {
                                             app.player.radio_stream(
                                                 app.config.radio_url.url().to_string(),
-                                                crate::audio::Player::play,
+                                                Player::play,
                                             );
                                         } else {
                                             app.player.pause();

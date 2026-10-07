@@ -1,10 +1,13 @@
-use crate::audio::Player;
-use crate::audio::types::LoopMode;
+use crate::api::SongDTO;
+use crate::audio::{Player, types::LoopMode};
 use crate::config::{Config, config_dir};
 use crate::utilities::cache::PersistentMediaCache;
+use ron::from_str;
+use ron::ser::{PrettyConfig, to_string_pretty};
 use serde::{Deserialize, Serialize};
 use std::fs::{read_to_string, remove_file, write};
-use std::sync::Arc;
+use std::{process::exit, sync::Arc};
+use tokio::{select, signal, task::spawn_blocking};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -13,7 +16,7 @@ pub struct AppState {
     pub current_position_secs: u64,
     pub playlist: Option<Arc<[Uuid]>>,
     pub playlist_name: Option<String>,
-    pub url_playlist: Option<Arc<[crate::api::SongDTO]>>,
+    pub url_playlist: Option<Arc<[SongDTO]>>,
     pub volume: f32,
     pub shuffle: bool,
     pub loop_mode: LoopMode,
@@ -21,7 +24,7 @@ pub struct AppState {
 
 pub fn save_app_state(state: &AppState) -> anyhow::Result<()> {
     let path = config_dir().join("state.ron");
-    let content = ron::ser::to_string_pretty(state, ron::ser::PrettyConfig::default())?;
+    let content = to_string_pretty(state, PrettyConfig::default())?;
     write(path, content)?;
     Ok(())
 }
@@ -29,7 +32,7 @@ pub fn save_app_state(state: &AppState) -> anyhow::Result<()> {
 pub fn load_app_state() -> Option<AppState> {
     let path = config_dir().join("state.ron");
     let content = read_to_string(path).ok()?;
-    ron::from_str(&content).ok()
+    from_str(&content).ok()
 }
 
 pub fn clear_app_state() -> anyhow::Result<()> {
@@ -41,13 +44,13 @@ pub fn clear_app_state() -> anyhow::Result<()> {
 }
 
 pub async fn handle_signals(player: Player, config: Config) {
-    let ctrl_c = tokio::signal::ctrl_c();
+    let ctrl_c = signal::ctrl_c();
 
     #[cfg(unix)]
     {
-        use tokio::signal::unix::{SignalKind, signal};
+        use signal::unix::{SignalKind, signal};
         if let Ok(mut sigterm) = signal(SignalKind::terminate()) {
-            tokio::select! {
+            select! {
                 _ = ctrl_c => {},
                 _ = sigterm.recv() => {},
             }
@@ -61,7 +64,7 @@ pub async fn handle_signals(player: Player, config: Config) {
         let _ = ctrl_c.await;
     }
 
-    let _ = tokio::task::spawn_blocking(move || {
+    let _ = spawn_blocking(move || {
         if let Some(state) = player.get_playback_state() {
             if state.song() == Uuid::nil() {
                 let _ = clear_app_state();
@@ -85,5 +88,5 @@ pub async fn handle_signals(player: Player, config: Config) {
     })
     .await;
 
-    std::process::exit(0);
+    exit(0);
 }

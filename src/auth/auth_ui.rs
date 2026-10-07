@@ -1,6 +1,8 @@
 use crate::activity::profile::{ProfileMessage, ProfileState};
+use crate::api::LoginRequest;
 use crate::auth::AuthService;
 use crate::auth::discord::{NEURO_KARAOKE_DISCORD, capture_discord_token};
+use crate::debug_log;
 use crate::theme::ThemeManager;
 use eframe::egui::{Button, Frame, RichText, TextEdit, Ui, Vec2};
 use std::sync::Arc;
@@ -52,7 +54,7 @@ pub fn render_login_form(
                     let ctx_clone = ctx.clone();
 
                     rt.spawn(async move {
-                        let req = crate::api::LoginRequest {
+                        let req = LoginRequest {
                             username: username.into(),
                             password: password.into(),
                         };
@@ -61,7 +63,7 @@ pub fn render_login_form(
                                 let _ = tx.send(ProfileMessage::LoginSuccess(auth_ctx)).await;
                             }
                             Err(e) => {
-                                crate::debug_log!("❌ Login failed: {}", e);
+                                debug_log!("❌ Login failed: {}", e);
                             }
                         }
                         ctx_clone.request_repaint();
@@ -90,15 +92,12 @@ pub fn render_login_form(
                                             tx.send(ProfileMessage::LoginSuccess(auth_ctx)).await;
                                     }
                                     Err(e) => {
-                                        crate::debug_log!(
-                                            "❌ Discord login verification failed: {}",
-                                            e
-                                        );
+                                        debug_log!("❌ Discord login verification failed: {}", e);
                                     }
                                 }
                             }
                             Err(e) => {
-                                crate::debug_log!("❌ Discord OAuth capture failed: {}", e);
+                                debug_log!("❌ Discord OAuth capture failed: {}", e);
                             }
                         }
                         ctx_clone.request_repaint();

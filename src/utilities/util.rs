@@ -1,11 +1,17 @@
 use crate::activity::SortOption;
 use crate::api::{LazySongDatabase, PlaylistDetail};
+use crate::config::config_dir;
 use crate::utilities::cache;
+use chrono::Utc;
+use reqwest::Client;
 use ron::de::from_bytes;
 use ron::ser::to_string_pretty;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{DeserializeAs, SerializeAs};
+use std::fs::OpenOptions;
 use std::io::Write;
+use std::panic::catch_unwind;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs::{read, write};
 use tokio::runtime::Handle;
@@ -13,11 +19,15 @@ use tokio::sync::Mutex;
 use tokio::task::block_in_place;
 use uuid::Uuid;
 
-pub fn create_reqwest_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .user_agent(concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION")))
+pub fn create_reqwest_client() -> Client {
+    Client::builder()
+        .user_agent(concat!(
+            env!("CARGO_PKG_NAME"),
+            "/",
+            env!("CARGO_PKG_VERSION")
+        ))
         .build()
-        .unwrap_or_else(|_| reqwest::Client::new())
+        .unwrap_or_else(|_| Client::new())
 }
 
 pub fn sort_items<T>(
@@ -89,25 +99,18 @@ pub fn format_duration(seconds: u64) -> String {
 }
 
 pub fn write_debug_log(msg: &str) {
-    let log_path = match std::panic::catch_unwind(|| crate::config::config_dir().join("debug.log")) {
-        Ok(path) => path,
-        Err(_) => {
-            if let Some(dir) = dirs::config_dir() {
-                let fallback = dir.join("neurokaraoke-desktop");
-                let _ = std::fs::create_dir_all(&fallback);
-                fallback.join("debug.log")
-            } else {
-                std::path::PathBuf::from("debug.log")
-            }
+    let log_path = catch_unwind(|| config_dir().join("debug.log")).unwrap_or_else(|_| {
+        if let Some(dir) = dirs::config_dir() {
+            let fallback = dir.join("neurokaraoke-desktop");
+            let _ = std::fs::create_dir_all(&fallback);
+            fallback.join("debug.log")
+        } else {
+            PathBuf::from("debug.log")
         }
-    };
+    });
 
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-    {
-        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f UTC");
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&log_path) {
+        let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S%.3f UTC");
         let _ = writeln!(file, "[{}] {}", timestamp, msg);
     }
 }
@@ -188,11 +191,7 @@ pub async fn get_playlist_details_cached(
             if let Some(parent) = cache_path.parent() {
                 let _ = tokio::fs::create_dir_all(parent).await;
             }
-            let _ = write(
-                &cache_path,
-                to_string_pretty(&data, Default::default())?,
-            )
-            .await;
+            let _ = write(&cache_path, to_string_pretty(&data, Default::default())?).await;
             Ok(data)
         }
         Err(err) => {
@@ -209,6 +208,9 @@ pub async fn get_playlist_details_cached(
 mod tests {
     use super::*;
     use crate::activity::SortOption;
+    use std::fs::read_to_string;
+    use std::panic::catch_unwind;
+    use std::path::PathBuf;
 
     #[test]
     fn test_format_duration() {
@@ -234,8 +236,18 @@ mod tests {
         }
 
         let mut items = vec![
-            Item { name: "B".into(), songs: 10, plays: 100, date: Some("2026-01-01".into()) },
-            Item { name: "A".into(), songs: 5, plays: 200, date: Some("2026-02-01".into()) },
+            Item {
+                name: "B".into(),
+                songs: 10,
+                plays: 100,
+                date: Some("2026-01-01".into()),
+            },
+            Item {
+                name: "A".into(),
+                songs: 5,
+                plays: 200,
+                date: Some("2026-02-01".into()),
+            },
         ];
 
         sort_items(
@@ -266,18 +278,15 @@ mod tests {
     #[test]
     fn test_debug_log_writing() {
         debug_log!("Test debug log entry {}", 123);
-        let log_path = match std::panic::catch_unwind(|| crate::config::config_dir().join("debug.log")) {
-            Ok(path) => path,
-            Err(_) => {
-                if let Some(dir) = dirs::config_dir() {
-                    dir.join("neurokaraoke-desktop").join("debug.log")
-                } else {
-                    std::path::PathBuf::from("debug.log")
-                }
+        let log_path = catch_unwind(|| config_dir().join("debug.log")).unwrap_or_else(|_| {
+            if let Some(dir) = dirs::config_dir() {
+                dir.join("neurokaraoke-desktop").join("debug.log")
+            } else {
+                PathBuf::from("debug.log")
             }
-        };
+        });
         if log_path.exists() {
-            let content = std::fs::read_to_string(&log_path).unwrap_or_default();
+            let content = read_to_string(&log_path).unwrap_or_default();
             assert!(content.contains("Test debug log entry 123"));
         }
     }

@@ -1,4 +1,6 @@
-use crate::theme::SelectableTheme;
+use crate::audio::Player;
+use crate::config::Config;
+use crate::theme::{SelectableTheme, ThemeManager};
 use eframe::egui;
 use std::time::{Duration, Instant};
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, Submenu};
@@ -147,9 +149,9 @@ impl TrayIconMenu {
     pub fn poll_events(
         &mut self,
         ctx: &egui::Context,
-        player: &crate::audio::Player,
-        config: &mut crate::config::Config,
-        theme: &mut crate::theme::ThemeManager,
+        player: &Player,
+        config: &mut Config,
+        theme: &mut ThemeManager,
         sleep_timer_end: &mut Option<Instant>,
     ) {
         let is_paused = player.get_playback_state().map_or(true, |s| s.paused());

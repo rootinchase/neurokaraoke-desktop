@@ -1,8 +1,8 @@
-use crate::audio::Player;
+use crate::audio::{PlaybackState, Player};
 use crate::config::SharedConfig;
 use crate::debug_log;
 use crate::utilities::discord::DiscordPresencePayload;
-use crate::utilities::playwire::{self, MediaControls, Repeat, Track};
+use crate::utilities::playwire::{self, MediaControls, Repeat, Track, init_playwire};
 use tokio::sync::mpsc::UnboundedSender;
 
 pub struct PlaybackIntegrationManager {
@@ -19,7 +19,7 @@ impl PlaybackIntegrationManager {
         shared_config: SharedConfig,
         discord_tx: UnboundedSender<DiscordPresencePayload>,
     ) -> Self {
-        let media_controls = playwire::init_playwire(player.clone(), shared_config.clone());
+        let media_controls = init_playwire(player.clone(), shared_config.clone());
         Self {
             media_controls,
             current_track: None,
@@ -39,7 +39,7 @@ impl PlaybackIntegrationManager {
 
     pub fn update_playback(
         &mut self,
-        state: &crate::audio::PlaybackState,
+        state: &PlaybackState,
         repeat: Repeat,
         shuffle: bool,
         volume: f64,
@@ -47,8 +47,7 @@ impl PlaybackIntegrationManager {
     ) {
         if self.media_controls.is_none() {
             debug_log!("🔄 [Playwire] Re-attempting media controls initialization (lazy init)...");
-            self.media_controls =
-                playwire::init_playwire(self.player.clone(), self.shared_config.clone());
+            self.media_controls = init_playwire(self.player.clone(), self.shared_config.clone());
         }
 
         let track = self.get_track().cloned();

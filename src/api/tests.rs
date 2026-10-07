@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use crate::api::internal::deserialize_artists;
     use crate::api::models::*;
     use serde::Deserialize;
     use std::sync::Arc;
@@ -170,7 +171,7 @@ mod tests {
     fn test_deserialize_artists() {
         #[derive(Deserialize)]
         struct TestStruct {
-            #[serde(deserialize_with = "crate::api::internal::deserialize_artists")]
+            #[serde(deserialize_with = "deserialize_artists")]
             artists: Arc<[Arc<str>]>,
         }
 

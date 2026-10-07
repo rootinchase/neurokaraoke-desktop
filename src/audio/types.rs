@@ -1,3 +1,4 @@
+use crate::api::SongDTO;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::AtomicU32;
 use std::sync::{Arc, Mutex};
@@ -28,7 +29,7 @@ pub struct PlayerState {
     pub(crate) loop_mode: LoopMode,
     pub(crate) playlist: Option<Arc<[Uuid]>>,
     pub(crate) playlist_name: Option<String>,
-    pub(crate) url_playlist: Option<Arc<[crate::api::SongDTO]>>,
+    pub(crate) url_playlist: Option<Arc<[SongDTO]>>,
 }
 
 pub enum PlaybackCommand {
@@ -38,16 +39,12 @@ pub enum PlaybackCommand {
     Shuffle(bool),
     Loop(LoopMode),
     Playlist(Option<Arc<[Uuid]>>),
-    UrlPlaylist(Option<Arc<[crate::api::SongDTO]>>),
-    Playlists(
-        Option<Arc<[Uuid]>>,
-        Option<Arc<[crate::api::SongDTO]>>,
-        Option<String>,
-    ),
+    UrlPlaylist(Option<Arc<[SongDTO]>>),
+    Playlists(Option<Arc<[Uuid]>>, Option<Arc<[SongDTO]>>, Option<String>),
     Song(Option<Uuid>, Box<dyn FnOnce(&Player) + Send + 'static>),
     UrlPlayback(
         Option<Uuid>,
-        crate::api::SongDTO,
+        SongDTO,
         Box<dyn FnOnce(&Player) + Send + 'static>,
     ),
     RadioStream(String, Box<dyn FnOnce(&Player) + Send + 'static>),
@@ -69,5 +66,5 @@ pub struct Player {
     pub(crate) state: Arc<Mutex<Option<PlaybackState>>>,
     pub(crate) player_state: Arc<Mutex<PlayerState>>,
     pub(crate) sender: tokio::sync::mpsc::Sender<PlaybackCommand>,
-    pub(crate) current_url_metadata: Arc<Mutex<Option<crate::api::SongDTO>>>,
+    pub(crate) current_url_metadata: Arc<Mutex<Option<SongDTO>>>,
 }

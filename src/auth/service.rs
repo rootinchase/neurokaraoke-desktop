@@ -1,4 +1,5 @@
 use crate::api::API_URLS;
+use crate::auth::jwt::extract_claims_from_jwt;
 use crate::{api, debug_log};
 use anyhow::anyhow;
 use reqwest::Client;
@@ -177,5 +178,3 @@ impl AuthService {
         }
     }
 }
-
-use crate::auth::jwt::extract_claims_from_jwt;

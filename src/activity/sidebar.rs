@@ -286,7 +286,10 @@ pub fn render_sidebar(
                     if expand_btn.clicked() {
                         config.compact_sidebar = false;
                         let _ = config.write_config();
-                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::MinInnerSize(Vec2::new(1040.0, 610.0)));
+                        ui.ctx()
+                            .send_viewport_cmd(egui::ViewportCommand::MinInnerSize(Vec2::new(
+                                1040.0, 610.0,
+                            )));
                     }
                 });
             } else {
@@ -317,7 +320,10 @@ pub fn render_sidebar(
                         if collapse_btn.clicked() {
                             config.compact_sidebar = true;
                             let _ = config.write_config();
-                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::MinInnerSize(Vec2::new(852.0, 610.0)));
+                            ui.ctx()
+                                .send_viewport_cmd(egui::ViewportCommand::MinInnerSize(Vec2::new(
+                                    852.0, 610.0,
+                                )));
                         }
                     });
                 });

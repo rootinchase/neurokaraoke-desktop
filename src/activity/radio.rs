@@ -1,11 +1,12 @@
 use crate::activity::resolve_and_render_art;
 use crate::api::{
-    AzuraCastNowPlayingResponse, GameHubScheduledInfo, LazySongDatabase, LoadingState,
-    RadioCurrentStateResponse,
+    Artwork, AzuraCastNowPlayingResponse, AzuraCastTrackInfo, GameHubScheduledInfo,
+    LazySongDatabase, LoadingState, RadioCurrentStateResponse, SongDTO,
 };
 use crate::audio::Player;
+use crate::config::{Config, RadioUrl};
 use crate::theme::ThemeManager;
-use crate::utilities::cache::PersistentMediaCache;
+use crate::utilities::cache::{AssetType, PersistentMediaCache};
 use crate::utilities::persistence;
 use eframe::egui::{
     Button, Color32, Context, Frame, Image, RichText, ScrollArea, Ui, Vec2, include_image,
@@ -90,10 +91,7 @@ impl RadioActivity {
                                 .unwrap_or(true);
 
                             if let Some(old_uuid) = last_radio_art_uuid_clone.lock().await.take() {
-                                cache_clone_for_cleanup.remove_asset(
-                                    old_uuid,
-                                    crate::utilities::cache::AssetType::Image,
-                                );
+                                cache_clone_for_cleanup.remove_asset(old_uuid, AssetType::Image);
                             }
 
                             if is_radio_specific {
@@ -191,7 +189,7 @@ impl RadioActivity {
         });
     }
 
-    pub fn render(&self, ui: &mut Ui, theme: &ThemeManager, config: &mut crate::config::Config) {
+    pub fn render(&self, ui: &mut Ui, theme: &ThemeManager, config: &mut Config) {
         let current_state = self.current_state.clone();
         let azuracast_state = self.azuracast_state.clone();
         let cache = self.cache.clone();
@@ -211,13 +209,13 @@ impl RadioActivity {
                     .show_ui(ui, |ui| {
                         ui.selectable_value(
                             &mut config.radio_url,
-                            crate::config::RadioUrl::Mp3320Kbps,
-                            crate::config::RadioUrl::Mp3320Kbps.name(),
+                            RadioUrl::Mp3320Kbps,
+                            RadioUrl::Mp3320Kbps.name(),
                         );
                         ui.selectable_value(
                             &mut config.radio_url,
-                            crate::config::RadioUrl::Opus,
-                            crate::config::RadioUrl::Opus.name(),
+                            RadioUrl::Opus,
+                            RadioUrl::Opus.name(),
                         );
                     });
             });
@@ -330,9 +328,9 @@ pub fn render_radio_now_playing(
     rt: &Runtime,
     client: &Client,
     player: &Player,
-    config: &crate::config::Config,
-    az_np: Option<&crate::api::AzuraCastTrackInfo>,
-    socket_curr: Option<&crate::api::SongDTO>,
+    config: &Config,
+    az_np: Option<&AzuraCastTrackInfo>,
+    socket_curr: Option<&SongDTO>,
 ) {
     if az_np.is_some() || socket_curr.is_some() {
         Frame::new()
@@ -395,7 +393,7 @@ pub fn render_radio_now_playing(
                                     Uuid::new_v5(&Uuid::NAMESPACE_URL, art_url.as_bytes())
                                 });
 
-                                let art_obj = crate::api::Artwork {
+                                let art_obj = Artwork {
                                     id: art_uuid.to_string(),
                                     file_name: art_url.clone().into(),
                                     cloudflare_id: Some(art_uuid.to_string().into()),

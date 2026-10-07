@@ -1,6 +1,6 @@
 use crate::api::API_URLS;
 use crate::api::{AuthContext, Badge, ProfileHeader, UserLimits};
-use crate::auth::AuthService;
+use crate::auth::{AuthService, auth_ui::render_login_form};
 use crate::debug_log;
 use crate::theme::ThemeManager;
 use crate::utilities::cache::PersistentMediaCache;
@@ -440,8 +440,7 @@ impl ProfileActivity {
                     });
             }
             None => {
-                // 🔴 STATE: User is Logged Out
-                crate::auth::auth_ui::render_login_form(
+                render_login_form(
                     ui,
                     theme,
                     &mut self.state,

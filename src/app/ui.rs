@@ -125,6 +125,7 @@ impl eframe::App for App {
                     self.home_activity.fetch_trending();
                     self.home_activity.fetch_recent_setlist();
                 }
+
                 ProfileMessage::Logout => {
                     self.config.auth = None;
                     let _ = self.config.write_config();
