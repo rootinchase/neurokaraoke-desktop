@@ -568,6 +568,7 @@ impl Player {
                                 }
 
                                 PlaybackCommand::Playlist(playlist) => {
+                                    active_radio_url = None;
                                     let lock = player_worker.state.lock().unwrap();
                                     if let Some(playlist) = playlist.as_ref()
                                         && let Some(state) = lock.as_ref()
@@ -602,6 +603,7 @@ impl Player {
                                     url_playlist,
                                     playlist_name,
                                 ) => {
+                                    active_radio_url = None;
                                     let mut ps = player_worker.player_state.lock().unwrap();
                                     ps.playlist = playlist;
                                     ps.url_playlist = url_playlist;
@@ -726,6 +728,7 @@ impl Player {
                                 PlaybackCommand::Shutdown => return true,
 
                                 PlaybackCommand::Song(uuid, cb) => {
+                                    active_radio_url = None;
                                     let mut lock = player_worker.state.lock().unwrap();
                                     if let Some(uuid) = uuid {
                                         *player_worker.current_url_metadata.lock().unwrap() = None;
@@ -843,6 +846,7 @@ impl Player {
                                 }
 
                                 PlaybackCommand::UrlPlayback(uuid, song_dto, cb) => {
+                                    active_radio_url = None;
                                     let mut lock = player_worker.state.lock().unwrap();
 
                                     mixer.pause();
