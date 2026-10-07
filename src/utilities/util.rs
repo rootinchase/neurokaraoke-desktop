@@ -5,6 +5,7 @@ use ron::de::from_bytes;
 use ron::ser::to_string_pretty;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{DeserializeAs, SerializeAs};
+use std::io::Write;
 use std::sync::Arc;
 use tokio::fs::{read, write};
 use tokio::runtime::Handle;
@@ -80,11 +81,39 @@ pub fn format_duration(seconds: u64) -> String {
     format!("{}:{:02}", seconds / 60, seconds % 60)
 }
 
+pub fn write_debug_log(msg: &str) {
+    let log_path = match std::panic::catch_unwind(|| crate::config::config_dir().join("debug.log")) {
+        Ok(path) => path,
+        Err(_) => {
+            if let Some(dir) = dirs::config_dir() {
+                let fallback = dir.join("neurokaraoke-desktop");
+                let _ = std::fs::create_dir_all(&fallback);
+                fallback.join("debug.log")
+            } else {
+                std::path::PathBuf::from("debug.log")
+            }
+        }
+    };
+
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+    {
+        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f UTC");
+        let _ = writeln!(file, "[{}] {}", timestamp, msg);
+    }
+}
+
 #[macro_export]
 macro_rules! debug_log {
     ($($arg:tt)*) => {
-        if std::env::var("DEBUG_PLAYBACK").is_ok() {
-            eprintln!($($arg)*);
+        {
+            let msg = format!($($arg)*);
+            if std::env::var("DEBUG_PLAYBACK").is_ok() {
+                eprintln!("{}", msg);
+            }
+            $crate::utilities::util::write_debug_log(&msg);
         }
     };
 }
@@ -222,5 +251,24 @@ mod tests {
         );
         assert_eq!(items[0].songs, 10);
         assert_eq!(items[1].songs, 5);
+    }
+
+    #[test]
+    fn test_debug_log_writing() {
+        debug_log!("Test debug log entry {}", 123);
+        let log_path = match std::panic::catch_unwind(|| crate::config::config_dir().join("debug.log")) {
+            Ok(path) => path,
+            Err(_) => {
+                if let Some(dir) = dirs::config_dir() {
+                    dir.join("neurokaraoke-desktop").join("debug.log")
+                } else {
+                    std::path::PathBuf::from("debug.log")
+                }
+            }
+        };
+        if log_path.exists() {
+            let content = std::fs::read_to_string(&log_path).unwrap_or_default();
+            assert!(content.contains("Test debug log entry 123"));
+        }
     }
 }
