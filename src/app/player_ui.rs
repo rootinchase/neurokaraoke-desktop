@@ -18,6 +18,7 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
     let player_vol = app.player.get_volume();
     if (app.config.volume - player_vol).abs() > f32::EPSILON {
         app.config.volume = player_vol;
+        let _ = app.config.write();
     }
 
     if let Some(state) = app.player.get_playback_state() {
