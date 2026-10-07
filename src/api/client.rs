@@ -12,7 +12,7 @@ use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use serde_json::{Value, json};
 use std::sync::Arc;
-use uuid::{uuid, Uuid};
+use uuid::{Uuid, uuid};
 
 impl LazySongDatabase {
     pub fn new(
@@ -224,8 +224,8 @@ impl LazySongDatabase {
     }
 
     pub async fn report_play_count(&self, song_id: Uuid) -> anyhow::Result<()> {
-        if song_id == uuid!("00000000-0000-0000-0000-000000000000")  {
-            return Ok(())
+        if song_id == uuid!("00000000-0000-0000-0000-000000000000") {
+            return Ok(());
         }
         debug_log!("🎵 Reporting play count for song: {}", song_id);
         let url = format!("{}/api/songs/playCount/{}", API_URLS.api, song_id);

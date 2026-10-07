@@ -1,13 +1,13 @@
 #[cfg(test)]
 mod tests {
     use crate::api::models::*;
-    use std::sync::Arc;
     use serde::Deserialize;
+    use std::sync::Arc;
 
     #[test]
     fn test_parse_azuracast_neuro_21() {
-        let json_data = std::fs::read_to_string("raw_json/neuro_21")
-            .expect("Failed to read raw_json/neuro_21");
+        let json_data =
+            std::fs::read_to_string("raw_json/neuro_21").expect("Failed to read raw_json/neuro_21");
         let parsed: AzuraCastNowPlayingResponse = serde_json::from_str(&json_data)
             .expect("Failed to deserialize AzuraCastNowPlayingResponse");
 
@@ -27,8 +27,8 @@ mod tests {
 
     #[test]
     fn test_parse_azuracast_station_mounts() {
-        let json_data = std::fs::read_to_string("raw_json/neuro_21")
-            .expect("Failed to read raw_json/neuro_21");
+        let json_data =
+            std::fs::read_to_string("raw_json/neuro_21").expect("Failed to read raw_json/neuro_21");
         let parsed: AzuraCastNowPlayingResponse = serde_json::from_str(&json_data)
             .expect("Failed to deserialize AzuraCastNowPlayingResponse");
 
@@ -40,9 +40,15 @@ mod tests {
         let streams = station.available_streams();
         assert_eq!(streams.len(), 2);
         assert_eq!(streams[0].0, "320kbps MP3");
-        assert_eq!(streams[0].1, "https://radio.twinskaraoke.com/listen/neuro_21/radio.mp3");
+        assert_eq!(
+            streams[0].1,
+            "https://radio.twinskaraoke.com/listen/neuro_21/radio.mp3"
+        );
         assert_eq!(streams[1].0, "Opus");
-        assert_eq!(streams[1].1, "https://radio.twinskaraoke.com/listen/neuro_21/radio.ogg");
+        assert_eq!(
+            streams[1].1,
+            "https://radio.twinskaraoke.com/listen/neuro_21/radio.ogg"
+        );
     }
 
     #[test]
@@ -191,7 +197,8 @@ mod tests {
     fn test_artwork_and_cover_art_deserialization() {
         let json_null = r#"null"#;
         let _art: Option<Artwork> = serde_json::from_str(json_null).unwrap();
-        let deserialized = deserialize_cover_art(&mut serde_json::Deserializer::from_str(json_null)).unwrap();
+        let deserialized =
+            deserialize_cover_art(&mut serde_json::Deserializer::from_str(json_null)).unwrap();
         assert!(deserialized.is_some());
         assert_eq!(deserialized.unwrap().id, Artwork::default_art().id);
 

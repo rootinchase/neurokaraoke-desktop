@@ -502,7 +502,10 @@ impl AzuraCastStation {
         let mut streams = Vec::new();
         for mount in &self.mounts {
             if let Some(url) = &mount.url {
-                let name = mount.name.clone().unwrap_or_else(|| format!("Mount {}", mount.id));
+                let name = mount
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| format!("Mount {}", mount.id));
                 streams.push((name, url.clone()));
             }
         }
@@ -545,7 +548,9 @@ impl AzuraCastTrackInfo {
         let duration = self.duration.unwrap_or(0);
 
         if let (Some(played_at), Some(dur)) = (self.played_at, self.duration) {
-            if let Ok(duration_since_epoch) = std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH) {
+            if let Ok(duration_since_epoch) =
+                std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH)
+            {
                 let now_secs = duration_since_epoch.as_secs();
                 if now_secs >= played_at {
                     let elapsed = now_secs - played_at;
@@ -631,7 +636,6 @@ where
 
     deserializer.deserialize_option(OptU64Visitor)
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AzuraCastSong {

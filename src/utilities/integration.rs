@@ -1,8 +1,8 @@
 use crate::audio::Player;
 use crate::config::SharedConfig;
+use crate::debug_log;
 use crate::utilities::discord::DiscordPresencePayload;
 use crate::utilities::playwire::{self, MediaControls, Repeat, Track};
-use crate::debug_log;
 use tokio::sync::mpsc::UnboundedSender;
 
 pub struct PlaybackIntegrationManager {
@@ -47,7 +47,8 @@ impl PlaybackIntegrationManager {
     ) {
         if self.media_controls.is_none() {
             debug_log!("🔄 [Playwire] Re-attempting media controls initialization (lazy init)...");
-            self.media_controls = playwire::init_playwire(self.player.clone(), self.shared_config.clone());
+            self.media_controls =
+                playwire::init_playwire(self.player.clone(), self.shared_config.clone());
         }
 
         let track = self.get_track().cloned();

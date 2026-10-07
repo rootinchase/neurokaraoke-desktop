@@ -1,3 +1,4 @@
+use crate::activity::resolve_and_render_art;
 use crate::api::{
     AzuraCastNowPlayingResponse, GameHubScheduledInfo, LazySongDatabase, LoadingState,
     RadioCurrentStateResponse,
@@ -5,14 +6,15 @@ use crate::api::{
 use crate::audio::Player;
 use crate::theme::ThemeManager;
 use crate::utilities::cache::PersistentMediaCache;
-use crate::activity::resolve_and_render_art;
-use eframe::egui::{include_image, Button, Color32, Context, Frame, Image, RichText, ScrollArea, Ui, Vec2};
+use crate::utilities::persistence;
+use eframe::egui::{
+    Button, Color32, Context, Frame, Image, RichText, ScrollArea, Ui, Vec2, include_image,
+};
 use reqwest::Client;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 use uuid::Uuid;
-use crate::utilities::persistence;
 
 pub struct RadioActivity {
     pub ctx: Context,
@@ -35,8 +37,12 @@ impl RadioActivity {
         songs: LazySongDatabase,
         player: Player,
     ) -> Self {
-        let current_state = Arc::new(Mutex::new(LoadingState::<RadioCurrentStateResponse>::Loading));
-        let azuracast_state = Arc::new(Mutex::new(LoadingState::<AzuraCastNowPlayingResponse>::Loading));
+        let current_state = Arc::new(Mutex::new(
+            LoadingState::<RadioCurrentStateResponse>::Loading,
+        ));
+        let azuracast_state = Arc::new(Mutex::new(
+            LoadingState::<AzuraCastNowPlayingResponse>::Loading,
+        ));
         let gamehub_schedule = Arc::new(Mutex::new(LoadingState::<GameHubScheduledInfo>::Loading));
         let last_radio_art_uuid = Arc::new(Mutex::new(None));
 
@@ -59,8 +65,12 @@ impl RadioActivity {
                     let mut guard = azuracast_state_clone.lock().await;
                     let should_repaint = match &*guard {
                         LoadingState::Loaded(prev) => {
-                            let prev_sh = prev.effective_now_playing().as_ref().and_then(|np| np.sh_id);
-                            let new_sh = res.effective_now_playing().as_ref().and_then(|np| np.sh_id);
+                            let prev_sh = prev
+                                .effective_now_playing()
+                                .as_ref()
+                                .and_then(|np| np.sh_id);
+                            let new_sh =
+                                res.effective_now_playing().as_ref().and_then(|np| np.sh_id);
                             prev_sh != new_sh
                         }
                         _ => true,
@@ -68,7 +78,9 @@ impl RadioActivity {
 
                     if should_repaint {
                         if let Some(np) = res.effective_now_playing() {
-                            let is_radio_specific = np.song.as_ref()
+                            let is_radio_specific = np
+                                .song
+                                .as_ref()
                                 .and_then(|s| s.custom_fields.as_ref())
                                 .and_then(|cf| cf.get("songId"))
                                 .map(|sid| {
@@ -78,13 +90,17 @@ impl RadioActivity {
                                 .unwrap_or(true);
 
                             if let Some(old_uuid) = last_radio_art_uuid_clone.lock().await.take() {
-                                cache_clone_for_cleanup.remove_asset(old_uuid, crate::utilities::cache::AssetType::Image);
+                                cache_clone_for_cleanup.remove_asset(
+                                    old_uuid,
+                                    crate::utilities::cache::AssetType::Image,
+                                );
                             }
 
                             if is_radio_specific {
                                 if let Some(song) = &np.song {
                                     if let Some(art_url) = &song.art {
-                                        let new_uuid = Uuid::new_v5(&Uuid::NAMESPACE_URL, art_url.as_bytes());
+                                        let new_uuid =
+                                            Uuid::new_v5(&Uuid::NAMESPACE_URL, art_url.as_bytes());
                                         *last_radio_art_uuid_clone.lock().await = Some(new_uuid);
                                     }
                                 }
@@ -188,13 +204,21 @@ impl RadioActivity {
             ui.horizontal(|ui| {
                 ui.heading(RichText::new("Neuro 21 Station").color(theme.text).strong());
                 ui.add_space(20.0);
-                
+
                 ui.label(RichText::new("Stream:").color(theme.text_secondary));
                 eframe::egui::ComboBox::from_id_salt("radio_url_selector")
                     .selected_text(config.radio_url.name())
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut config.radio_url, crate::config::RadioUrl::Mp3320Kbps, crate::config::RadioUrl::Mp3320Kbps.name());
-                        ui.selectable_value(&mut config.radio_url, crate::config::RadioUrl::Opus, crate::config::RadioUrl::Opus.name());
+                        ui.selectable_value(
+                            &mut config.radio_url,
+                            crate::config::RadioUrl::Mp3320Kbps,
+                            crate::config::RadioUrl::Mp3320Kbps.name(),
+                        );
+                        ui.selectable_value(
+                            &mut config.radio_url,
+                            crate::config::RadioUrl::Opus,
+                            crate::config::RadioUrl::Opus.name(),
+                        );
                     });
             });
             ui.add_space(16.0);
@@ -217,9 +241,20 @@ impl RadioActivity {
                 if let Ok(LoadingState::Loaded(az)) = azuracast_guard.as_deref() {
                     let listeners = az.listeners.as_ref().map(|l| l.current).unwrap_or(0);
                     let is_online = az.is_online;
-                    ui.label(RichText::new(if is_online { "Station Online" } else { "Station Offline" }).size(14.0));
+                    ui.label(
+                        RichText::new(if is_online {
+                            "Station Online"
+                        } else {
+                            "Station Offline"
+                        })
+                        .size(14.0),
+                    );
                     ui.add_space(16.0);
-                    ui.label(RichText::new(format!("👥 Listeners: {}", listeners)).size(14.0).color(theme.text_secondary));
+                    ui.label(
+                        RichText::new(format!("👥 Listeners: {}", listeners))
+                            .size(14.0)
+                            .color(theme.text_secondary),
+                    );
                 }
             });
 
@@ -264,16 +299,24 @@ impl RadioActivity {
 
                 if !curr.history.is_empty() {
                     ui.add_space(16.0);
-                    ui.heading(RichText::new("Recently Played").size(16.0).color(theme.text));
+                    ui.heading(
+                        RichText::new("Recently Played")
+                            .size(16.0)
+                            .color(theme.text),
+                    );
                     ui.add_space(8.0);
                     for song in &curr.history {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(song.title.as_ref()).color(theme.text_secondary));
+                            ui.label(
+                                RichText::new(song.title.as_ref()).color(theme.text_secondary),
+                            );
                         });
                     }
                 }
             } else if let Ok(LoadingState::Failed(e)) = current_guard.as_deref() {
-                ui.label(RichText::new(format!("Failed to load radio state: {}", e)).color(Color32::RED));
+                ui.label(
+                    RichText::new(format!("Failed to load radio state: {}", e)).color(Color32::RED),
+                );
             }
         });
     }
@@ -306,33 +349,42 @@ pub fn render_radio_now_playing(
                             Image::new(include_image!("../../assets/play.svg"))
                                 .fit_to_exact_size(Vec2::new(50.0, 50.0)),
                         )
-                            .min_size(Vec2::new(70.0, 70.0))
-                            .corner_radius(40.0)
-                            .fill(theme.primary),
+                        .min_size(Vec2::new(70.0, 70.0))
+                        .corner_radius(40.0)
+                        .fill(theme.primary),
                     );
 
-                    if resp.clicked(){
+                    if resp.clicked() {
                         let _ = persistence::clear_app_state();
-                        player.radio_stream(
-                            config.radio_url.url().to_string(),
-                            Player::play,
-                        );
+                        player.radio_stream(config.radio_url.url().to_string(), Player::play);
                     }
                     ui.add_space(16.0);
 
                     // Render artwork from socket song if available
                     if let Some(song) = socket_curr {
                         if let Some(art) = &song.cover_art {
-                            resolve_and_render_art(ui, cache, ctx, rt, client, art, Vec2::new(120.0, 120.0));
+                            resolve_and_render_art(
+                                ui,
+                                cache,
+                                ctx,
+                                rt,
+                                client,
+                                art,
+                                Vec2::new(120.0, 120.0),
+                            );
                         }
                     } else if let Some(np) = az_np.as_ref() {
                         if let Some(song) = &np.song {
                             if let Some(art_url) = &song.art {
-                                let song_id_uuid = song.custom_fields.as_ref()
+                                let song_id_uuid = song
+                                    .custom_fields
+                                    .as_ref()
                                     .and_then(|cf| cf.get("songId"))
                                     .and_then(|sid| {
                                         let trimmed = sid.trim();
-                                        if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("null") {
+                                        if trimmed.is_empty()
+                                            || trimmed.eq_ignore_ascii_case("null")
+                                        {
                                             None
                                         } else {
                                             Uuid::parse_str(trimmed).ok()
@@ -351,19 +403,47 @@ pub fn render_radio_now_playing(
                                     artist: None,
                                     is_sensitive: false,
                                 };
-                                resolve_and_render_art(ui, cache, ctx, rt, client, &art_obj, Vec2::new(120.0, 120.0));
+                                resolve_and_render_art(
+                                    ui,
+                                    cache,
+                                    ctx,
+                                    rt,
+                                    client,
+                                    &art_obj,
+                                    Vec2::new(120.0, 120.0),
+                                );
                             } else {
-                                let (rect, _) = ui.allocate_exact_size(Vec2::new(120.0, 120.0), eframe::egui::Sense::hover());
-                                ui.painter().rect_filled(rect, 4.0, theme.background_elevated);
-                                ui.painter().text(rect.center(), eframe::egui::Align2::CENTER_CENTER, "🎵", eframe::egui::FontId::proportional(32.0), Color32::WHITE);
+                                let (rect, _) = ui.allocate_exact_size(
+                                    Vec2::new(120.0, 120.0),
+                                    eframe::egui::Sense::hover(),
+                                );
+                                ui.painter()
+                                    .rect_filled(rect, 4.0, theme.background_elevated);
+                                ui.painter().text(
+                                    rect.center(),
+                                    eframe::egui::Align2::CENTER_CENTER,
+                                    "🎵",
+                                    eframe::egui::FontId::proportional(32.0),
+                                    Color32::WHITE,
+                                );
                             }
                         }
                     }
 
                     ui.add_space(16.0);
                     ui.vertical(|ui| {
-                        ui.label(RichText::new("Neuro 21 Station").size(18.0).color(theme.primary).strong());
-                        ui.label(RichText::new("NOW PLAYING").size(12.0).color(theme.primary).strong());
+                        ui.label(
+                            RichText::new("Neuro 21 Station")
+                                .size(18.0)
+                                .color(theme.primary)
+                                .strong(),
+                        );
+                        ui.label(
+                            RichText::new("NOW PLAYING")
+                                .size(12.0)
+                                .color(theme.primary)
+                                .strong(),
+                        );
                         ui.add_space(4.0);
 
                         let title = az_np
@@ -383,7 +463,11 @@ pub fn render_radio_now_playing(
 
                         if let Some(art_str) = artist {
                             ui.add_space(2.0);
-                            ui.label(RichText::new(format!("Artist: {}", art_str)).size(14.0).color(theme.text_secondary));
+                            ui.label(
+                                RichText::new(format!("Artist: {}", art_str))
+                                    .size(14.0)
+                                    .color(theme.text_secondary),
+                            );
                         }
 
                         if let Some(np) = az_np.as_ref() {
@@ -392,15 +476,19 @@ pub fn render_radio_now_playing(
                             let remaining = np.remaining_secs();
                             if duration > 0 {
                                 ui.add_space(6.0);
-                                ui.label(RichText::new(format!(
-                                    "Progress: {}:{:02} / {}:{:02} (-{}:{:02})",
-                                    elapsed / 60,
-                                    elapsed % 60,
-                                    duration / 60,
-                                    duration % 60,
-                                    remaining / 60,
-                                    remaining % 60
-                                )).size(12.0).color(theme.text_muted));
+                                ui.label(
+                                    RichText::new(format!(
+                                        "Progress: {}:{:02} / {}:{:02} (-{}:{:02})",
+                                        elapsed / 60,
+                                        elapsed % 60,
+                                        duration / 60,
+                                        duration % 60,
+                                        remaining / 60,
+                                        remaining % 60
+                                    ))
+                                    .size(12.0)
+                                    .color(theme.text_muted),
+                                );
                             }
                         }
                     });

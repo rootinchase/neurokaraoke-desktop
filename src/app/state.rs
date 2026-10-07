@@ -94,9 +94,13 @@ impl App {
             .unwrap_or_else(|_| Uuid::new_v5(&Uuid::NAMESPACE_URL, key_str.as_bytes()));
 
         // 2. Check persistent disk cache before downloading
-        if let Some(path) = self.cache.get_cached_path(target_uuid, cache::AssetType::Image) {
+        if let Some(path) = self
+            .cache
+            .get_cached_path(target_uuid, cache::AssetType::Image)
+        {
             let path_str = path.to_string_lossy().into_owned();
-            self.cached_art_paths.insert(key_str.clone(), path_str.clone());
+            self.cached_art_paths
+                .insert(key_str.clone(), path_str.clone());
             return Some(path_str);
         }
 

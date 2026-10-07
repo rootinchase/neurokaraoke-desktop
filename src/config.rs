@@ -195,9 +195,15 @@ mod tests {
     #[test]
     fn test_radio_url_properties() {
         assert_eq!(RadioUrl::Mp3320Kbps.name(), "320kbps MP3");
-        assert_eq!(RadioUrl::Mp3320Kbps.url(), "https://radio.twinskaraoke.com/listen/neuro_21/radio.mp3");
+        assert_eq!(
+            RadioUrl::Mp3320Kbps.url(),
+            "https://radio.twinskaraoke.com/listen/neuro_21/radio.mp3"
+        );
         assert_eq!(RadioUrl::Opus.name(), "Opus");
-        assert_eq!(RadioUrl::Opus.url(), "https://radio.twinskaraoke.com/listen/neuro_21/radio.ogg");
+        assert_eq!(
+            RadioUrl::Opus.url(),
+            "https://radio.twinskaraoke.com/listen/neuro_21/radio.ogg"
+        );
     }
 
     #[test]

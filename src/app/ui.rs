@@ -253,7 +253,10 @@ impl eframe::App for App {
                             {
                                 match url::Url::from_file_path(&path) {
                                     Ok(url) => Some(url.to_string()),
-                                    Err(()) => Some(format!("file:///{}", path.to_string_lossy().replace('\\', "/"))),
+                                    Err(()) => Some(format!(
+                                        "file:///{}",
+                                        path.to_string_lossy().replace('\\', "/")
+                                    )),
                                 }
                             } else {
                                 self.resolve_artwork_uri(
@@ -443,7 +446,8 @@ impl App {
                 },
             );
         } else if self.activity == ActivityType::Radio {
-            self.radio_activity.render(ui, &self.theme, &mut self.config);
+            self.radio_activity
+                .render(ui, &self.theme, &mut self.config);
         } else if self.activity == ActivityType::Search {
             self.search_activity
                 .render(ui, &self.songs, &mut self.player, &self.current_song_uuid);

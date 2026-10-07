@@ -50,19 +50,13 @@ pub enum PlaybackCommand {
         crate::api::SongDTO,
         Box<dyn FnOnce(&Player) + Send + 'static>,
     ),
-    RadioStream(
-        String,
-        Box<dyn FnOnce(&Player) + Send + 'static>,
-    ),
+    RadioStream(String, Box<dyn FnOnce(&Player) + Send + 'static>),
     SongReady(
         Option<Uuid>,
         std::fs::File,
         Option<Box<dyn FnOnce(&Player) + Send + 'static>>,
     ),
-    RadioStreamReady(
-        std::fs::File,
-        Box<dyn FnOnce(&Player) + Send + 'static>,
-    ),
+    RadioStreamReady(std::fs::File, Box<dyn FnOnce(&Player) + Send + 'static>),
     Seek(Duration),
     Shutdown,
     NextSong,

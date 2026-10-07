@@ -42,7 +42,9 @@ pub(crate) fn init_playwire(player: Player, shared_config: SharedConfig) -> Opti
         }
 
         if hwnd_ptr.is_none() {
-            debug_log!("⚠️ [Playwire] Warning: Windows HWND could not be resolved yet. Media controls will retry.");
+            debug_log!(
+                "⚠️ [Playwire] Warning: Windows HWND could not be resolved yet. Media controls will retry."
+            );
             return None;
         }
     }

@@ -33,7 +33,9 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                         az_elapsed = np.elapsed_secs();
                         az_duration = np.duration_secs();
                         if let Some(az_song) = &np.song {
-                            let song_id_uuid = az_song.custom_fields.as_ref()
+                            let song_id_uuid = az_song
+                                .custom_fields
+                                .as_ref()
                                 .and_then(|cf| cf.get("songId"))
                                 .and_then(|sid| {
                                     let trimmed = sid.trim();
@@ -175,7 +177,11 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                     .map(|pos| (pos.x - rect.left()).clamp(0.0, rect.width()) / rect.width());
                 let (position_secs, duration_secs, progress) = if is_radio {
                     let p = az_elapsed as f64;
-                    let d = if az_duration > 0 { az_duration as f64 } else { 1.0 };
+                    let d = if az_duration > 0 {
+                        az_duration as f64
+                    } else {
+                        1.0
+                    };
                     (az_elapsed, az_duration, (p / d) as f32)
                 } else {
                     let pos = if app.dragging_seeker
@@ -237,11 +243,8 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                             .show(|ui| {
                                 let point = state.duration().mul_f32(p).as_secs();
                                 ui.add(
-                                    Label::new(
-                                        RichText::new(format_duration(point))
-                                            .size(12.0),
-                                    )
-                                    .wrap_mode(TextWrapMode::Extend),
+                                    Label::new(RichText::new(format_duration(point)).size(12.0))
+                                        .wrap_mode(TextWrapMode::Extend),
                                 );
                             });
                         }
@@ -270,261 +273,260 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                     let right_width = 160.0;
 
                     // Left side (Cover + Metadata) rendered first to measure its natural width
-                    let left_resp = ui.horizontal(|ui| {
-                        ui.add_space(7.5);
-                        let mut current_img_uuid: Option<Arc<str>> = None;
-                        let mut current_abs_path: Option<Arc<str>> = None;
-                        if let Some(s) = &song {
-                            if let Some(cover_art) = &s.cover_art {
-                                current_img_uuid = cover_art.cloudflare_id.clone();
-                                current_abs_path = Some(cover_art.absolute_path.clone());
+                    let left_resp = ui
+                        .horizontal(|ui| {
+                            ui.add_space(7.5);
+                            let mut current_img_uuid: Option<Arc<str>> = None;
+                            let mut current_abs_path: Option<Arc<str>> = None;
+                            if let Some(s) = &song {
+                                if let Some(cover_art) = &s.cover_art {
+                                    current_img_uuid = cover_art.cloudflare_id.clone();
+                                    current_abs_path = Some(cover_art.absolute_path.clone());
+                                }
                             }
-                        }
-                        if current_img_uuid.is_none() {
-                            if let Ok(meta) = app.player.current_url_metadata.lock() {
-                                if let Some(meta) = &*meta
-                                    && meta.id == state.song()
-                                {
-                                    if let Some(art) = &meta.cover_art {
-                                        current_img_uuid = art.cloudflare_id.clone();
-                                        current_abs_path = Some(art.absolute_path.clone());
+                            if current_img_uuid.is_none() {
+                                if let Ok(meta) = app.player.current_url_metadata.lock() {
+                                    if let Some(meta) = &*meta
+                                        && meta.id == state.song()
+                                    {
+                                        if let Some(art) = &meta.cover_art {
+                                            current_img_uuid = art.cloudflare_id.clone();
+                                            current_abs_path = Some(art.absolute_path.clone());
+                                        }
                                     }
                                 }
                             }
-                        }
 
-                        let mut cached_path_str = None;
-                        if let Some(abs_path) = current_abs_path {
-                            cached_path_str = app.resolve_artwork_uri(
-                                ui.ctx(),
-                                current_img_uuid,
-                                abs_path,
-                            );
-                        }
-
-                        let size = 80.0;
-                        if let Some(path_str) = cached_path_str {
-                            if let Ok(image_bytes) = std::fs::read(&path_str) {
-                                let image_source = ImageSource::Bytes {
-                                    uri: std::borrow::Cow::Owned(format!(
-                                        "bytes://{}",
-                                        path_str
-                                    )),
-                                    bytes: image_bytes.into(),
-                                };
-
-                                ui.add(
-                                    Image::new(image_source)
-                                        .fit_to_exact_size(vec2(size, size))
-                                        .bg_fill(Color32::TRANSPARENT)
-                                        .corner_radius(8.0),
-                                );
+                            let mut cached_path_str = None;
+                            if let Some(abs_path) = current_abs_path {
+                                cached_path_str =
+                                    app.resolve_artwork_uri(ui.ctx(), current_img_uuid, abs_path);
                             }
-                        } else {
-                            let (rect, _) = ui
-                                .allocate_exact_size(Vec2::new(size, size), Sense::hover());
-                            ui.painter().rect_filled(
-                                rect,
-                                8.0,
-                                app.theme.background_elevated,
-                            );
-                        }
 
-                        ui.add_space(8.0);
+                            let size = 80.0;
+                            if let Some(path_str) = cached_path_str {
+                                if let Ok(image_bytes) = std::fs::read(&path_str) {
+                                    let image_source = ImageSource::Bytes {
+                                        uri: std::borrow::Cow::Owned(format!(
+                                            "bytes://{}",
+                                            path_str
+                                        )),
+                                        bytes: image_bytes.into(),
+                                    };
 
-                        //Song metadata display
-                        ui.scope(|ui| {
-                            ui.set_max_width(280.0);
-                            ui.with_layout(Layout::top_down(Align::LEFT), |ui| {
-                                ui.add_space(1.0);
-                                let title = song
-                                    .as_ref()
-                                    .map(|s| s.title.to_string())
-                                    .unwrap_or_else(|| "Unknown Song".to_string());
-                                ui.add(
-                                    Label::new(RichText::new(title).size(22.0))
-                                        .wrap_mode(TextWrapMode::Truncate),
-                                );
-                                if let Some(s) = &song {
+                                    ui.add(
+                                        Image::new(image_source)
+                                            .fit_to_exact_size(vec2(size, size))
+                                            .bg_fill(Color32::TRANSPARENT)
+                                            .corner_radius(8.0),
+                                    );
+                                }
+                            } else {
+                                let (rect, _) =
+                                    ui.allocate_exact_size(Vec2::new(size, size), Sense::hover());
+                                ui.painter()
+                                    .rect_filled(rect, 8.0, app.theme.background_elevated);
+                            }
+
+                            ui.add_space(8.0);
+
+                            //Song metadata display
+                            ui.scope(|ui| {
+                                ui.set_max_width(280.0);
+                                ui.with_layout(Layout::top_down(Align::LEFT), |ui| {
+                                    ui.add_space(1.0);
+                                    let title = song
+                                        .as_ref()
+                                        .map(|s| s.title.to_string())
+                                        .unwrap_or_else(|| "Unknown Song".to_string());
+                                    ui.add(
+                                        Label::new(RichText::new(title).size(22.0))
+                                            .wrap_mode(TextWrapMode::Truncate),
+                                    );
+                                    if let Some(s) = &song {
+                                        ui.add(
+                                            Label::new(
+                                                RichText::new(format!(
+                                                    "{} (feat. {})",
+                                                    s.original_artists.join(" & "),
+                                                    s.cover_artists.join(" & ")
+                                                ))
+                                                .color(app.theme.text_muted)
+                                                .size(12.0),
+                                            )
+                                            .wrap_mode(TextWrapMode::Truncate),
+                                        );
+                                    }
                                     ui.add(
                                         Label::new(
                                             RichText::new(format!(
-                                                "{} (feat. {})",
-                                                s.original_artists.join(" & "),
-                                                s.cover_artists.join(" & ")
+                                                "{}{}:{:02} / {}:{:02}",
+                                                if is_radio { "🔴 " } else { "" },
+                                                position_secs / 60,
+                                                position_secs % 60,
+                                                duration_secs / 60,
+                                                duration_secs % 60
                                             ))
-                                            .color(app.theme.text_muted)
-                                            .size(12.0),
+                                            .color(if is_radio {
+                                                app.theme.primary
+                                            } else {
+                                                app.theme.text_muted
+                                            })
+                                            .size(if is_radio { 11.0 } else { 10.0 }),
                                         )
                                         .wrap_mode(TextWrapMode::Truncate),
                                     );
-                                }
-                                ui.add(
-                                    Label::new(
-                                        RichText::new(format!(
-                                            "{}{}:{:02} / {}:{:02}",
-                                            if is_radio { "🔴 " } else { "" },
-                                            position_secs / 60,
-                                            position_secs % 60,
-                                            duration_secs / 60,
-                                            duration_secs % 60
-                                        ))
-                                        .color(if is_radio { app.theme.primary } else { app.theme.text_muted })
-                                        .size(if is_radio { 11.0 } else { 10.0 }),
-                                    )
-                                    .wrap_mode(TextWrapMode::Truncate),
-                                );
+                                });
                             });
-                        });
-                    }).response;
+                        })
+                        .response;
 
                     let left_width = left_resp.rect.width();
-                    let remaining = (total_width - left_width - center_width - right_width).max(0.0);
+                    let remaining =
+                        (total_width - left_width - center_width - right_width).max(0.0);
                     let spacer = remaining / 2.0;
 
                     ui.add_space(spacer);
 
                     // Center control
                     ui.allocate_ui(vec2(center_width, ui.available_height()), |ui| {
-                        ui.with_layout(Layout::left_to_right(Align::Center).with_main_align(Align::Center), |ui| {
+                        ui.with_layout(
+                            Layout::left_to_right(Align::Center).with_main_align(Align::Center),
+                            |ui| {
+                                if !is_radio {
+                                    app.config.shuffle = app.shared_config.shuffle.load(SeqCst);
+                                    let current_mode_u32 = app.shared_config.loop_mode.load(SeqCst);
+                                    app.config.loop_mode = match current_mode_u32 {
+                                        1 => LoopMode::One,
+                                        2 => LoopMode::All,
+                                        _ => LoopMode::None,
+                                    };
 
-                            if !is_radio {
-                                app.config.shuffle = app
-                                    .shared_config
-                                    .shuffle
-                                    .load(SeqCst);
-                                let current_mode_u32 = app
-                                    .shared_config
-                                    .loop_mode
-                                    .load(SeqCst);
-                                app.config.loop_mode = match current_mode_u32 {
-                                    1 => LoopMode::One,
-                                    2 => LoopMode::All,
-                                    _ => LoopMode::None,
-                                };
+                                    if btn(
+                                        &app.theme,
+                                        ui,
+                                        include_image!("../../assets/backward.svg"),
+                                        false,
+                                    ) {
+                                        app.player.previous();
+                                    }
 
-                                if btn(
-                                    &app.theme,
-                                    ui,
-                                    include_image!("../../assets/backward.svg"),
-                                    false,
-                                ) {
-                                    app.player.previous();
+                                    ui.add_space(10.0);
+
+                                    if btn(
+                                        &app.theme,
+                                        ui,
+                                        include_image!("../../assets/shuffle.svg"),
+                                        app.config.shuffle,
+                                    ) {
+                                        app.config.shuffle = !app.config.shuffle;
+                                        app.player.shuffle(app.config.shuffle);
+                                        app.shared_config.shuffle.store(app.config.shuffle, SeqCst);
+                                        let _ = app.config.write();
+                                        ui.ctx().request_repaint();
+                                    }
+
+                                    ui.add_space(10.0);
                                 }
 
-                                ui.add_space(10.0);
+                                // Play/Pause
+                                let resp = ui.add(
+                                    Button::image(
+                                        Image::new(if state.paused() {
+                                            include_image!("../../assets/play.svg")
+                                        } else if is_radio {
+                                            include_image!("../../assets/stop.svg")
+                                        } else {
+                                            include_image!("../../assets/pause.svg")
+                                        })
+                                        .fit_to_exact_size(if !is_radio {
+                                            Vec2::new(24.0, 24.0)
+                                        } else if !state.paused() {
+                                            Vec2::new(16.0, 16.0)
+                                        } else {
+                                            Vec2::new(24.0, 24.0)
+                                        }),
+                                    )
+                                    .min_size(Vec2::new(40.0, 40.0))
+                                    .corner_radius(20.0)
+                                    .fill(app.theme.primary),
+                                );
 
-                                if btn(
-                                    &app.theme,
-                                    ui,
-                                    include_image!("../../assets/shuffle.svg"),
-                                    app.config.shuffle,
-                                ) {
-                                    app.config.shuffle = !app.config.shuffle;
-                                    app.player.shuffle(app.config.shuffle);
-                                    app.shared_config
-                                        .shuffle
-                                        .store(app.config.shuffle, SeqCst);
-                                    let _ = app.config.write();
-                                    ui.ctx().request_repaint();
+                                if resp.hovered() {
+                                    ui.set_cursor_icon(CursorIcon::PointingHand);
                                 }
 
-                                ui.add_space(10.0);
-                            }
+                                if resp.clicked() {
+                                    if is_radio {
+                                        if state.paused() {
+                                            app.player.radio_stream(
+                                                app.config.radio_url.url().to_string(),
+                                                crate::audio::Player::play,
+                                            );
+                                        } else {
+                                            app.player.pause();
+                                        }
+                                    } else {
+                                        if state.paused() {
+                                            app.player.play();
+                                        } else {
+                                            app.player.pause();
+                                        }
+                                    }
+                                }
 
-                            // Play/Pause
-                            let resp = ui.add(
-                                Button::image(
-                                    Image::new(
-                                        if state.paused() { include_image!("../../assets/play.svg")}
-                                        else if is_radio { include_image!("../../assets/stop.svg")}
-                                        else { include_image!("../../assets/pause.svg") }
-                                        )
-                                    .fit_to_exact_size(
-                                        if !is_radio { Vec2::new(24.0, 24.0) }
-                                        else if !state.paused() { Vec2::new(16.0, 16.0) }
-                                        else { Vec2::new(24.0, 24.0) }
-                                    ),
-                                )
-                                .min_size(Vec2::new(40.0, 40.0))
-                                .corner_radius(20.0)
-                                .fill(app.theme.primary),
-                            );
+                                if !is_radio {
+                                    ui.add_space(10.0);
 
-                            if resp.hovered() {
-                                ui.set_cursor_icon(CursorIcon::PointingHand);
-                            }
-
-                            if resp.clicked() {
-                                if is_radio {
-                                    if state.paused() {
-                                        app.player.radio_stream(
-                                            app.config.radio_url.url().to_string(),
-                                            crate::audio::Player::play,
+                                    //Loop
+                                    if btn(
+                                        &app.theme,
+                                        ui,
+                                        match app.config.loop_mode {
+                                            LoopMode::One => {
+                                                include_image!("../../assets/loop-one.svg")
+                                            }
+                                            _ => include_image!("../../assets/loop.svg"),
+                                        },
+                                        app.config.loop_mode != LoopMode::None,
+                                    ) {
+                                        let next_mode = match app.config.loop_mode {
+                                            LoopMode::None => LoopMode::One,
+                                            LoopMode::One => LoopMode::All,
+                                            LoopMode::All => LoopMode::None,
+                                        };
+                                        debug_log!(
+                                            "Loop mode toggled: {:?} -> {:?}",
+                                            app.config.loop_mode,
+                                            next_mode
                                         );
-                                    } else {
-                                        app.player.pause();
+                                        app.config.loop_mode = next_mode;
+                                        app.player.looping(next_mode);
+
+                                        let mode_u32 = match next_mode {
+                                            LoopMode::None => 0,
+                                            LoopMode::One => 1,
+                                            LoopMode::All => 2,
+                                        };
+                                        app.shared_config.loop_mode.store(mode_u32, SeqCst);
+
+                                        let _ = app.config.write();
+                                        ui.ctx().request_repaint();
                                     }
-                                } else {
-                                    if state.paused() {
-                                        app.player.play();
-                                    } else {
-                                        app.player.pause();
+
+                                    ui.add_space(10.0);
+
+                                    if btn(
+                                        &app.theme,
+                                        ui,
+                                        include_image!("../../assets/forward.svg"),
+                                        false,
+                                    ) {
+                                        app.player.next_song();
                                     }
                                 }
-                            }
-
-                            if !is_radio {
-                                ui.add_space(10.0);
-
-                                //Loop
-                                if btn(
-                                    &app.theme,
-                                    ui,
-                                    match app.config.loop_mode {
-                                        LoopMode::One => include_image!("../../assets/loop-one.svg"),
-                                        _ => include_image!("../../assets/loop.svg"),
-                                    },
-                                    app.config.loop_mode != LoopMode::None,
-                                ) {
-                                    let next_mode = match app.config.loop_mode {
-                                        LoopMode::None => LoopMode::One,
-                                        LoopMode::One => LoopMode::All,
-                                        LoopMode::All => LoopMode::None,
-                                    };
-                                    debug_log!(
-                                        "Loop mode toggled: {:?} -> {:?}",
-                                        app.config.loop_mode,
-                                        next_mode
-                                    );
-                                    app.config.loop_mode = next_mode;
-                                    app.player.looping(next_mode);
-
-                                    let mode_u32 = match next_mode {
-                                        LoopMode::None => 0,
-                                        LoopMode::One => 1,
-                                        LoopMode::All => 2,
-                                    };
-                                    app.shared_config
-                                        .loop_mode
-                                        .store(mode_u32, SeqCst);
-
-                                    let _ = app.config.write();
-                                    ui.ctx().request_repaint();
-                                }
-
-                                ui.add_space(10.0);
-
-                                if btn(
-                                    &app.theme,
-                                    ui,
-                                    include_image!("../../assets/forward.svg"),
-                                    false,
-                                ) {
-                                    app.player.next_song();
-                                }
-                            }
-                        });
+                            },
+                        );
                     });
 
                     ui.add_space(spacer);
@@ -533,306 +535,323 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                     ui.allocate_ui(vec2(right_width, ui.available_height()), |ui| {
                         ui.horizontal_centered(|ui| {
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            // Volume control progress bar
-                            //ui.add_space(8.0); // Give a little margin from the favorite/timer icons
+                                // Volume control progress bar
+                                //ui.add_space(8.0); // Give a little margin from the favorite/timer icons
 
-                            let desired_size = vec2(16.0, ui.available_height() - 5.0);
-                            let (rect, resp) =
-                                ui.allocate_exact_size(desired_size, Sense::click_and_drag());
+                                let desired_size = vec2(16.0, ui.available_height() - 5.0);
+                                let (rect, resp) =
+                                    ui.allocate_exact_size(desired_size, Sense::click_and_drag());
 
-                            let progress = app.config.volume.clamp(0.0, 1.0);
+                                let progress = app.config.volume.clamp(0.0, 1.0);
 
-                            if resp.hovered() || resp.dragged() {
-                                ui.set_cursor_icon(CursorIcon::PointingHand);
-                            }
+                                if resp.hovered() || resp.dragged() {
+                                    ui.set_cursor_icon(CursorIcon::PointingHand);
+                                }
 
-                            if resp.dragged() || resp.clicked() {
-                                if let Some(pos) = ui.pointer_latest_pos() {
-                                    let p =
-                                        ((rect.bottom() - pos.y) / rect.height()).clamp(0.0, 1.0);
-                                    if (app.config.volume - p).abs() > f32::EPSILON {
-                                        app.config.volume = p;
-                                        app.player.volume(app.config.volume);
-                                        app.shared_config
-                                            ._volume
-                                            .store(app.config.volume.to_bits(), SeqCst);
-                                        let _ = app.config.write();
-                                        ui.ctx().request_repaint();
+                                if resp.dragged() || resp.clicked() {
+                                    if let Some(pos) = ui.pointer_latest_pos() {
+                                        let p = ((rect.bottom() - pos.y) / rect.height())
+                                            .clamp(0.0, 1.0);
+                                        if (app.config.volume - p).abs() > f32::EPSILON {
+                                            app.config.volume = p;
+                                            app.player.volume(app.config.volume);
+                                            app.shared_config
+                                                ._volume
+                                                .store(app.config.volume.to_bits(), SeqCst);
+                                            let _ = app.config.write();
+                                            ui.ctx().request_repaint();
+                                        }
                                     }
                                 }
-                            }
 
-                            if resp.hovered() || resp.dragged() {
-                                if let Some(pos) = ui.pointer_latest_pos() {
-                                    Popup::new(
-                                        ui.id().with("volume_tooltip"),
-                                        ui.ctx().clone(),
-                                        PopupAnchor::Position(Pos2::new(
-                                            rect.center().x,
-                                            pos.y.clamp(rect.top(), rect.bottom()),
-                                        )),
-                                        ui.layer_id(),
-                                    )
-                                    .align(Default::default())
-                                    .kind(PopupKind::Tooltip)
-                                    .open(true)
-                                    .show(|ui| {
-                                        ui.add(
-                                            Label::new(
-                                                RichText::new(format!(
-                                                    "{:.0}%",
-                                                    app.config.volume * 100.0
-                                                ))
-                                                .size(11.0),
-                                            )
-                                            .wrap_mode(TextWrapMode::Extend),
-                                        );
-                                    });
-                                }
-                            }
-
-                            // Draw background track
-                            let track_rect = Rect::from_center_size(
-                                rect.center(),
-                                vec2(6.0, rect.height()),
-                            );
-                            ui.painter().rect_filled(
-                                track_rect,
-                                3.0,
-                                app.theme.background_elevated,
-                            );
-
-                            // Draw filled-in part using theme accent
-                            let filled_height = rect.height() * progress;
-                            let filled_rect = Rect::from_min_max(
-                                Pos2::new(track_rect.left(), rect.bottom() - filled_height),
-                                Pos2::new(track_rect.right(), rect.bottom()),
-                            );
-                            ui.painter()
-                                .rect_filled(filled_rect, 3.0, app.theme.primary);
-
-                            ui.add_space(10.0);
-
-                            // Favorite button - conditional on song
-                            // NOTE: This block is intentionally restricted to songs.
-                            // Do not allow radio or other media types here, as they cannot be favorited.
-                            if !is_radio {
-                                if let Some(state) = app.player.get_playback_state() {
-                                    let current_song_uuid = state.song();
-                                    let is_favorite =
-                                        app.favorites_activity.is_favorite(&current_song_uuid);
-                                    let icon = if is_favorite {
-                                        include_image!("../../assets/favorite.svg")
-                                    } else {
-                                        include_image!("../../assets/favorite-empty.svg")
-                                    };
-
-                                    let resp = ui
-                                        .add(
-                                            Image::new(icon)
-                                                .fit_to_exact_size(Vec2::new(24.0, 24.0))
-                                                .tint(if is_favorite {
-                                                    app.theme.accent_light
-                                                } else {
-                                                    app.theme.text
-                                                }),
+                                if resp.hovered() || resp.dragged() {
+                                    if let Some(pos) = ui.pointer_latest_pos() {
+                                        Popup::new(
+                                            ui.id().with("volume_tooltip"),
+                                            ui.ctx().clone(),
+                                            PopupAnchor::Position(Pos2::new(
+                                                rect.center().x,
+                                                pos.y.clamp(rect.top(), rect.bottom()),
+                                            )),
+                                            ui.layer_id(),
                                         )
-                                        .interact(Sense::click());
-
-                                    if resp.hovered() {
-                                        ui.set_cursor_icon(CursorIcon::PointingHand);
+                                        .align(Default::default())
+                                        .kind(PopupKind::Tooltip)
+                                        .open(true)
+                                        .show(|ui| {
+                                            ui.add(
+                                                Label::new(
+                                                    RichText::new(format!(
+                                                        "{:.0}%",
+                                                        app.config.volume * 100.0
+                                                    ))
+                                                    .size(11.0),
+                                                )
+                                                .wrap_mode(TextWrapMode::Extend),
+                                            );
+                                        });
                                     }
-
-                                    if resp.clicked() {
-                                        app.favorites_activity
-                                            .toggle_favorite(current_song_uuid, &app.songs);
-                                    }
-                                    ui.add_space(10.0);
                                 }
-                            }
 
-                            // Always visible buttons
-                            let is_timer_active = app.sleep_timer_end.is_some();
-                            let image = if is_timer_active {
-                                include_image!("../../assets/timer-active.svg")
-                            } else {
-                                include_image!("../../assets/timer-off.svg")
-                            };
+                                // Draw background track
+                                let track_rect =
+                                    Rect::from_center_size(rect.center(), vec2(6.0, rect.height()));
+                                ui.painter().rect_filled(
+                                    track_rect,
+                                    3.0,
+                                    app.theme.background_elevated,
+                                );
 
-                            let image_button = Image::new(image)
-                                .fit_to_exact_size(Vec2::new(24.0, 24.0))
-                                .tint(if is_timer_active {
-                                    app.theme.accent_light
+                                // Draw filled-in part using theme accent
+                                let filled_height = rect.height() * progress;
+                                let filled_rect = Rect::from_min_max(
+                                    Pos2::new(track_rect.left(), rect.bottom() - filled_height),
+                                    Pos2::new(track_rect.right(), rect.bottom()),
+                                );
+                                ui.painter()
+                                    .rect_filled(filled_rect, 3.0, app.theme.primary);
+
+                                ui.add_space(10.0);
+
+                                // Favorite button - conditional on song
+                                // NOTE: This block is intentionally restricted to songs.
+                                // Do not allow radio or other media types here, as they cannot be favorited.
+                                if !is_radio {
+                                    if let Some(state) = app.player.get_playback_state() {
+                                        let current_song_uuid = state.song();
+                                        let is_favorite =
+                                            app.favorites_activity.is_favorite(&current_song_uuid);
+                                        let icon = if is_favorite {
+                                            include_image!("../../assets/favorite.svg")
+                                        } else {
+                                            include_image!("../../assets/favorite-empty.svg")
+                                        };
+
+                                        let resp = ui
+                                            .add(
+                                                Image::new(icon)
+                                                    .fit_to_exact_size(Vec2::new(24.0, 24.0))
+                                                    .tint(if is_favorite {
+                                                        app.theme.accent_light
+                                                    } else {
+                                                        app.theme.text
+                                                    }),
+                                            )
+                                            .interact(Sense::click());
+
+                                        if resp.hovered() {
+                                            ui.set_cursor_icon(CursorIcon::PointingHand);
+                                        }
+
+                                        if resp.clicked() {
+                                            app.favorites_activity
+                                                .toggle_favorite(current_song_uuid, &app.songs);
+                                        }
+                                        ui.add_space(10.0);
+                                    }
+                                }
+
+                                // Always visible buttons
+                                let is_timer_active = app.sleep_timer_end.is_some();
+                                let image = if is_timer_active {
+                                    include_image!("../../assets/timer-active.svg")
                                 } else {
-                                    app.theme.text
-                                });
+                                    include_image!("../../assets/timer-off.svg")
+                                };
 
-                            let mut timer_btn_resp = ui
-                                .add(image_button)
-                                .interact(Sense::click())
-                                .on_hover_cursor(CursorIcon::PointingHand);
-
-                            if let Some(end) = app.sleep_timer_end {
-                                let remaining = end.saturating_duration_since(Instant::now());
-                                let mins = remaining.as_secs() / 60;
-                                let secs = remaining.as_secs() % 60;
-                                let time_str = format!("{:02}:{:02}", mins, secs);
-                                timer_btn_resp = timer_btn_resp
-                                    .on_hover_text(format!("Sleep Timer: {} remaining", time_str));
-                                ui.ctx().request_repaint();
-                            } else {
-                                timer_btn_resp = timer_btn_resp.on_hover_text("Sleep Timer");
-                            }
-
-                            if timer_btn_resp.clicked() {
-                                app.show_timer_menu = !app.show_timer_menu;
-                            }
-
-                            ui.add_space(10.0);
-
-                            // Queue button
-                            if !is_radio {
-                                let image = include_image!("../../assets/player-queue.svg");
                                 let image_button = Image::new(image)
-                                    .fit_to_exact_size(Vec2::new(36.0, 36.0))
-                                    .tint(if app.show_queue {
+                                    .fit_to_exact_size(Vec2::new(24.0, 24.0))
+                                    .tint(if is_timer_active {
                                         app.theme.accent_light
                                     } else {
                                         app.theme.text
                                     });
 
-                                let queue_btn_resp = ui
+                                let mut timer_btn_resp = ui
                                     .add(image_button)
                                     .interact(Sense::click())
                                     .on_hover_cursor(CursorIcon::PointingHand);
 
-                                if queue_btn_resp.clicked() {
-                                    app.show_queue = !app.show_queue;
+                                if let Some(end) = app.sleep_timer_end {
+                                    let remaining = end.saturating_duration_since(Instant::now());
+                                    let mins = remaining.as_secs() / 60;
+                                    let secs = remaining.as_secs() % 60;
+                                    let time_str = format!("{:02}:{:02}", mins, secs);
+                                    timer_btn_resp = timer_btn_resp.on_hover_text(format!(
+                                        "Sleep Timer: {} remaining",
+                                        time_str
+                                    ));
                                     ui.ctx().request_repaint();
+                                } else {
+                                    timer_btn_resp = timer_btn_resp.on_hover_text("Sleep Timer");
                                 }
-                            }
+
+                                if timer_btn_resp.clicked() {
+                                    app.show_timer_menu = !app.show_timer_menu;
+                                }
+
+                                ui.add_space(10.0);
+
+                                // Queue button
+                                if !is_radio {
+                                    let image = include_image!("../../assets/player-queue.svg");
+                                    let image_button = Image::new(image)
+                                        .fit_to_exact_size(Vec2::new(36.0, 36.0))
+                                        .tint(if app.show_queue {
+                                            app.theme.accent_light
+                                        } else {
+                                            app.theme.text
+                                        });
+
+                                    let queue_btn_resp = ui
+                                        .add(image_button)
+                                        .interact(Sense::click())
+                                        .on_hover_cursor(CursorIcon::PointingHand);
+
+                                    if queue_btn_resp.clicked() {
+                                        app.show_queue = !app.show_queue;
+                                        ui.ctx().request_repaint();
+                                    }
+                                }
                                 // Timer menu popup logic
-                            if app.show_timer_menu {
-                                let pos = timer_btn_resp.rect.left_top() - Vec2::new(0.0, 300.0);
-                                Area::new(Id::new("sleep_timer_area"))
-                                    .fixed_pos(pos)
-                                    .show(ui.ctx(), |ui| {
-                                        Frame::window(&ui.style()).show(ui, |ui| {
-                                            ui.set_min_width(150.0);
-                                            ui.heading("Sleep Timer");
-                                            let options = [5, 15, 30, 60, 120];
-                                            for &minutes in &options {
-                                                if ui.button(format!("{} min", minutes)).clicked() {
-                                                    app.sleep_timer_end = Some(
-                                                        Instant::now()
-                                                            + Duration::from_secs(minutes * 60),
-                                                    );
-                                                    app.show_timer_menu = false;
-                                                }
-                                            }
-                                            ui.add_space(5.0);
-                                            ui.label("Custom (min):");
-                                            let custom_id =
-                                                ui.make_persistent_id("custom_timer_input");
-                                            let mut custom_text: String = ui.data_mut(|d| {
-                                                d.get_temp(custom_id).unwrap_or_default()
-                                            });
-                                            if ui.text_edit_singleline(&mut custom_text).changed() {
-                                                ui.data_mut(|d| {
-                                                    d.insert_temp(custom_id, custom_text.clone())
-                                                });
-                                            }
-                                            if ui.button("Set Custom").clicked() {
-                                                if let Ok(minutes) = custom_text.parse::<u64>() {
-                                                    app.sleep_timer_end = Some(
-                                                        Instant::now()
-                                                            + Duration::from_secs(minutes * 60),
-                                                    );
-                                                    app.show_timer_menu = false;
-                                                }
-                                            }
-                                            ui.add_space(5.0);
-                                            ui.label("Shut off at (HH:MM):");
-                                            let time_id =
-                                                ui.make_persistent_id("custom_time_input");
-                                            let mut time_text: String = ui.data_mut(|d| {
-                                                d.get_temp(time_id).unwrap_or_default()
-                                            });
-                                            if ui.text_edit_singleline(&mut time_text).changed() {
-                                                ui.data_mut(|d| {
-                                                    d.insert_temp(time_id, time_text.clone())
-                                                });
-                                            }
-                                            if ui.button("Set Time").clicked() {
-                                                let input = time_text.to_lowercase();
-                                                let is_pm = input.contains("pm");
-                                                let is_am = input.contains("am");
-                                                let time_clean = input
-                                                    .replace("am", "")
-                                                    .replace("pm", "")
-                                                    .trim()
-                                                    .to_string();
-                                                if let Some((h_str, m_str)) =
-                                                    time_clean.split_once(':')
-                                                {
-                                                    if let (Ok(h_raw), Ok(m)) =
-                                                        (h_str.parse::<u32>(), m_str.parse::<u32>())
+                                if app.show_timer_menu {
+                                    let pos =
+                                        timer_btn_resp.rect.left_top() - Vec2::new(0.0, 300.0);
+                                    Area::new(Id::new("sleep_timer_area")).fixed_pos(pos).show(
+                                        ui.ctx(),
+                                        |ui| {
+                                            Frame::window(&ui.style()).show(ui, |ui| {
+                                                ui.set_min_width(150.0);
+                                                ui.heading("Sleep Timer");
+                                                let options = [5, 15, 30, 60, 120];
+                                                for &minutes in &options {
+                                                    if ui
+                                                        .button(format!("{} min", minutes))
+                                                        .clicked()
                                                     {
-                                                        let mut h = h_raw;
-                                                        if is_pm && h < 12 {
-                                                            h += 12;
-                                                        } else if is_am && h == 12 {
-                                                            h = 0;
-                                                        }
-                                                        if h < 24 && m < 60 {
-                                                            let now = chrono::Local::now();
-                                                            let target = now
-                                                                .date_naive()
-                                                                .and_hms_opt(h, m, 0)
-                                                                .unwrap();
-                                                            let target_dt = target
-                                                                .and_local_timezone(chrono::Local)
-                                                                .unwrap();
-                                                            let target_dt = if target_dt <= now {
-                                                                target_dt
-                                                                    + chrono::Duration::days(1)
-                                                            } else {
-                                                                target_dt
-                                                            };
-                                                            let duration = target_dt
-                                                                .signed_duration_since(now);
-                                                            app.sleep_timer_end = Some(
-                                                                Instant::now()
-                                                                    + Duration::from_secs(
-                                                                        duration.num_seconds()
-                                                                            as u64,
-                                                                    ),
-                                                            );
-                                                            app.show_timer_menu = false;
+                                                        app.sleep_timer_end = Some(
+                                                            Instant::now()
+                                                                + Duration::from_secs(minutes * 60),
+                                                        );
+                                                        app.show_timer_menu = false;
+                                                    }
+                                                }
+                                                ui.add_space(5.0);
+                                                ui.label("Custom (min):");
+                                                let custom_id =
+                                                    ui.make_persistent_id("custom_timer_input");
+                                                let mut custom_text: String = ui.data_mut(|d| {
+                                                    d.get_temp(custom_id).unwrap_or_default()
+                                                });
+                                                if ui
+                                                    .text_edit_singleline(&mut custom_text)
+                                                    .changed()
+                                                {
+                                                    ui.data_mut(|d| {
+                                                        d.insert_temp(
+                                                            custom_id,
+                                                            custom_text.clone(),
+                                                        )
+                                                    });
+                                                }
+                                                if ui.button("Set Custom").clicked() {
+                                                    if let Ok(minutes) = custom_text.parse::<u64>()
+                                                    {
+                                                        app.sleep_timer_end = Some(
+                                                            Instant::now()
+                                                                + Duration::from_secs(minutes * 60),
+                                                        );
+                                                        app.show_timer_menu = false;
+                                                    }
+                                                }
+                                                ui.add_space(5.0);
+                                                ui.label("Shut off at (HH:MM):");
+                                                let time_id =
+                                                    ui.make_persistent_id("custom_time_input");
+                                                let mut time_text: String = ui.data_mut(|d| {
+                                                    d.get_temp(time_id).unwrap_or_default()
+                                                });
+                                                if ui.text_edit_singleline(&mut time_text).changed()
+                                                {
+                                                    ui.data_mut(|d| {
+                                                        d.insert_temp(time_id, time_text.clone())
+                                                    });
+                                                }
+                                                if ui.button("Set Time").clicked() {
+                                                    let input = time_text.to_lowercase();
+                                                    let is_pm = input.contains("pm");
+                                                    let is_am = input.contains("am");
+                                                    let time_clean = input
+                                                        .replace("am", "")
+                                                        .replace("pm", "")
+                                                        .trim()
+                                                        .to_string();
+                                                    if let Some((h_str, m_str)) =
+                                                        time_clean.split_once(':')
+                                                    {
+                                                        if let (Ok(h_raw), Ok(m)) = (
+                                                            h_str.parse::<u32>(),
+                                                            m_str.parse::<u32>(),
+                                                        ) {
+                                                            let mut h = h_raw;
+                                                            if is_pm && h < 12 {
+                                                                h += 12;
+                                                            } else if is_am && h == 12 {
+                                                                h = 0;
+                                                            }
+                                                            if h < 24 && m < 60 {
+                                                                let now = chrono::Local::now();
+                                                                let target = now
+                                                                    .date_naive()
+                                                                    .and_hms_opt(h, m, 0)
+                                                                    .unwrap();
+                                                                let target_dt = target
+                                                                    .and_local_timezone(
+                                                                        chrono::Local,
+                                                                    )
+                                                                    .unwrap();
+                                                                let target_dt = if target_dt <= now
+                                                                {
+                                                                    target_dt
+                                                                        + chrono::Duration::days(1)
+                                                                } else {
+                                                                    target_dt
+                                                                };
+                                                                let duration = target_dt
+                                                                    .signed_duration_since(now);
+                                                                app.sleep_timer_end = Some(
+                                                                    Instant::now()
+                                                                        + Duration::from_secs(
+                                                                            duration.num_seconds()
+                                                                                as u64,
+                                                                        ),
+                                                                );
+                                                                app.show_timer_menu = false;
+                                                            }
                                                         }
                                                     }
                                                 }
-                                            }
-                                            ui.separator();
-                                            if is_timer_active {
-                                                if ui.button("Cancel Timer").clicked() {
-                                                    app.sleep_timer_end = None;
+                                                ui.separator();
+                                                if is_timer_active {
+                                                    if ui.button("Cancel Timer").clicked() {
+                                                        app.sleep_timer_end = None;
+                                                        app.show_timer_menu = false;
+                                                    }
+                                                }
+                                                ui.separator();
+                                                if ui.button("Close").clicked() {
                                                     app.show_timer_menu = false;
                                                 }
-                                            }
-                                            ui.separator();
-                                            if ui.button("Close").clicked() {
-                                                app.show_timer_menu = false;
-                                            }
-                                        });
-                                    });
-                            }
-                            ui.add_space(10.0);
+                                            });
+                                        },
+                                    );
+                                }
+                                ui.add_space(10.0);
+                            });
                         });
                     });
                 });
             });
-        });
     }
 }
 
