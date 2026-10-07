@@ -151,7 +151,7 @@ pub async fn get_playlist_details_cached(
         Ok(data) => {
             let _ = write(
                 &cache_path,
-                to_string_pretty(&data, Default::default()).unwrap(),
+                to_string_pretty(&data, Default::default())?,
             )
             .await;
             Ok(data)
@@ -163,5 +163,64 @@ pub async fn get_playlist_details_cached(
                 Err(err)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::activity::SortOption;
+
+    #[test]
+    fn test_format_duration() {
+        assert_eq!(format_duration(0), "0:00");
+        assert_eq!(format_duration(65), "1:05");
+        assert_eq!(format_duration(600), "10:00");
+    }
+
+    #[test]
+    fn test_split_by_space_respecting_quotes() {
+        let query = r#"hello "world test" foo bar"#;
+        let parts = split_by_space_respecting_quotes(query);
+        assert_eq!(parts, vec!["hello", "world test", "foo", "bar"]);
+    }
+
+    #[test]
+    fn test_sort_items() {
+        struct Item {
+            name: String,
+            songs: u32,
+            plays: u32,
+            date: Option<String>,
+        }
+
+        let mut items = vec![
+            Item { name: "B".into(), songs: 10, plays: 100, date: Some("2026-01-01".into()) },
+            Item { name: "A".into(), songs: 5, plays: 200, date: Some("2026-02-01".into()) },
+        ];
+
+        sort_items(
+            &mut items,
+            &SortOption::Name,
+            &false,
+            |i| i.name.clone(),
+            |i| i.songs,
+            |i| i.plays,
+            |i| i.date.clone(),
+        );
+        assert_eq!(items[0].name, "A");
+        assert_eq!(items[1].name, "B");
+
+        sort_items(
+            &mut items,
+            &SortOption::Songs,
+            &true,
+            |i| i.name.clone(),
+            |i| i.songs,
+            |i| i.plays,
+            |i| i.date.clone(),
+        );
+        assert_eq!(items[0].songs, 10);
+        assert_eq!(items[1].songs, 5);
     }
 }
