@@ -69,6 +69,8 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
     ctx.global_style_mut(|s| s.debug.warn_if_rect_changes_id = false);
 
     let config = Config::read().unwrap_or_default();
+    let initial_min_width = if config.compact_sidebar { 852.0 } else { 1040.0 };
+    ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::Vec2::new(initial_min_width, 610.0)));
     let shared_config = config.to_shared();
     let client = Client::new();
 
