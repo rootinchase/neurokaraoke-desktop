@@ -3922,9 +3922,9 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "playwire"
-version = "1.0.0"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f8fb2643a27e1b9e1483a4e8042f9d874817a628d18873dd496a95ed6441dc8"
+checksum = "f9c8f7956410cc582ee075d21d6acc1b2241b6467ead416e8ea0216c48b0c60f"
 dependencies = [
  "block2 0.6.2",
  "objc2 0.6.4",

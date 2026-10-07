@@ -41,7 +41,7 @@ serde_with = "3.24"
 dashmap = { version = "7.0.0-rc2", features = ["serde"] }
 anyhow = "1.0"
 # Media Controls
-playwire = "1.0"
+playwire = "2.0"
 ron = "0.12"
 dirs = "7.0"
 urlencoding = "2.1"
