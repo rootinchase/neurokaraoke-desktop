@@ -13,6 +13,13 @@ use tokio::sync::Mutex;
 use tokio::task::block_in_place;
 use uuid::Uuid;
 
+pub fn create_reqwest_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent(concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+}
+
 pub fn sort_items<T>(
     items: &mut [T],
     current_sort: &SortOption,

@@ -576,7 +576,7 @@ mod tests {
                 .open(&file1)
                 .and_then(|f| f.set_modified(old_time));
 
-            let client = Client::new();
+            let client = crate::utilities::util::create_reqwest_client();
             let cache = PersistentMediaCache::new(client, 4);
 
             let evicted = cache.evict(Duration::from_secs(3600), 1).await.unwrap();

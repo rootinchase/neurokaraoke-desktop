@@ -22,7 +22,6 @@ use crate::utilities::{
 use dashmap::DashMap;
 use eframe::egui;
 use egui_extras;
-use reqwest::Client;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
@@ -72,7 +71,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
     let initial_min_width = if config.compact_sidebar { 852.0 } else { 1040.0 };
     ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::Vec2::new(initial_min_width, 610.0)));
     let shared_config = config.to_shared();
-    let client = Client::new();
+    let client = crate::utilities::util::create_reqwest_client();
 
     let cache = Arc::new(PersistentMediaCache::new(client.clone(), 12));
     rt.spawn(async {

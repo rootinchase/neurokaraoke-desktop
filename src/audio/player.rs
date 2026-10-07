@@ -144,7 +144,7 @@ impl Player {
                     mixer.set_volume(init_vol.powi(3));
                     mixer.pause();
 
-                    let client = reqwest::Client::new();
+                    let client = crate::utilities::util::create_reqwest_client();
 
                     let mut ordered_playlist: Option<Arc<[Uuid]>> = None;
                     let mut shuffle = false;
@@ -1041,6 +1041,7 @@ impl Player {
                                                 url
                                             );
                                             let client = reqwest::blocking::Client::builder()
+                                                .user_agent(concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION")))
                                                 .timeout(Duration::from_secs(30))
                                                 .build()
                                                 .unwrap_or_default();
