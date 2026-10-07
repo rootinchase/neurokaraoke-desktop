@@ -32,8 +32,15 @@ pub fn cache_dir() -> &'static PathBuf {
             .join("neurokaraoke-desktop");
         let _ = std::fs::create_dir_all(&dir);
         let _ = std::fs::create_dir_all(dir.join("assets"));
+        let _ = std::fs::create_dir_all(dir.join("playlists"));
         dir
     })
+}
+
+pub fn playlist_cache_dir() -> PathBuf {
+    let p = cache_dir().join("playlists");
+    let _ = std::fs::create_dir_all(&p);
+    p
 }
 
 pub fn is_cache_fresh(path: &std::path::Path, max_age: Duration) -> bool {

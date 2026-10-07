@@ -167,7 +167,7 @@ pub async fn get_playlist_details_cached(
     id: Uuid,
     songs: &LazySongDatabase,
 ) -> Result<PlaylistDetail, anyhow::Error> {
-    let cache_path = cache::cache_dir().join(format!("playlist_detail_{}.ron", id));
+    let cache_path = cache::playlist_cache_dir().join(format!("playlist_detail_{}.ron", id));
 
     let mut cached_detail = None;
     if let Ok(data) = read(&cache_path).await {
@@ -178,6 +178,9 @@ pub async fn get_playlist_details_cached(
 
     match songs.get_playlist_details(id).await {
         Ok(data) => {
+            if let Some(parent) = cache_path.parent() {
+                let _ = tokio::fs::create_dir_all(parent).await;
+            }
             let _ = write(
                 &cache_path,
                 to_string_pretty(&data, Default::default())?,

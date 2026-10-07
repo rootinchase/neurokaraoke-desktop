@@ -1,6 +1,6 @@
 use crate::activity::{SortOption, render_playlist_art_advanced, render_playlist_box, search};
 use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongDTO};
-use crate::utilities::cache::{PersistentMediaCache, cache_dir};
+use crate::utilities::cache::{PersistentMediaCache, playlist_cache_dir};
 use crate::utilities::util::{get_playlist_details_cached, sort_items};
 
 use crate::debug_log;
@@ -48,7 +48,7 @@ impl PlaylistActivity {
         } else {
             "playlists.ron"
         };
-        let cache_path = cache_dir().join(cache_file);
+        let cache_path = playlist_cache_dir().join(cache_file);
         let cached_playlists: Option<Vec<Playlist>> = read(&cache_path)
             .ok()
             .and_then(|data| de::from_bytes(&data).ok());
@@ -77,6 +77,7 @@ impl PlaylistActivity {
         let songs_clone = songs.clone();
         let hm = has_more.clone();
         let ctx_clone = ctx.clone();
+        let cp_clone = cache_path.clone();
         spawn(async move {
             let result = if is_personal {
                 songs_clone.get_user_playlists().await
@@ -91,8 +92,11 @@ impl PlaylistActivity {
                     *p.lock().await = LoadingState::Loaded(initial);
                     *hm.lock().await = data.len() > 20;
 
+                    if let Some(parent) = cp_clone.parent() {
+                        let _ = tokio::fs::create_dir_all(parent).await;
+                    }
                     let _ = write(
-                        cache_path,
+                        cp_clone,
                         ser::to_string_pretty(&data, Default::default()).unwrap(),
                     )
                     .await;
@@ -138,7 +142,7 @@ impl PlaylistActivity {
         let playlists = self.playlists.clone();
         let all_playlists = self.all_playlists.clone();
         let songs = self.songs.clone();
-        let cache_path = cache_dir().join(if self.is_personal {
+        let cache_path = playlist_cache_dir().join(if self.is_personal {
             "my_playlists.ron"
         } else {
             "playlists.ron"
@@ -177,6 +181,9 @@ impl PlaylistActivity {
 
                 match fetch_result {
                     Ok(data) => {
+                        if let Some(parent) = cache_path.parent() {
+                            let _ = tokio::fs::create_dir_all(parent).await;
+                        }
                         let _ = write(
                             cache_path.clone(),
                             ser::to_string_pretty(&data, Default::default()).unwrap(),

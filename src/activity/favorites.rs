@@ -3,7 +3,7 @@ use crate::activity::{render_mosaic, render_playlist_art, render_playlist_box};
 use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongDTO};
 use crate::debug_log;
 use crate::theme::ThemeManager;
-use crate::utilities::cache::{PersistentMediaCache, cache_dir};
+use crate::utilities::cache::{PersistentMediaCache, cache_dir, playlist_cache_dir};
 use crate::utilities::util::get_playlist_details_cached;
 use dashmap::DashMap;
 use eframe::egui::{Context, ScrollArea, Ui, Vec2};
@@ -108,7 +108,7 @@ impl FavoritesActivity {
         *s.blocking_lock() = LoadingState::Loading;
 
         tokio::spawn(async move {
-            let playlists_cache_path = cache_dir().join("favorites_playlists.ron");
+            let playlists_cache_path = playlist_cache_dir().join("favorites_playlists.ron");
             let songs_cache_path = cache_dir().join("favorites_songs.ron");
 
             let mut has_cached_playlists = false;
@@ -155,6 +155,9 @@ impl FavoritesActivity {
             // Fetch playlists
             match db.fetch_favorite_playlists().await {
                 Ok(playlists) => {
+                    if let Some(parent) = playlists_cache_path.parent() {
+                        let _ = tokio::fs::create_dir_all(parent).await;
+                    }
                     let _ = write(
                         &playlists_cache_path,
                         to_string_pretty(&playlists, Default::default()).unwrap(),
