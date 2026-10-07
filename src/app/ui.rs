@@ -427,7 +427,7 @@ impl App {
                     player2.play_song(song_id);
                 },
                 move |ui| {
-                    crate::activity::radio::render_radio_now_playing(
+                    activity::radio::render_radio_now_playing(
                         ui,
                         theme_ref,
                         &cache,

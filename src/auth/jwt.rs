@@ -25,3 +25,14 @@ pub fn extract_claims_from_jwt(token: &str) -> Result<api::UserClaims> {
         email: None,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_claims_malformed_token() {
+        let result = extract_claims_from_jwt("not-a-valid-jwt");
+        assert!(result.is_err());
+    }
+}

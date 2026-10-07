@@ -968,7 +968,7 @@ impl Player {
                                         loop {
                                             debug_log!("🔌 [Radio Stream] Connecting to stream: {}", url);
                                             let client = reqwest::blocking::Client::builder()
-                                                .timeout(std::time::Duration::from_secs(30))
+                                                .timeout(Duration::from_secs(30))
                                                 .build()
                                                 .unwrap_or_default();
 
@@ -1018,7 +1018,7 @@ impl Player {
                                                     debug_log!("⚠️ [Radio Stream] Connection error: {}, retrying in 2s...", e);
                                                 }
                                             }
-                                            std::thread::sleep(std::time::Duration::from_secs(2));
+                                            thread::sleep(Duration::from_secs(2));
                                         }
                                     });
                                 }
@@ -1095,7 +1095,7 @@ impl Player {
                             "Unknown panic".to_string()
                         };
                         debug_log!("💥 [Audio Thread] Audio worker panicked: {}. Restarting audio worker in 1s...", err_msg);
-                        std::thread::sleep(Duration::from_secs(1));
+                        thread::sleep(Duration::from_secs(1));
                     }
                 }
             }
@@ -1385,7 +1385,7 @@ impl std::io::Read for TailReader {
                             "Radio stream stalled / timed out waiting for data",
                         ));
                     }
-                    std::thread::sleep(Duration::from_millis(50));
+                    thread::sleep(Duration::from_millis(50));
                     continue;
                 }
                 Ok(n) => {
@@ -1399,7 +1399,7 @@ impl std::io::Read for TailReader {
                             "Radio stream stalled / timed out (WouldBlock)",
                         ));
                     }
-                    std::thread::sleep(Duration::from_millis(50));
+                    thread::sleep(Duration::from_millis(50));
                     continue;
                 }
                 Err(e) => return Err(e),

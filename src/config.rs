@@ -187,3 +187,26 @@ impl Config {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_radio_url_properties() {
+        assert_eq!(RadioUrl::Mp3320Kbps.name(), "320kbps MP3");
+        assert_eq!(RadioUrl::Mp3320Kbps.url(), "https://radio.twinskaraoke.com/listen/neuro_21/radio.mp3");
+        assert_eq!(RadioUrl::Opus.name(), "Opus");
+        assert_eq!(RadioUrl::Opus.url(), "https://radio.twinskaraoke.com/listen/neuro_21/radio.ogg");
+    }
+
+    #[test]
+    fn test_config_default() {
+        let config = Config::default();
+        assert_eq!(config.volume, 0.5);
+        assert!(!config.shuffle);
+        assert_eq!(config.loop_mode, LoopMode::None);
+        assert_eq!(config.radio_url, RadioUrl::Mp3320Kbps);
+        assert!(config.auth.is_none());
+    }
+}
