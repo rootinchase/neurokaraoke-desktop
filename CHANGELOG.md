@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.4.1
+
+### Added features
+* **Radio Mode:** Introduced dedicated Radio functionality with persistent volume control and smooth playback switching between Radio and normal tracks
+* **Cache Management:** Added time- and storage-based cache eviction, automatic TTL updates on repeated cache hits, and cleanup of stale downloads on start and exit
+* **Default Cover Art:** Added default cover art fallback for songs lacking cover art metadata
+* **Debugging & Network:** Added debug log file output and proper User Agent headers for network requests
+
+### Improvements
+* **UI/UX Refinements:**
+  * Scrollable user profile view
+  * Relocated sleep timer popup above player controls
+  * Enforced minimum window size constraints
+* **Codebase & Testing:**
+  * Comprehensive code deduplication and modular cleanup
+  * Added robust unit tests and isolated cache testing environments
+  * Optimized GitHub CI compilation speed
+
+### Bug fixes
+* Fixed Playwire audio and terminal window handling on Windows
+
+---
+
 ## v0.4.0: The first great rewrite
 
 ### Added features
