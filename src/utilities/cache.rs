@@ -570,6 +570,7 @@ mod tests {
     use super::*;
     use crate::utilities::util::create_reqwest_client;
     use std::fs::File;
+    use std::env::temp_dir;
     use std::time::SystemTime;
     use tokio::fs::{create_dir_all, write};
     use tokio::runtime::Runtime;
@@ -578,7 +579,7 @@ mod tests {
     fn test_cache_eviction_async() {
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
-            let temp_dir = std::env::temp_dir().join(format!("neurokaraoke_test_cache_{}", uuid::Uuid::new_v4()));
+            let temp_dir = temp_dir().join(format!("neurokaraoke_test_cache_{}", Uuid::new_v4()));
             let dir = temp_dir.join("assets");
             let _ = create_dir_all(&dir).await;
 
