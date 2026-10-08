@@ -5,14 +5,138 @@ use crate::debug_log;
 use crate::theme::ThemeManager;
 use crate::utilities::util::format_duration;
 use eframe::egui::{
-    self, Align, Button, Color32, CursorIcon, Image, ImageSource, Layout, PopupKind, Pos2, Rgba,
+    self, Align, Button, Color32, Context, CursorIcon, Image, ImageSource, Layout, PopupKind, Pos2, Rgba,
     RichText, Sense, Stroke, TextWrapMode, Ui, Vec2, include_image, lerp,
 };
-use egui::{Area, Frame, Id, Label, Margin, Mesh, Panel, Popup, PopupAnchor, Rect, Shape, vec2};
+use egui::{Area, Frame, Id, InnerResponse, Label, Margin, Mesh, Panel, Popup, PopupAnchor, Rect, Shape, vec2};
 use std::sync::Arc;
 use std::sync::atomic::Ordering::SeqCst;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
+
+pub fn render_sleep_timer_popup(
+    app: &mut App,
+    ctx: &Context,
+    pos: Pos2,
+) -> InnerResponse<()> {
+    Area::new(Id::new("sleep_timer_area"))
+        .fixed_pos(pos)
+        .show(ctx, |ui| {
+            Frame::window(&ui.style()).show(ui, |ui| {
+                ui.set_min_width(150.0);
+                ui.heading("Sleep Timer");
+
+                let options = [5, 15, 30, 60, 120];
+                for &minutes in &options {
+                    if ui.button(format!("{} min", minutes)).clicked() {
+                        app.sleep_timer_end = Some(
+                            Instant::now() + Duration::from_secs(minutes * 60),
+                        );
+                        app.show_timer_menu = false;
+                    }
+                }
+
+                ui.add_space(5.0);
+                ui.label("Custom (min):");
+
+                let custom_id = ui.make_persistent_id("custom_timer_input");
+                let mut custom_text: String = ui.data_mut(|d| {
+                    d.get_temp(custom_id).unwrap_or_default()
+                });
+
+                if ui.text_edit_singleline(&mut custom_text).changed() {
+                    ui.data_mut(|d| {
+                        d.insert_temp(custom_id, custom_text.clone())
+                    });
+                }
+
+                if ui.button("Set Custom").clicked() {
+                    if let Ok(minutes) = custom_text.parse::<u64>() {
+                        app.sleep_timer_end = Some(
+                            Instant::now() + Duration::from_secs(minutes * 60),
+                        );
+                        app.show_timer_menu = false;
+                    }
+                }
+
+                ui.add_space(5.0);
+                ui.label("Shut off at (HH:MM):");
+
+                let time_id = ui.make_persistent_id("custom_time_input");
+                let mut time_text: String = ui.data_mut(|d| {
+                    d.get_temp(time_id).unwrap_or_default()
+                });
+
+                if ui.text_edit_singleline(&mut time_text).changed() {
+                    ui.data_mut(|d| {
+                        d.insert_temp(time_id, time_text.clone())
+                    });
+                }
+
+                if ui.button("Set Time").clicked() {
+                    let input = time_text.to_lowercase();
+                    let is_pm = input.contains("pm");
+                    let is_am = input.contains("am");
+                    let time_clean = input
+                        .replace("am", "")
+                        .replace("pm", "")
+                        .trim()
+                        .to_string();
+
+                    if let Some((h_str, m_str)) = time_clean.split_once(':') {
+                        if let (Ok(h_raw), Ok(m)) =
+                            (h_str.parse::<u32>(), m_str.parse::<u32>())
+                        {
+                            let mut h = h_raw;
+
+                            if is_pm && h < 12 {
+                                h += 12;
+                            } else if is_am && h == 12 {
+                                h = 0;
+                            }
+
+                            if h < 24 && m < 60 {
+                                let now = chrono::Local::now();
+                                let target =
+                                    now.date_naive().and_hms_opt(h, m, 0).unwrap();
+                                let target_dt =
+                                    target.and_local_timezone(chrono::Local).unwrap();
+
+                                let target_dt = if target_dt <= now {
+                                    target_dt + chrono::Duration::days(1)
+                                } else {
+                                    target_dt
+                                };
+
+                                let duration = target_dt.signed_duration_since(now);
+
+                                app.sleep_timer_end = Some(
+                                    Instant::now()
+                                        + Duration::from_secs(duration.num_seconds() as u64),
+                                );
+                                app.show_timer_menu = false;
+                            }
+                        }
+                    }
+                }
+
+                ui.separator();
+
+                if app.sleep_timer_end.is_some() {
+                    if ui.button("Cancel Timer").clicked() {
+                        app.sleep_timer_end = None;
+                        app.show_timer_menu = false;
+                    }
+                }
+
+                ui.separator();
+
+                if ui.button("Close").clicked() {
+                    app.show_timer_menu = false;
+                }
+            });
+        })
+}
 
 pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
     let player_vol = app.player.get_volume();
@@ -696,139 +820,35 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                                         ui.ctx().request_repaint();
                                     }
                                 }
+
                                 // Timer menu popup logic
                                 if app.show_timer_menu {
-                                    let pos =
-                                        timer_btn_resp.rect.left_top() - Vec2::new(0.0, 300.0);
-                                    Area::new(Id::new("sleep_timer_area")).fixed_pos(pos).show(
-                                        ui.ctx(),
-                                        |ui| {
-                                            Frame::window(&ui.style()).show(ui, |ui| {
-                                                ui.set_min_width(150.0);
-                                                ui.heading("Sleep Timer");
-                                                let options = [5, 15, 30, 60, 120];
-                                                for &minutes in &options {
-                                                    if ui
-                                                        .button(format!("{} min", minutes))
-                                                        .clicked()
-                                                    {
-                                                        app.sleep_timer_end = Some(
-                                                            Instant::now()
-                                                                + Duration::from_secs(minutes * 60),
-                                                        );
-                                                        app.show_timer_menu = false;
-                                                    }
-                                                }
-                                                ui.add_space(5.0);
-                                                ui.label("Custom (min):");
-                                                let custom_id =
-                                                    ui.make_persistent_id("custom_timer_input");
-                                                let mut custom_text: String = ui.data_mut(|d| {
-                                                    d.get_temp(custom_id).unwrap_or_default()
-                                                });
-                                                if ui
-                                                    .text_edit_singleline(&mut custom_text)
-                                                    .changed()
-                                                {
-                                                    ui.data_mut(|d| {
-                                                        d.insert_temp(
-                                                            custom_id,
-                                                            custom_text.clone(),
-                                                        )
-                                                    });
-                                                }
-                                                if ui.button("Set Custom").clicked() {
-                                                    if let Ok(minutes) = custom_text.parse::<u64>()
-                                                    {
-                                                        app.sleep_timer_end = Some(
-                                                            Instant::now()
-                                                                + Duration::from_secs(minutes * 60),
-                                                        );
-                                                        app.show_timer_menu = false;
-                                                    }
-                                                }
-                                                ui.add_space(5.0);
-                                                ui.label("Shut off at (HH:MM):");
-                                                let time_id =
-                                                    ui.make_persistent_id("custom_time_input");
-                                                let mut time_text: String = ui.data_mut(|d| {
-                                                    d.get_temp(time_id).unwrap_or_default()
-                                                });
-                                                if ui.text_edit_singleline(&mut time_text).changed()
-                                                {
-                                                    ui.data_mut(|d| {
-                                                        d.insert_temp(time_id, time_text.clone())
-                                                    });
-                                                }
-                                                if ui.button("Set Time").clicked() {
-                                                    let input = time_text.to_lowercase();
-                                                    let is_pm = input.contains("pm");
-                                                    let is_am = input.contains("am");
-                                                    let time_clean = input
-                                                        .replace("am", "")
-                                                        .replace("pm", "")
-                                                        .trim()
-                                                        .to_string();
-                                                    if let Some((h_str, m_str)) =
-                                                        time_clean.split_once(':')
-                                                    {
-                                                        if let (Ok(h_raw), Ok(m)) = (
-                                                            h_str.parse::<u32>(),
-                                                            m_str.parse::<u32>(),
-                                                        ) {
-                                                            let mut h = h_raw;
-                                                            if is_pm && h < 12 {
-                                                                h += 12;
-                                                            } else if is_am && h == 12 {
-                                                                h = 0;
-                                                            }
-                                                            if h < 24 && m < 60 {
-                                                                let now = chrono::Local::now();
-                                                                let target = now
-                                                                    .date_naive()
-                                                                    .and_hms_opt(h, m, 0)
-                                                                    .unwrap();
-                                                                let target_dt = target
-                                                                    .and_local_timezone(
-                                                                        chrono::Local,
-                                                                    )
-                                                                    .unwrap();
-                                                                let target_dt = if target_dt <= now
-                                                                {
-                                                                    target_dt
-                                                                        + chrono::Duration::days(1)
-                                                                } else {
-                                                                    target_dt
-                                                                };
-                                                                let duration = target_dt
-                                                                    .signed_duration_since(now);
-                                                                app.sleep_timer_end = Some(
-                                                                    Instant::now()
-                                                                        + Duration::from_secs(
-                                                                            duration.num_seconds()
-                                                                                as u64,
-                                                                        ),
-                                                                );
-                                                                app.show_timer_menu = false;
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                ui.separator();
-                                                if is_timer_active {
-                                                    if ui.button("Cancel Timer").clicked() {
-                                                        app.sleep_timer_end = None;
-                                                        app.show_timer_menu = false;
-                                                    }
-                                                }
-                                                ui.separator();
-                                                if ui.button("Close").clicked() {
-                                                    app.show_timer_menu = false;
-                                                }
-                                            });
-                                        },
+                                    // Use the measured popup height from the previous frame
+                                    // so its bottom edge sits flush with the top of the panel.
+                                    let height_id =
+                                        ui.make_persistent_id("sleep_timer_popup_height");
+                                    let popup_height: f32 = ui.data(|d| {
+                                        d.get_temp(height_id).unwrap_or(300.0)
+                                    });
+                                    // The seek bar occupies the top 3px of the panel, so
+                                    // offset the popup above it (seek bar height + margin).
+                                    let seek_bar_height = 3.0;
+                                    let margin = 7.0;
+                                    let panel_top = ui.max_rect().top();
+                                    let pos = Pos2::new(
+                                        timer_btn_resp.rect.center().x,
+                                        panel_top - popup_height - seek_bar_height - margin,
                                     );
+
+                                    let popup_resp =
+                                        render_sleep_timer_popup(app, ui.ctx(), pos);
+
+                                    // Store the measured height for the next frame.
+                                    ui.data_mut(|d| {
+                                        d.insert_temp(height_id, popup_resp.response.rect.height())
+                                    });
                                 }
+
                                 ui.add_space(10.0);
                             });
                         });
