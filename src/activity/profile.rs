@@ -31,7 +31,6 @@ pub enum AvatarState {
     Downloading,
     Ready { bytes: Vec<u8> },
 }
-// ... (existing imports)
 
 pub struct ProfileState {
     pub profile_data: Option<ProfileHeader>,
@@ -63,8 +62,6 @@ impl ProfileActivity {
         }
     }
 
-    /// Pulls pending messages from background authentication threads.
-    /// Returns an action token to safely apply adjustments to global configuration files.
     pub fn poll_messages(&mut self) -> Option<ProfileMessage> {
         match self.rx.try_recv() {
             Ok(msg) => {
@@ -156,7 +153,6 @@ impl ProfileActivity {
         });
     }
 
-    // Resolution logic matching your existing Cloudflare Image variant criteria
     pub fn try_load_avatar(&mut self, ctx: &egui::Context, rt: &tokio::runtime::Runtime) {
         let url = self
             .state
@@ -184,7 +180,6 @@ impl ProfileActivity {
 
         self.state.avatar_state = AvatarState::Downloading;
 
-        // 1. Determine if the path is fully qualified or needs a Cloudflare public variant suffix
         let final_url = if avatar_url.starts_with("http://") || avatar_url.starts_with("https://") {
             avatar_url.to_string()
         } else {
@@ -192,14 +187,11 @@ impl ProfileActivity {
         };
         debug_log!("Fetching User avatar from : {}", avatar_url);
 
-        // Generate a stable key for the avatar
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         std::hash::Hash::hash(&avatar_url, &mut hasher);
         let hash_val = std::hash::Hasher::finish(&hasher);
         let avatar_uuid = Uuid::from_u128(hash_val as u128);
 
-        // Use your application cache / temporary state paths to spawn a clean task
-        // and call `ctx.request_repaint()` inside the runtime closure when the download finishes.
         let tx = self.tx.clone();
         let ctx_clone = ctx.clone();
         let cache = self.cache.clone();
@@ -226,229 +218,410 @@ impl ProfileActivity {
         auth_service: &AuthService,
         rt: &Arc<tokio::runtime::Runtime>,
     ) {
-        ui.add_space(20.0);
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .max_height(ui.available_height())
+            .show(ui, |ui| {
+                ui.add_space(20.0);
 
-        match current_auth {
-            Some(auth_ctx) => {
-                // 🟢 STATE: User is Logged In
-                Frame::new()
-                    .fill(theme.background_elevated)
-                    .corner_radius(12.0)
-                    .inner_margin(20.0)
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            let avatar_url = self.state.profile_data.as_ref().and_then(|p| p.avatar_url.clone());
+                match current_auth {
+                    Some(auth_ctx) => {
+                        Frame::new()
+                            .fill(theme.background_elevated)
+                            .corner_radius(12.0)
+                            .inner_margin(20.0)
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    let avatar_url = self
+                                        .state
+                                        .profile_data
+                                        .as_ref()
+                                        .and_then(|p| p.avatar_url.clone());
 
-                            if let Some(avatar_url) = avatar_url {
-                                match &self.state.avatar_state {
-                                    AvatarState::Ready { bytes } => {
-                                        let uri = format!("bytes://avatar_{}.jpeg", avatar_url);
+                                    if let Some(avatar_url) = avatar_url {
+                                        match &self.state.avatar_state {
+                                            AvatarState::Ready { bytes } => {
+                                                let uri =
+                                                    format!("bytes://avatar_{}.jpeg", avatar_url);
+                                                ui.add(
+                                                    egui::Image::from_bytes(uri, bytes.clone())
+                                                        .fit_to_exact_size(Vec2::new(64.0, 64.0))
+                                                        .corner_radius(32.0)
+                                                        .texture_options(
+                                                            egui::TextureOptions::LINEAR,
+                                                        ),
+                                                );
+                                            }
+                                            AvatarState::Downloading => {
+                                                let (rect, _) = ui.allocate_exact_size(
+                                                    Vec2::new(64.0, 64.0),
+                                                    egui::Sense::hover(),
+                                                );
+                                                ui.painter().rect_filled(
+                                                    rect,
+                                                    32.0,
+                                                    theme.background_elevated,
+                                                );
+                                            }
+                                            AvatarState::None => {
+                                                self.resolve_avatar_uri(
+                                                    ui.ctx(),
+                                                    rt,
+                                                    &avatar_url,
+                                                );
+                                                let (rect, _) = ui.allocate_exact_size(
+                                                    Vec2::new(64.0, 64.0),
+                                                    egui::Sense::hover(),
+                                                );
+                                                ui.painter().rect_filled(
+                                                    rect,
+                                                    32.0,
+                                                    theme.background_elevated,
+                                                );
+                                            }
+                                        }
+                                    } else {
                                         ui.add(
-                                            egui::Image::from_bytes(uri, bytes.clone())
-                                                .fit_to_exact_size(Vec2::new(64.0, 64.0))
-                                                .corner_radius(32.0)
-                                                .texture_options(egui::TextureOptions::LINEAR),
+                                            egui::Label::new(
+                                                RichText::new("👤").size(64.0),
+                                            ),
                                         );
                                     }
-                                    AvatarState::Downloading => {
-                                        let (rect, _) = ui.allocate_exact_size(Vec2::new(64.0, 64.0), egui::Sense::hover());
-                                        ui.painter().rect_filled(rect, 32.0, theme.background_elevated);
-                                    }
-                                    AvatarState::None => {
-                                        self.resolve_avatar_uri(ui.ctx(), rt, &avatar_url);
-                                        let (rect, _) = ui.allocate_exact_size(Vec2::new(64.0, 64.0), egui::Sense::hover());
-                                        ui.painter().rect_filled(rect, 32.0, theme.background_elevated);
-                                    }
-                                }
-                            } else {
-                                ui.add(
-                                    egui::Label::new(
-                                        RichText::new("👤").size(64.0)
-                                    )
-                                );
-                            }
 
-                            ui.add_space(10.0);
+                                    ui.add_space(10.0);
 
-                            ui.vertical(|ui| {
-                                ui.heading(
-                                    RichText::new(format!("Welcome, {}!", auth_ctx.user.username))
-                                        .color(theme.primary),
-                                );
-                                ui.label(
-                                    RichText::new(format!("User ID: {}", auth_ctx.user.id))
-                                        .color(theme.text_muted)
-                                        .size(11.0),
-                                );
-                            });
-                        });
+                                    ui.vertical(|ui| {
+                                        ui.heading(
+                                            RichText::new(format!(
+                                                "Welcome, {}!",
+                                                auth_ctx.user.username
+                                            ))
+                                                .color(theme.primary),
+                                        );
+                                        ui.label(
+                                            RichText::new(format!(
+                                                "User ID: {}",
+                                                auth_ctx.user.id
+                                            ))
+                                                .color(theme.text_muted)
+                                                .size(11.0),
+                                        );
+                                    });
+                                });
 
-                        ui.add_space(15.0);
-                        ui.separator();
-                        ui.add_space(15.0);
-
-                        if let Some(profile_data) = &self.state.profile_data {
-                            ui.add_space(8.0);
-                            ui.horizontal(|ui| {
-                                ui.label(RichText::new(format!("Level {}", profile_data.level)).strong().size(14.0));
-                                if let Some(level_title) = &profile_data.level_title {
-                                    ui.label(RichText::new(level_title).color(theme.text_muted).size(12.0));
-                                }
-                            });
-
-                            ui.add_space(4.0);
-                            let progress = profile_data.level_progress.unwrap_or(0.0) as f32;
-                            let xp_text = format!("{}/{}", profile_data.total_xp, profile_data.total_xp + profile_data.xp_to_next_level);
-                            let bar = egui::ProgressBar::new(progress)
-                                .text(xp_text)
-                                .fill(theme.primary);
-                            ui.add(bar);
-
-                            //debug_log!("Rendering coin balances. Data: Neuro={}, Evil={}, Twins={}", profile_data.neuro_coin, profile_data.evil_coin, profile_data.twins_coin);
-                            ui.add_space(15.0);
-                            ui.horizontal(|ui| {
-                                let coin_size = Vec2::new(24.0, 24.0);
-
-                                ui.add(egui::Image::new(include_image!("../../assets/coin-neuros.png")).fit_to_exact_size(coin_size));
-                                ui.label(RichText::new(format!("{}", profile_data.neuro_coin)).size(14.0));
-
-                                ui.add_space(10.0);
-                                ui.add(egui::Image::new(include_image!("../../assets/coin-evil.png")).fit_to_exact_size(coin_size));
-                                ui.label(RichText::new(format!("{}", profile_data.evil_coin)).size(14.0));
-
-                                ui.add_space(10.0);
-                                ui.add(egui::Image::new(include_image!("../../assets/coin-twins.png")).fit_to_exact_size(coin_size));
-                                ui.label(RichText::new(format!("{}", profile_data.twins_coin)).size(14.0));
-                            });
-
-                            if let Some(limits) = &self.state.user_limits {
                                 ui.add_space(15.0);
                                 ui.separator();
-                                ui.add_space(10.0);
-                                ui.label(RichText::new("Account Limits").strong().size(14.0));
-                                ui.label(format!("Songs: {} / {}", limits.current_song_count, limits.max_songs));
-                                ui.label(format!("Storage: {:.2} MB / {:.2} MB", limits.used_storage_bytes as f64 / 1024.0 / 1024.0, limits.max_storage_bytes as f64 / 1024.0 / 1024.0));
-                                ui.label(format!("Playlists: {} / {}", limits.current_playlist_count, limits.playlist_limit));
-                                ui.label(format!("Songs per Playlist: {}", limits.song_per_playlist_limit));
-                            }
+                                ui.add_space(15.0);
 
-                            ui.add_space(15.0);
-                            ui.separator();
-                            ui.add_space(10.0);
-                            ui.label(RichText::new("Badges").strong().size(14.0));
-                            ui.add_space(5.0);
-
-                            let column_width = ui.available_width() / 4.0;
-
-                            egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
-                                egui::Grid::new("badges_grid")
-                                    .num_columns(4)
-                                    .min_col_width(column_width - 10.0) // Subtract spacing
-                                    .spacing(Vec2::new(10.0, 10.0))
-                                    .show(ui, |ui| {
-                                        let mut badges_to_download = Vec::new();
-                                        for badge in &self.state.badges {
-                                            if badge.unlocked {
-                                                if !self.state.badge_images.contains_key(&badge.id) {
-                                                    if let Some(media) = &badge.media {
-                                                        badges_to_download.push((badge.id.clone(), media.cloudflare_id.clone()));
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        for (badge_id, cloudflare_id) in badges_to_download {
-                                            self.resolve_badge_image(ui.ctx(), rt, &badge_id, &cloudflare_id);
-                                        }
-
-                                        let mut count = 0;
-                                        for badge in &self.state.badges {
-                                            if badge.unlocked {
-                                                let badge_id = &badge.id;
-                                                let badge_state = self.state.badge_images.get(badge_id);
-
-                                                let border_color = match badge.rarity {
-                                                    0 => theme.text_secondary,
-                                                    1 => theme.primary,
-                                                    2 => theme.accent,
-                                                    3 => theme.accent_light,
-                                                    _ => theme.text_muted,
-                                                };
-
-                                                let badge_size = column_width * 0.6;
-                                                let radius = badge_size / 2.0;
-
-                                                let frame = Frame::new()
-                                                    .fill(theme.background_elevated)
-                                                    .corner_radius(8.0)
-                                                    .inner_margin(5.0);
-
-                                                frame.show(ui, |ui| {
-                                                    ui.vertical_centered(|ui| {
-                                                        match badge_state {
-                                                            Some(AvatarState::Ready { bytes }) => {
-                                                                let uri = format!("bytes://badge_{}.png", badge_id);
-
-                                                                Frame::new()
-                                                                    .corner_radius(radius)
-                                                                    .stroke(egui::Stroke::new(2.0, border_color))
-                                                                    .show(ui, |ui| {
-                                                                        ui.add_sized(Vec2::splat(badge_size),
-                                                                                     egui::Image::from_bytes(uri, bytes.clone())
-                                                                                         .fit_to_exact_size(Vec2::splat(badge_size))
-                                                                                         .corner_radius(radius)
-                                                                                         .texture_options(egui::TextureOptions::LINEAR)
-                                                                        );
-                                                                    });
-                                                            }
-                                                            _ => {
-                                                                Frame::new()
-                                                                    .corner_radius(radius)
-                                                                    .stroke(egui::Stroke::new(2.0, border_color))
-                                                                    .show(ui, |ui| {
-                                                                        ui.add_sized(Vec2::splat(badge_size), egui::Label::new(RichText::new("🏅").size(32.0)));
-                                                                    });
-                                                            }
-                                                        }
-                                                        ui.add_space(5.0); // Spacing between icon and label
-                                                        ui.label(RichText::new(&badge.name).size(10.0));
-                                                    });
-                                                });
-                                                count += 1;
-                                                if count % 4 == 0 {
-                                                    ui.end_row();
-                                                }
-                                            }
+                                if let Some(profile_data) = &self.state.profile_data {
+                                    ui.add_space(8.0);
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            RichText::new(format!(
+                                                "Level {}",
+                                                profile_data.level
+                                            ))
+                                                .strong()
+                                                .size(14.0),
+                                        );
+                                        if let Some(level_title) = &profile_data.level_title {
+                                            ui.label(
+                                                RichText::new(level_title)
+                                                    .color(theme.text_muted)
+                                                    .size(12.0),
+                                            );
                                         }
                                     });
+
+                                    ui.add_space(4.0);
+                                    let progress =
+                                        profile_data.level_progress.unwrap_or(0.0) as f32;
+                                    let xp_text = format!(
+                                        "{}/{}",
+                                        profile_data.total_xp,
+                                        profile_data.total_xp
+                                            + profile_data.xp_to_next_level
+                                    );
+                                    let bar = egui::ProgressBar::new(progress)
+                                        .text(xp_text)
+                                        .fill(theme.primary);
+                                    ui.add(bar);
+
+                                    ui.add_space(15.0);
+                                    ui.horizontal(|ui| {
+                                        let coin_size = Vec2::new(24.0, 24.0);
+
+                                        ui.add(
+                                            egui::Image::new(include_image!(
+                                                "../../assets/coin-neuros.png"
+                                            ))
+                                                .fit_to_exact_size(coin_size),
+                                        );
+                                        ui.label(
+                                            RichText::new(format!(
+                                                "{}",
+                                                profile_data.neuro_coin
+                                            ))
+                                                .size(14.0),
+                                        );
+
+                                        ui.add_space(10.0);
+                                        ui.add(
+                                            egui::Image::new(include_image!(
+                                                "../../assets/coin-evil.png"
+                                            ))
+                                                .fit_to_exact_size(coin_size),
+                                        );
+                                        ui.label(
+                                            RichText::new(format!(
+                                                "{}",
+                                                profile_data.evil_coin
+                                            ))
+                                                .size(14.0),
+                                        );
+
+                                        ui.add_space(10.0);
+                                        ui.add(
+                                            egui::Image::new(include_image!(
+                                                "../../assets/coin-twins.png"
+                                            ))
+                                                .fit_to_exact_size(coin_size),
+                                        );
+                                        ui.label(
+                                            RichText::new(format!(
+                                                "{}",
+                                                profile_data.twins_coin
+                                            ))
+                                                .size(14.0),
+                                        );
+                                    });
+
+                                    if let Some(limits) = &self.state.user_limits {
+                                        ui.add_space(15.0);
+                                        ui.separator();
+                                        ui.add_space(10.0);
+                                        ui.label(
+                                            RichText::new("Account Limits")
+                                                .strong()
+                                                .size(14.0),
+                                        );
+                                        ui.label(format!(
+                                            "Songs: {} / {}",
+                                            limits.current_song_count, limits.max_songs
+                                        ));
+                                        ui.label(format!(
+                                            "Storage: {:.2} MB / {:.2} MB",
+                                            limits.used_storage_bytes as f64
+                                                / 1024.0
+                                                / 1024.0,
+                                            limits.max_storage_bytes as f64
+                                                / 1024.0
+                                                / 1024.0
+                                        ));
+                                        ui.label(format!(
+                                            "Playlists: {} / {}",
+                                            limits.current_playlist_count,
+                                            limits.playlist_limit
+                                        ));
+                                        ui.label(format!(
+                                            "Songs per Playlist: {}",
+                                            limits.song_per_playlist_limit
+                                        ));
+                                    }
+
+                                    ui.add_space(15.0);
+                                    ui.separator();
+                                    ui.add_space(10.0);
+                                    ui.label(
+                                        RichText::new("Badges")
+                                            .strong()
+                                            .size(14.0),
+                                    );
+                                    ui.add_space(5.0);
+
+                                    let column_width = ui.available_width() / 4.0;
+
+                                    egui::ScrollArea::vertical()
+                                        .max_height(200.0)
+                                        .show(ui, |ui| {
+                                            egui::Grid::new("badges_grid")
+                                                .num_columns(4)
+                                                .min_col_width(column_width - 10.0)
+                                                .spacing(Vec2::new(10.0, 10.0))
+                                                .show(ui, |ui| {
+                                                    let mut badges_to_download = Vec::new();
+                                                    for badge in &self.state.badges {
+                                                        if badge.unlocked {
+                                                            if !self
+                                                                .state
+                                                                .badge_images
+                                                                .contains_key(&badge.id)
+                                                            {
+                                                                if let Some(media) = &badge.media {
+                                                                    badges_to_download.push((
+                                                                        badge.id.clone(),
+                                                                        media.cloudflare_id.clone(),
+                                                                    ));
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
+                                                    for (badge_id, cloudflare_id) in
+                                                        badges_to_download
+                                                    {
+                                                        self.resolve_badge_image(
+                                                            ui.ctx(),
+                                                            rt,
+                                                            &badge_id,
+                                                            &cloudflare_id,
+                                                        );
+                                                    }
+
+                                                    let mut count = 0;
+                                                    for badge in &self.state.badges {
+                                                        if badge.unlocked {
+                                                            let badge_id = &badge.id;
+                                                            let badge_state =
+                                                                self.state.badge_images
+                                                                    .get(badge_id);
+
+                                                            let border_color =
+                                                                match badge.rarity {
+                                                                    0 => theme
+                                                                        .text_secondary,
+                                                                    1 => theme
+                                                                        .primary,
+                                                                    2 => theme
+                                                                        .accent,
+                                                                    3 => theme
+                                                                        .accent_light,
+                                                                    _ => theme
+                                                                        .text_muted,
+                                                                };
+
+                                                            let badge_size =
+                                                                column_width * 0.6;
+                                                            let radius =
+                                                                badge_size / 2.0;
+
+                                                            let frame = Frame::new()
+                                                                .fill(
+                                                                    theme
+                                                                        .background_elevated,
+                                                                )
+                                                                .corner_radius(8.0)
+                                                                .inner_margin(5.0);
+
+                                                            frame.show(ui, |ui| {
+                                                                ui.vertical_centered(
+                                                                    |ui| {
+                                                                        match badge_state
+                                                                        {
+                                                                            Some(
+                                                                                AvatarState::Ready {
+                                                                                    bytes,
+                                                                                },
+                                                                            ) => {
+                                                                                let uri = format!(
+                                                                                    "bytes://badge_{}.png",
+                                                                                    badge_id
+                                                                                );
+
+                                                                                Frame::new()
+                                                                                    .corner_radius(radius)
+                                                                                    .stroke(
+                                                                                        egui::Stroke::new(
+                                                                                            2.0,
+                                                                                            border_color,
+                                                                                        ),
+                                                                                    )
+                                                                                    .show(ui, |ui| {
+                                                                                        ui.add_sized(
+                                                                                            Vec2::splat(badge_size),
+                                                                                            egui::Image::from_bytes(
+                                                                                                uri,
+                                                                                                bytes.clone(),
+                                                                                            )
+                                                                                                .fit_to_exact_size(
+                                                                                                    Vec2::splat(badge_size),
+                                                                                                )
+                                                                                                .corner_radius(radius)
+                                                                                                .texture_options(
+                                                                                                    egui::TextureOptions::LINEAR,
+                                                                                                ),
+                                                                                        );
+                                                                                    });
+                                                                            }
+                                                                            _ => {
+                                                                                Frame::new()
+                                                                                    .corner_radius(radius)
+                                                                                    .stroke(
+                                                                                        egui::Stroke::new(
+                                                                                            2.0,
+                                                                                            border_color,
+                                                                                        ),
+                                                                                    )
+                                                                                    .show(ui, |ui| {
+                                                                                        ui.add_sized(
+                                                                                            Vec2::splat(badge_size),
+                                                                                            egui::Label::new(
+                                                                                                RichText::new("🏅")
+                                                                                                    .size(32.0),
+                                                                                            ),
+                                                                                        );
+                                                                                    });
+                                                                            }
+                                                                        }
+                                                                        ui.add_space(5.0);
+                                                                        ui.label(
+                                                                            RichText::new(
+                                                                                &badge.name,
+                                                                            )
+                                                                                .size(10.0),
+                                                                        );
+                                                                    },
+                                                                );
+                                                            });
+                                                            count += 1;
+                                                            if count % 4 == 0 {
+                                                                ui.end_row();
+                                                            }
+                                                        }
+                                                    }
+                                                });
+                                        });
+                                } else {
+                                    debug_log!(
+                                        "profile_data is None, not rendering level/coin info."
+                                    );
+                                }
+
+                                ui.add_space(15.0);
+                                ui.separator();
+                                ui.add_space(15.0);
+
+                                let logout_btn =
+                                    egui::Button::new(RichText::new("Log Out").size(14.0))
+                                        .fill(theme.error)
+                                        .min_size(Vec2::new(120.0, 32.0));
+
+                                if ui.add(logout_btn).clicked() {
+                                    let _ = self.tx.try_send(ProfileMessage::Logout);
+                                }
                             });
-                        } else {
-                            debug_log!("profile_data is None, not rendering level/coin info.");
-                        }
-
-                        ui.add_space(15.0);
-                        ui.separator();
-                        ui.add_space(15.0);
-
-                        let logout_btn = egui::Button::new(RichText::new("Log Out").size(14.0))
-                            .fill(theme.error)
-                            .min_size(Vec2::new(120.0, 32.0));
-
-                        if ui.add(logout_btn).clicked() {
-                            let _ = self.tx.try_send(ProfileMessage::Logout);
-                        }
-                    });
-            }
-            None => {
-                render_login_form(
-                    ui,
-                    theme,
-                    &mut self.state,
-                    auth_service,
-                    self.tx.clone(),
-                    rt,
-                );
-            }
-        }
+                    }
+                    None => {
+                        render_login_form(
+                            ui,
+                            theme,
+                            &mut self.state,
+                            auth_service,
+                            self.tx.clone(),
+                            rt,
+                        );
+                    }
+                }
+            });
     }
 }
