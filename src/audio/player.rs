@@ -9,7 +9,7 @@ use rodio::Source;
 use rodio::decoder::DecoderBuilder;
 use std::io::BufReader;
 use std::num::NonZero;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -151,6 +151,7 @@ impl Player {
                     let mut shuffle = false;
                     let mut loop_mode = LoopMode::None;
                     let mut active_radio_url: Option<String> = None;
+                    let mut active_radio_cancel: Option<Arc<AtomicBool>> = None;
 
                     let cache_for_prefetch = cache_worker.clone();
                     let client_for_prefetch = client.clone();
@@ -1014,7 +1015,12 @@ impl Player {
                                 }
 
                                 PlaybackCommand::RadioStream(url, cb) => {
+                                    if let Some(cancel) = active_radio_cancel.take() {
+                                        cancel.store(true, Ordering::Relaxed);
+                                    }
                                     active_radio_url = Some(url.clone());
+                                    let cancel_flag = Arc::new(AtomicBool::new(false));
+                                    active_radio_cancel = Some(cancel_flag.clone());
                                     let mut lock = player_worker.state.lock().unwrap();
                                     mixer.pause();
                                     mixer.clear();
@@ -1038,9 +1044,13 @@ impl Player {
                                         let _ = std::fs::remove_file(&temp_path);
                                     }
                                     let mut initial_cb = Some(cb);
+                                    let cancel_for_thread = cancel_flag.clone();
 
                                     thread::spawn(move || {
                                         loop {
+                                            if cancel_for_thread.load(Ordering::Relaxed) {
+                                                break;
+                                            }
                                             debug_log!(
                                                 "🔌 [Radio Stream] Connecting to stream: {}",
                                                 url
@@ -1073,6 +1083,9 @@ impl Player {
                                                             let mut ready_sent = false;
                                                             let mut total_bytes_written = 0usize;
                                                             loop {
+                                                                if cancel_for_thread.load(Ordering::Relaxed) {
+                                                                    break;
+                                                                }
                                                                 match resp.read(&mut buf) {
                                                                     Ok(0) => {
                                                                         debug_log!(
@@ -1127,6 +1140,10 @@ impl Player {
                                 }
 
                                 PlaybackCommand::RadioStreamReady(file, cb) => {
+                                    if active_radio_url.is_none() {
+                                        debug_log!("Discarding stale RadioStreamReady because radio mode is no longer active");
+                                        continue;
+                                    }
                                     let tail_reader = TailReader {
                                         file,
                                         last_data_instant: Instant::now(),
