@@ -354,10 +354,16 @@ mod tests {
         let playlists: Vec<Playlist> = serde_json::from_str(json_data).unwrap();
         assert_eq!(playlists.len(), 1);
         let setlist = &playlists[0];
-        assert_eq!(setlist.name.as_ref(), "Twin Karaoke - September 30, 2026 Setlist");
+        assert_eq!(
+            setlist.name.as_ref(),
+            "Twin Karaoke - September 30, 2026 Setlist"
+        );
         assert_eq!(setlist.song_count, 25);
         assert!(setlist.is_set_list);
-        assert_eq!(setlist.set_list_date.as_deref(), Some("2026-09-30T00:00:00Z"));
+        assert_eq!(
+            setlist.set_list_date.as_deref(),
+            Some("2026-09-30T00:00:00Z")
+        );
     }
 
     #[test]
@@ -365,7 +371,8 @@ mod tests {
     fn test_fetch_official_setlists_from_server() {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let temp_dir = std::env::temp_dir().join(format!("neurokaraoke_test_server_{}", uuid::Uuid::new_v4()));
+            let temp_dir = std::env::temp_dir()
+                .join(format!("neurokaraoke_test_server_{}", uuid::Uuid::new_v4()));
             let _ = tokio::fs::create_dir_all(&temp_dir).await;
 
             let client = reqwest::Client::new();
@@ -378,13 +385,19 @@ mod tests {
 
             match db.get_official_setlists(2026).await {
                 Ok(setlists) => {
-                    println!("Successfully retrieved {} official setlists from server", setlists.len());
+                    println!(
+                        "Successfully retrieved {} official setlists from server",
+                        setlists.len()
+                    );
                     for setlist in setlists {
                         assert!(!setlist.name.is_empty());
                     }
                 }
                 Err(e) => {
-                    println!("Note: Server request skipped or failed (offline/unreachable): {}", e);
+                    println!(
+                        "Note: Server request skipped or failed (offline/unreachable): {}",
+                        e
+                    );
                 }
             }
 
@@ -397,7 +410,10 @@ mod tests {
     fn test_fetch_public_playlists_from_server() {
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            let temp_dir = std::env::temp_dir().join(format!("neurokaraoke_test_playlists_{}", uuid::Uuid::new_v4()));
+            let temp_dir = std::env::temp_dir().join(format!(
+                "neurokaraoke_test_playlists_{}",
+                uuid::Uuid::new_v4()
+            ));
             let _ = tokio::fs::create_dir_all(&temp_dir).await;
 
             let client = reqwest::Client::new();
@@ -410,13 +426,19 @@ mod tests {
 
             match db.get_public_playlists(None, false, 0, 10).await {
                 Ok(playlists) => {
-                    println!("Successfully retrieved {} public playlists from server", playlists.len());
+                    println!(
+                        "Successfully retrieved {} public playlists from server",
+                        playlists.len()
+                    );
                     for playlist in playlists {
                         assert!(!playlist.name.is_empty());
                     }
                 }
                 Err(e) => {
-                    println!("Note: Server request skipped or failed (offline/unreachable): {}", e);
+                    println!(
+                        "Note: Server request skipped or failed (offline/unreachable): {}",
+                        e
+                    );
                 }
             }
 
@@ -428,8 +450,8 @@ mod tests {
     fn test_parse_playlist_cover_art_and_mosaics() {
         let json_data = std::fs::read_to_string("raw_json/playlists.json")
             .expect("Failed to read raw_json/playlists.json");
-        let playlists: Vec<Playlist> = serde_json::from_str(&json_data)
-            .expect("Failed to deserialize playlists.json");
+        let playlists: Vec<Playlist> =
+            serde_json::from_str(&json_data).expect("Failed to deserialize playlists.json");
         assert!(!playlists.is_empty());
 
         let mut found_media = false;
@@ -459,8 +481,8 @@ mod tests {
     fn test_parse_song_cover_art() {
         let json_data = std::fs::read_to_string("raw_json/recent.json")
             .expect("Failed to read raw_json/recent.json");
-        let detail: PlaylistDetail = serde_json::from_str(&json_data)
-            .expect("Failed to deserialize recent.json");
+        let detail: PlaylistDetail =
+            serde_json::from_str(&json_data).expect("Failed to deserialize recent.json");
         assert!(!detail.songs.is_empty());
 
         let mut found_cover = false;
@@ -477,8 +499,8 @@ mod tests {
     fn test_parse_raw_playlists_json() {
         let json_data = std::fs::read_to_string("raw_json/playlists.json")
             .expect("Failed to read raw_json/playlists.json");
-        let parsed: Vec<Playlist> = serde_json::from_str(&json_data)
-            .expect("Failed to deserialize playlists.json");
+        let parsed: Vec<Playlist> =
+            serde_json::from_str(&json_data).expect("Failed to deserialize playlists.json");
         assert!(!parsed.is_empty());
         assert!(!parsed[0].name.is_empty());
     }
@@ -487,8 +509,8 @@ mod tests {
     fn test_parse_raw_recent_json() {
         let json_data = std::fs::read_to_string("raw_json/recent.json")
             .expect("Failed to read raw_json/recent.json");
-        let parsed: PlaylistDetail = serde_json::from_str(&json_data)
-            .expect("Failed to deserialize recent.json");
+        let parsed: PlaylistDetail =
+            serde_json::from_str(&json_data).expect("Failed to deserialize recent.json");
         assert!(!parsed.songs.is_empty());
         assert!(parsed.songs[0].is_valid());
     }
@@ -497,8 +519,8 @@ mod tests {
     fn test_parse_raw_suggested_json() {
         let json_data = std::fs::read_to_string("raw_json/suggested.json")
             .expect("Failed to read raw_json/suggested.json");
-        let parsed: Vec<SongDTO> = serde_json::from_str(&json_data)
-            .expect("Failed to deserialize suggested.json");
+        let parsed: Vec<SongDTO> =
+            serde_json::from_str(&json_data).expect("Failed to deserialize suggested.json");
         assert!(!parsed.is_empty());
     }
 
@@ -506,8 +528,8 @@ mod tests {
     fn test_parse_raw_trending_json() {
         let json_data = std::fs::read_to_string("raw_json/trending.json")
             .expect("Failed to read raw_json/trending.json");
-        let parsed: Vec<SongDTO> = serde_json::from_str(&json_data)
-            .expect("Failed to deserialize trending.json");
+        let parsed: Vec<SongDTO> =
+            serde_json::from_str(&json_data).expect("Failed to deserialize trending.json");
         assert!(!parsed.is_empty());
     }
 
@@ -515,8 +537,8 @@ mod tests {
     fn test_parse_raw_schedule_json() {
         let json_data = std::fs::read_to_string("raw_json/schedule.json")
             .expect("Failed to read raw_json/schedule.json");
-        let parsed: serde_json::Value = serde_json::from_str(&json_data)
-            .expect("Failed to deserialize schedule.json");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json_data).expect("Failed to deserialize schedule.json");
         assert!(parsed.is_array());
     }
 
@@ -524,8 +546,8 @@ mod tests {
     fn test_parse_raw_broadcasts_json() {
         let json_data = std::fs::read_to_string("raw_json/broadcasts.json")
             .expect("Failed to read raw_json/broadcasts.json");
-        let parsed: serde_json::Value = serde_json::from_str(&json_data)
-            .expect("Failed to deserialize broadcasts.json");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json_data).expect("Failed to deserialize broadcasts.json");
         assert!(parsed.is_array());
     }
 }

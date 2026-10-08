@@ -3,9 +3,9 @@ use crate::config::SharedConfig;
 use dashmap::DashMap;
 use reqwest::Client;
 use serde::de::Error;
-use std::fmt::Formatter;
 use serde::{Deserialize, Serialize};
 use serde_with::{DefaultOnNull, serde_as};
+use std::fmt::Formatter;
 use std::sync::Arc;
 use uuid::Uuid;
 

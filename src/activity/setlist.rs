@@ -101,7 +101,14 @@ impl SetlistActivity {
             if let Ok(data) = read(&cache_path).await {
                 if let Ok(setlists) = from_bytes::<Vec<Playlist>>(&data) {
                     for setlist in &setlists {
-                        spawn_fetch_playlist_details(&rt, Some(&ctx), &songs, &details, setlist.id, setlist.name.clone());
+                        spawn_fetch_playlist_details(
+                            &rt,
+                            Some(&ctx),
+                            &songs,
+                            &details,
+                            setlist.id,
+                            setlist.name.clone(),
+                        );
                     }
                     *s.lock().await = LoadingState::Loaded(setlists);
                     has_cached = true;
@@ -150,7 +157,14 @@ impl SetlistActivity {
                     );
 
                     for setlist in &data {
-                        spawn_fetch_playlist_details(&rt, Some(&ctx), &songs, &details, setlist.id, setlist.name.clone());
+                        spawn_fetch_playlist_details(
+                            &rt,
+                            Some(&ctx),
+                            &songs,
+                            &details,
+                            setlist.id,
+                            setlist.name.clone(),
+                        );
                     }
                     *s.lock().await = LoadingState::Loaded(data.clone());
                     let _ = write(

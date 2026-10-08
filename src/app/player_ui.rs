@@ -5,20 +5,19 @@ use crate::debug_log;
 use crate::theme::ThemeManager;
 use crate::utilities::util::format_duration;
 use eframe::egui::{
-    self, Align, Button, Color32, Context, CursorIcon, Image, ImageSource, Layout, PopupKind, Pos2, Rgba,
-    RichText, Sense, Stroke, TextWrapMode, Ui, Vec2, include_image, lerp,
+    self, Align, Button, Color32, Context, CursorIcon, Image, ImageSource, Layout, PopupKind, Pos2,
+    Rgba, RichText, Sense, Stroke, TextWrapMode, Ui, Vec2, include_image, lerp,
 };
-use egui::{Area, Frame, Id, InnerResponse, Label, Margin, Mesh, Panel, Popup, PopupAnchor, Rect, Shape, vec2};
+use egui::{
+    Area, Frame, Id, InnerResponse, Label, Margin, Mesh, Panel, Popup, PopupAnchor, Rect, Shape,
+    vec2,
+};
 use std::sync::Arc;
 use std::sync::atomic::Ordering::SeqCst;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub fn render_sleep_timer_popup(
-    app: &mut App,
-    ctx: &Context,
-    pos: Pos2,
-) -> InnerResponse<()> {
+pub fn render_sleep_timer_popup(app: &mut App, ctx: &Context, pos: Pos2) -> InnerResponse<()> {
     Area::new(Id::new("sleep_timer_area"))
         .fixed_pos(pos)
         .show(ctx, |ui| {
@@ -29,9 +28,8 @@ pub fn render_sleep_timer_popup(
                 let options = [5, 15, 30, 60, 120];
                 for &minutes in &options {
                     if ui.button(format!("{} min", minutes)).clicked() {
-                        app.sleep_timer_end = Some(
-                            Instant::now() + Duration::from_secs(minutes * 60),
-                        );
+                        app.sleep_timer_end =
+                            Some(Instant::now() + Duration::from_secs(minutes * 60));
                         app.show_timer_menu = false;
                     }
                 }
@@ -40,21 +38,17 @@ pub fn render_sleep_timer_popup(
                 ui.label("Custom (min):");
 
                 let custom_id = ui.make_persistent_id("custom_timer_input");
-                let mut custom_text: String = ui.data_mut(|d| {
-                    d.get_temp(custom_id).unwrap_or_default()
-                });
+                let mut custom_text: String =
+                    ui.data_mut(|d| d.get_temp(custom_id).unwrap_or_default());
 
                 if ui.text_edit_singleline(&mut custom_text).changed() {
-                    ui.data_mut(|d| {
-                        d.insert_temp(custom_id, custom_text.clone())
-                    });
+                    ui.data_mut(|d| d.insert_temp(custom_id, custom_text.clone()));
                 }
 
                 if ui.button("Set Custom").clicked() {
                     if let Ok(minutes) = custom_text.parse::<u64>() {
-                        app.sleep_timer_end = Some(
-                            Instant::now() + Duration::from_secs(minutes * 60),
-                        );
+                        app.sleep_timer_end =
+                            Some(Instant::now() + Duration::from_secs(minutes * 60));
                         app.show_timer_menu = false;
                     }
                 }
@@ -63,30 +57,21 @@ pub fn render_sleep_timer_popup(
                 ui.label("Shut off at (HH:MM):");
 
                 let time_id = ui.make_persistent_id("custom_time_input");
-                let mut time_text: String = ui.data_mut(|d| {
-                    d.get_temp(time_id).unwrap_or_default()
-                });
+                let mut time_text: String =
+                    ui.data_mut(|d| d.get_temp(time_id).unwrap_or_default());
 
                 if ui.text_edit_singleline(&mut time_text).changed() {
-                    ui.data_mut(|d| {
-                        d.insert_temp(time_id, time_text.clone())
-                    });
+                    ui.data_mut(|d| d.insert_temp(time_id, time_text.clone()));
                 }
 
                 if ui.button("Set Time").clicked() {
                     let input = time_text.to_lowercase();
                     let is_pm = input.contains("pm");
                     let is_am = input.contains("am");
-                    let time_clean = input
-                        .replace("am", "")
-                        .replace("pm", "")
-                        .trim()
-                        .to_string();
+                    let time_clean = input.replace("am", "").replace("pm", "").trim().to_string();
 
                     if let Some((h_str, m_str)) = time_clean.split_once(':') {
-                        if let (Ok(h_raw), Ok(m)) =
-                            (h_str.parse::<u32>(), m_str.parse::<u32>())
-                        {
+                        if let (Ok(h_raw), Ok(m)) = (h_str.parse::<u32>(), m_str.parse::<u32>()) {
                             let mut h = h_raw;
 
                             if is_pm && h < 12 {
@@ -97,10 +82,8 @@ pub fn render_sleep_timer_popup(
 
                             if h < 24 && m < 60 {
                                 let now = chrono::Local::now();
-                                let target =
-                                    now.date_naive().and_hms_opt(h, m, 0).unwrap();
-                                let target_dt =
-                                    target.and_local_timezone(chrono::Local).unwrap();
+                                let target = now.date_naive().and_hms_opt(h, m, 0).unwrap();
+                                let target_dt = target.and_local_timezone(chrono::Local).unwrap();
 
                                 let target_dt = if target_dt <= now {
                                     target_dt + chrono::Duration::days(1)
@@ -827,9 +810,8 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                                     // so its bottom edge sits flush with the top of the panel.
                                     let height_id =
                                         ui.make_persistent_id("sleep_timer_popup_height");
-                                    let popup_height: f32 = ui.data(|d| {
-                                        d.get_temp(height_id).unwrap_or(300.0)
-                                    });
+                                    let popup_height: f32 =
+                                        ui.data(|d| d.get_temp(height_id).unwrap_or(300.0));
                                     // The seek bar occupies the top 3px of the panel, so
                                     // offset the popup above it (seek bar height + margin).
                                     let seek_bar_height = 3.0;
@@ -840,8 +822,7 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                                         panel_top - popup_height - seek_bar_height - margin,
                                     );
 
-                                    let popup_resp =
-                                        render_sleep_timer_popup(app, ui.ctx(), pos);
+                                    let popup_resp = render_sleep_timer_popup(app, ui.ctx(), pos);
 
                                     // Store the measured height for the next frame.
                                     ui.data_mut(|d| {

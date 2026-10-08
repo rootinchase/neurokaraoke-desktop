@@ -256,7 +256,13 @@ impl RadioActivity {
 
             if let Ok(LoadingState::Loaded(curr)) = current_guard.as_deref() {
                 render_song_title_list(ui, theme, "Upcoming Queue", &curr.upcoming, theme.text);
-                render_song_title_list(ui, theme, "Recently Played", &curr.history, theme.text_secondary);
+                render_song_title_list(
+                    ui,
+                    theme,
+                    "Recently Played",
+                    &curr.history,
+                    theme.text_secondary,
+                );
             } else if let Ok(LoadingState::Failed(e)) = current_guard.as_deref() {
                 ui.label(
                     RichText::new(format!("Failed to load radio state: {}", e)).color(Color32::RED),

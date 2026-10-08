@@ -150,15 +150,7 @@ pub fn render_grid_2x2(
         .show(ui, |ui| {
             for i in 0..4 {
                 let cover = covers[i % covers.len()];
-                resolve_and_render_art(
-                    ui,
-                    cache,
-                    ctx,
-                    rt,
-                    client,
-                    cover,
-                    size / 2.0,
-                );
+                resolve_and_render_art(ui, cache, ctx, rt, client, cover, size / 2.0);
                 if i == 1 {
                     ui.end_row();
                 }
@@ -442,15 +434,7 @@ pub fn render_mosaic_covers(
                 .show(ui, |ui| {
                     for i in 0..2 {
                         let cover = covers[i % covers.len()];
-                        resolve_and_render_art(
-                            ui,
-                            cache,
-                            ctx,
-                            rt,
-                            client,
-                            cover,
-                            half_vertical,
-                        );
+                        resolve_and_render_art(ui, cache, ctx, rt, client, cover, half_vertical);
                     }
                 });
         }
@@ -467,15 +451,7 @@ pub fn render_mosaic_covers(
                 .spacing(Vec2::new(1.0, 1.0))
                 .show(ui, |ui| {
                     let cover = covers[2];
-                    resolve_and_render_art(
-                        ui,
-                        cache,
-                        ctx,
-                        rt,
-                        client,
-                        cover,
-                        half_horizontal,
-                    );
+                    resolve_and_render_art(ui, cache, ctx, rt, client, cover, half_horizontal);
                 });
         }
         _ => {
@@ -519,7 +495,16 @@ pub fn render_playlist_art_advanced(
         if let Some(mosaic) = &playlist.mosaic_media {
             let valid_mosaic: Vec<&Artwork> = mosaic.iter().collect();
             if !valid_mosaic.is_empty() {
-                render_mosaic_covers(ui, cache, ctx, rt, client, &playlist.id.to_string(), &valid_mosaic, size);
+                render_mosaic_covers(
+                    ui,
+                    cache,
+                    ctx,
+                    rt,
+                    client,
+                    &playlist.id.to_string(),
+                    &valid_mosaic,
+                    size,
+                );
                 return;
             }
         }
@@ -528,7 +513,16 @@ pub fn render_playlist_art_advanced(
     let valid_song_covers: Vec<&Artwork> =
         songs.iter().filter_map(|s| s.cover_art.as_ref()).collect();
     if !valid_song_covers.is_empty() {
-        render_mosaic_covers(ui, cache, ctx, rt, client, &playlist.id.to_string(), &valid_song_covers, size);
+        render_mosaic_covers(
+            ui,
+            cache,
+            ctx,
+            rt,
+            client,
+            &playlist.id.to_string(),
+            &valid_song_covers,
+            size,
+        );
         return;
     }
 

@@ -358,7 +358,14 @@ impl PlaylistActivity {
 
                             let scroll_output = ScrollArea::vertical().show(ui, |ui| {
                                 for (_index, playlist) in sorted_playlists.iter().enumerate() {
-                                    spawn_fetch_playlist_details(&self.rt, Some(&self.ctx), &self.songs, &self.playlist_details, playlist.id, playlist.name.clone());
+                                    spawn_fetch_playlist_details(
+                                        &self.rt,
+                                        Some(&self.ctx),
+                                        &self.songs,
+                                        &self.playlist_details,
+                                        playlist.id,
+                                        playlist.name.clone(),
+                                    );
 
                                     if let Some(detail_state) =
                                         self.playlist_details.get(&playlist.id)

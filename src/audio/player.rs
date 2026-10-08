@@ -1083,7 +1083,9 @@ impl Player {
                                                             let mut ready_sent = false;
                                                             let mut total_bytes_written = 0usize;
                                                             loop {
-                                                                if cancel_for_thread.load(Ordering::Relaxed) {
+                                                                if cancel_for_thread
+                                                                    .load(Ordering::Relaxed)
+                                                                {
                                                                     break;
                                                                 }
                                                                 match resp.read(&mut buf) {
@@ -1141,7 +1143,9 @@ impl Player {
 
                                 PlaybackCommand::RadioStreamReady(file, cb) => {
                                     if active_radio_url.is_none() {
-                                        debug_log!("Discarding stale RadioStreamReady because radio mode is no longer active");
+                                        debug_log!(
+                                            "Discarding stale RadioStreamReady because radio mode is no longer active"
+                                        );
                                         continue;
                                     }
                                     let tail_reader = TailReader {
