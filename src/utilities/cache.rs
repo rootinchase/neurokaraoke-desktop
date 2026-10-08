@@ -564,6 +564,7 @@ impl PersistentMediaCache {
         Ok(expired_count + size_count)
     }
 
+    #[allow(dead_code)]
     pub async fn evict_in(
         &self,
         dir_path: &Path,

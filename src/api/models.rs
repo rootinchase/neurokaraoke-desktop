@@ -511,6 +511,7 @@ pub struct AzuraCastStation {
 }
 
 impl AzuraCastStation {
+    #[allow(dead_code)]
     pub fn available_streams(&self) -> Vec<(String, String)> {
         let mut streams = Vec::new();
         for mount in &self.mounts {
