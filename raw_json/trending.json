@@ -1,0 +1,951 @@
+[
+  {
+    "id": "beee9a3c-d89e-4815-815e-21fd7f8d3893",
+    "title": "Shelter",
+    "opus": null,
+    "oss": null,
+    "cnPath": null,
+    "absolutePath": "audio/beee9a3c-d89e-4815-815e-21fd7f8d3893-shelter duet.mp3",
+    "playCount": 2022,
+    "duration": 222,
+    "streamDate": "2026-09-30T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "Porter Robinson",
+      "Madeon"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "c0efb8fb-8f6c-4ad6-ac7e-d0a471870bdf",
+      "fileName": "MTXX_MH20240207_124827091.jpg",
+      "contentType": "image/jpeg",
+      "description": null,
+      "isAnimated": false,
+      "credit": "Art by Pchan (@pinkpink939)",
+      "cloudflareId": "58d13365-e514-422c-c23d-261dcd8ad400",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/58d13365-e514-422c-c23d-261dcd8ad400",
+      "artist": {
+        "id": "0091abc1-0ac3-49d4-92b0-c2a96f458dd0",
+        "name": "Pchan",
+        "socialLink": "x.com/pinkpink939",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 27,
+      "tagString": "blue_eyes,multiple_girls,animal_ears,2girls,one_eye_closed,ahoge,shared_clothes,shared_scarf,horns,red_scarf,two_side_up,cat_ears,red_eyes,scarf,:3,hair_ornament,white_background,simple_background,virtual_youtuber,heart,long_hair,demon_horns,white_pupils,dog_ears,bright_pupils,siblings,ribbon,blush,heads_together,hair_ribbon,brown_hair,pink_hair,twins,closed_mouth,hair_between_eyes,sweat,pink_eyes,cheek-to-cheek,sweatdrop,yuri",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "5ab52e04-8cfb-48b2-a7e0-3ebbf873cd85/playlist.m3u8"
+  },
+  {
+    "id": "f6a5acfe-26be-4479-9b1c-937d3f9f4e0d",
+    "title": "炜WARD ROMANCE",
+    "opus": "song-opus/f6a5acfe-26be-4479-9b1c-937d3f9f4e0d.ogg",
+    "oss": "audio/f6a5acfe-26be-4479-9b1c-937d3f9f4e0d-Weiward Romance (duet).mp3",
+    "cnPath": "audio/f6a5acfe-26be-4479-9b1c-937d3f9f4e0d-Weiward Romance (duet).mp3",
+    "absolutePath": "audio/f6a5acfe-26be-4479-9b1c-937d3f9f4e0d-Weiward Romance (duet).mp3",
+    "playCount": 39438,
+    "duration": 163,
+    "streamDate": "2026-04-29T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "FLAVOR FOLEY"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "8b671032-9667-437e-875a-3190ca942f02",
+      "fileName": "GuiFquGWQAAIq50.jpg",
+      "contentType": "image/jpeg",
+      "description": null,
+      "isAnimated": false,
+      "credit": null,
+      "cloudflareId": "6417d170-2a69-41e3-a9c6-873e00132d00",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/6417d170-2a69-41e3-a9c6-873e00132d00",
+      "artist": {
+        "id": "3c4a54fd-06e4-4e74-8fdb-1048ff96997d",
+        "name": "Naham",
+        "socialLink": "x.com/N4_H4M",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 102,
+      "tagString": "multiple_girls,2girls,yellow_cardigan,brown_hair,heart_hair_ornament,red_eyes,bow,bowtie,v,sailor_collar,hair_ornament,cardigan,smile,siblings,long_hair,ribbon,hair_ribbon,red_bow,blue_eyes,school_uniform,heart,looking_at_viewer,two_side_up,blue_sailor_collar,virtual_youtuber,red_ribbon,blush,twins,white_background,white_shirt,black_cardigan,hair_between_eyes,closed_mouth,aqua_bowtie,serafuku,simple_background,sisters,red_bowtie,shirt,upper_body,:3,aqua_bow,yuri",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "fa9d9c1d-8121-4f15-8cfb-5875dcec8478/playlist.m3u8"
+  },
+  {
+    "id": "8dd56b02-9063-417a-bd37-e7b17e2f4c2c",
+    "title": "Hush",
+    "opus": null,
+    "oss": null,
+    "cnPath": null,
+    "absolutePath": "audio/8dd56b02-9063-417a-bd37-e7b17e2f4c2c-Hush.mp3",
+    "playCount": 1360,
+    "duration": 238,
+    "streamDate": "2026-09-30T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "Muse",
+      "Ellie Goulding"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "f44ae35e-235b-4904-b7aa-40d6cef9adcd",
+      "fileName": "52.png",
+      "contentType": "image/png",
+      "description": "",
+      "isAnimated": false,
+      "credit": "lenkyun02",
+      "cloudflareId": "436c8daa-e4e0-4c6e-630c-3269c678b800",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/436c8daa-e4e0-4c6e-630c-3269c678b800",
+      "artist": {
+        "id": "26377d40-b836-4065-9b39-7fc289c64f6f",
+        "name": "lenkyun02",
+        "socialLink": "x.com/len_kyun02",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 14,
+      "tagString": "virtual_youtuber, multiple_girls, 6+girls, animal_ears, black_hair, school_uniform, blonde_hair, ahoge, green_eyes, guitar, 1boy, multicolored_hair, hair_ornament, instrument, smile, purple_eyes, bow, pink_hair, green_hair, gaming_chair, pointy_ears, hood, star_(symbol), red_eyes, glasses, open_mouth, brown_hair, serafuku, streaked_hair, hairclip, own_hands_together, long_hair, hoodie, grey_hair, twintails, holding, blue_eyes, green_hoodie, :3, horns, grin, fang, ribbon, symbol-shaped_pupils, one_eye_closed, looking_at_viewer, star_hair_ornament, skin_fang, fox_ears, hood_up, two_side_up, heart_hair_ornament, sitting, white_hair, facial_mark, hair_ribbon, bowtie, tongue, heart, own_hands_clasped, fox_girl, v, short_hair, cat_ears, sailor_collar, animal_ear_fluff, glowing_eyes, hair_between_eyes, wings, dog_ears, colored_skin, cardigan, gloves, tongue_out, glowing, closed_eyes, red_hair, demon_horns",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": false,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "7436621b-2099-4148-9b02-9dfe2ea3adc8/playlist.m3u8"
+  },
+  {
+    "id": "ae9c50d6-a588-4375-8b13-870445393279",
+    "title": "1x1",
+    "opus": null,
+    "oss": null,
+    "cnPath": null,
+    "absolutePath": "audio/ae9c50d6-a588-4375-8b13-870445393279-1x1.mp3",
+    "playCount": 1339,
+    "duration": 210,
+    "streamDate": "2026-09-30T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "Bring Me The Horizon"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "bd23bc98-a622-44c0-98cb-ba8aa089cb61",
+      "fileName": "IMG_5725.jpg",
+      "contentType": "image/jpeg",
+      "description": null,
+      "isAnimated": false,
+      "credit": "Art by Copper1ion (@Cooper1ion)",
+      "cloudflareId": "e473f077-f37c-422e-da26-36897cb76600",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/e473f077-f37c-422e-da26-36897cb76600",
+      "artist": {
+        "id": "00436aee-842f-49f6-9160-71935dc31378",
+        "name": "Copper1ion",
+        "socialLink": "x.com/Cooper1ion",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 14,
+      "tagString": "one_eye_closed, multiple_girls, 2girls, heart, virtual_youtuber, red_eyes, horns, dress, ahoge, v, heart_hair_ornament, bow, smile, frills, blue_eyes, long_hair, red_bow, ribbon, open_mouth, blonde_hair, red_ribbon, hair_ornament, two_side_up, black_dress, bowtie, dual_persona, holding_hands, hair_ribbon, looking_at_viewer, lolita_fashion, siblings, blue_background, long_sleeves, frilled_dress, twins, skull_hair_ornament, twintails, red_bowtie, blue_bow, interlocked_fingers, gothic_lolita, frilled_sleeves, demon_horns, ;d",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "a908dac1-8f30-4322-bb9d-053acacb4603/playlist.m3u8"
+  },
+  {
+    "id": "7eee0aaa-861d-4262-96fb-7b2550a631e7",
+    "title": "ULTRA C",
+    "opus": null,
+    "oss": null,
+    "cnPath": null,
+    "absolutePath": "audio/7eee0aaa-861d-4262-96fb-7b2550a631e7-Ultra C.mp3",
+    "playCount": 1199,
+    "duration": 178,
+    "streamDate": "2026-09-30T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "Giga",
+      "TeddyLoid"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "92e792fb-b9bf-44c4-8f4f-ad6760635b92",
+      "fileName": "v3-angle-edit-1.png",
+      "contentType": "image/png",
+      "description": null,
+      "isAnimated": false,
+      "credit": null,
+      "cloudflareId": "d241e167-7f85-4d3b-9853-403253987400",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/d241e167-7f85-4d3b-9853-403253987400",
+      "artist": {
+        "id": "4f076a00-a890-452f-ac0a-06f4805d64cd",
+        "name": "Taprieiko",
+        "socialLink": "x.com/Taprieiko",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 12,
+      "tagString": "candy, hat, multiple_girls, food, 2girls, witch_hat, heart, star_(symbol), lollipop, long_hair, open_mouth, hair_ornament, halloween_bucket, smile, virtual_youtuber, heart_hair_ornament, dress, capelet, siblings, black_headwear, black_dress, looking_at_viewer, halloween, ribbon, blue_eyes, holding, halloween_costume, holding_candy, two_side_up, star_hair_ornament, sisters, purple_capelet, brown_hair, orange_eyes, holding_lollipop, swirl_lollipop, jack-o'-lantern, holding_food, food_in_mouth, hair_between_eyes, red_ribbon, candy_wrapper, :d, magical_girl, black_capelet",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": false,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "497d7186-09b5-4981-a36c-f41c938b4751/playlist.m3u8"
+  },
+  {
+    "id": "09471c24-9f97-457f-bef8-188535521574",
+    "title": "The Void",
+    "opus": "song-opus/09471c24-9f97-457f-bef8-188535521574.ogg",
+    "oss": "audio/The Void (evil).mp3",
+    "cnPath": "audio/The Void (evil).mp3",
+    "absolutePath": "audio/The Void (evil).mp3",
+    "playCount": 5449,
+    "duration": 221,
+    "streamDate": "2026-04-15T04:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Evil"
+    ],
+    "originalArtists": [
+      "Spiritbox"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "7404f6a7-cdd2-4afc-8c55-d00933bdeb5f",
+      "fileName": "G-3mzDdXAAAP1uJ.jpg",
+      "contentType": "image/jpeg",
+      "description": "https://twitter.com/liquain_/status/2012518390326571079",
+      "isAnimated": false,
+      "credit": null,
+      "cloudflareId": "b1fb255a-c3c9-44b8-1a89-44e480312900",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/b1fb255a-c3c9-44b8-1a89-44e480312900",
+      "artist": {
+        "id": "025670b1-79f3-40d2-a812-1dd5237df5ad",
+        "name": "水金属liquain",
+        "socialLink": "x.com/liquain_",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 67,
+      "tagString": "space_helmet, helmet, astronaut, reflection, brown_hair, looking_at_viewer, 1girl, twintails, planet, spacesuit, portrait, animal_ears, moon, solo, black_sky, earth_(planet), black_background, sky, space, hair_between_eyes, diffraction_spikes, brown_eyes, headlamp, horizon, night, fake_animal_ears, multiple_girls",
+      "mediaTag": 1,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "50a68f7e-5122-4daf-82ff-a861085f2a37/playlist.m3u8"
+  },
+  {
+    "id": "aba6a37d-459d-4fd2-b2e5-7f8f767ebce7",
+    "title": "Alive",
+    "opus": "song-opus/aba6a37d-459d-4fd2-b2e5-7f8f767ebce7.ogg",
+    "oss": "audio/aba6a37d-459d-4fd2-b2e5-7f8f767ebce7-Alive (2).mp3",
+    "cnPath": "audio/aba6a37d-459d-4fd2-b2e5-7f8f767ebce7-Alive (2).mp3",
+    "absolutePath": "audio/aba6a37d-459d-4fd2-b2e5-7f8f767ebce7-Alive (2).mp3",
+    "playCount": 6742,
+    "duration": 206,
+    "streamDate": "2026-04-29T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "Krewella"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "e753a3aa-e975-4406-a3a1-37d2c2781aad",
+      "fileName": "1159508348114042898_4.png",
+      "contentType": "image/png",
+      "description": "https://www.bilibili.com/opus/1159508348114042898",
+      "isAnimated": false,
+      "credit": null,
+      "cloudflareId": "818e63ef-9e32-40fa-903b-050b9a6add00",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/818e63ef-9e32-40fa-903b-050b9a6add00",
+      "artist": {
+        "id": "8b7c9fbc-7d46-428f-b410-1b60bfe603e0",
+        "name": "二十七度火",
+        "socialLink": "space.bilibili.com/278484760",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 85,
+      "tagString": "2girls,multiple_girls,dress,white_dress,ribbon,holding_hands,hairband,black_dress,long_hair,two_side_up,neck_ribbon,sketch,sky,heart,heart_hair_ornament,brown_hair,closed_mouth,blue_sky,long_sleeves,looking_at_viewer,hair_ornament,smile,outdoors,blue_eyes,hair_ribbon,puffy_sleeves,red_ribbon,day,red_eyes,frills,juliet_sleeves,ahoge,cloud,fence,hair_between_eyes,blue_ribbon,collared_dress,blue_hairband,black_ribbon",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "fc423b38-d716-4f29-92d8-f3afd91f87f1/playlist.m3u8"
+  },
+  {
+    "id": "fb6c5bee-5326-4d2b-bce1-5ca38ea8f498",
+    "title": "Wake Me Up When September Ends",
+    "opus": null,
+    "oss": null,
+    "cnPath": null,
+    "absolutePath": "audio/fb6c5bee-5326-4d2b-bce1-5ca38ea8f498-Wake Me Up When September Ends duet.mp3",
+    "playCount": 1055,
+    "duration": 281,
+    "streamDate": "2026-09-30T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "Green Day"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "2331fa79-8640-4a12-92d1-3af5103917a7",
+      "fileName": "G1JPfZQaQAEbNgA.png",
+      "contentType": "image/png",
+      "description": null,
+      "isAnimated": false,
+      "credit": "Art by Ladi (@LaaaaaDi_)",
+      "cloudflareId": "7d73dff9-97a6-4bcd-3233-27742130f600",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/7d73dff9-97a6-4bcd-3233-27742130f600",
+      "artist": {
+        "id": "06bb8e09-b03c-4bc1-8a6f-26b760391d77",
+        "name": "Ladi",
+        "socialLink": "x.com/LaaaaaDi_",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 19,
+      "tagString": "red_ribbon, multiple_girls, heart_hair_ornament, red_eyes, heart, tongue, bowtie, tongue_out, brown_hair, 2girls, bow, red_bow, 2koma, 1boy, long_hair, !, blue_eyes, ribbon, hair_ribbon, hair_ornament, school_uniform, blush, comic, black_hair, long_sleeves, english_text, red_bowtie, smile, hair_between_eyes, blue_bow, hood, sailor_collar, shirt, blue_bowtie, green_bowtie, serafuku, hoodie, skirt, crayon, white_shirt, white_background, green_hoodie, paper, white_skirt, green_jacket, holding, jacket, open_mouth, :q, closed_mouth, sweater, simple_background, virtual_youtuber, short_hair, pleated_skirt, tears, crying",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "36e285cf-8c95-4caf-8492-ba2691210ce2/playlist.m3u8"
+  },
+  {
+    "id": "ac9e286d-097e-40e1-972b-d30287ff2983",
+    "title": "Phantom Racer",
+    "opus": null,
+    "oss": null,
+    "cnPath": null,
+    "absolutePath": "audio/ac9e286d-097e-40e1-972b-d30287ff2983-Phantom Racer.mp3",
+    "playCount": 1042,
+    "duration": 297,
+    "streamDate": "2026-09-30T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "TWRP"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "6bf4e259-a42f-4408-8312-f1d1dd9b99d6",
+      "fileName": "G0_YvMXWgAAQH1I.png",
+      "contentType": "image/png",
+      "description": null,
+      "isAnimated": false,
+      "credit": null,
+      "cloudflareId": "f1561bcd-b799-4895-131f-d8750e1dd700",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/f1561bcd-b799-4895-131f-d8750e1dd700",
+      "artist": {
+        "id": "e58255d5-582a-44a0-a353-89c86b64a25f",
+        "name": "Wimo",
+        "socialLink": "x.com/wimowowo",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 15,
+      "tagString": "multiple_girls, thighhighs, skirt, 3girls, brown_hair, virtual_youtuber, long_hair, ahoge, jacket, blue_eyes, animal_ears, pantyhose, blonde_hair, necktie, hair_ornament, open_mouth, shirt, grey_skirt, black_thighhighs, pointing, white_shirt, bow, sitting, collared_shirt, pleated_skirt, blazer, school_uniform, long_sleeves, hair_bow, ascot, indoors, black_jacket, red_bow, red_eyes, shoes, smile, glasses, brown_eyes, clock, black_pantyhose, hairclip, cat_ears, blue_skirt, black_skirt, ribbon",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": false,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "26b41981-80eb-4707-888c-94b1062d889b/playlist.m3u8"
+  },
+  {
+    "id": "21ff550b-38f3-4d57-b035-dd94dcdb3bb6",
+    "title": "Good Riddance",
+    "opus": null,
+    "oss": null,
+    "cnPath": null,
+    "absolutePath": "audio/21ff550b-38f3-4d57-b035-dd94dcdb3bb6-Good Riddance.mp3",
+    "playCount": 937,
+    "duration": 181,
+    "streamDate": "2026-09-30T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "Darren Korb"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "62cfd97b-4da9-4787-a940-738b1311d4b7",
+      "fileName": "IMG_1698.png",
+      "contentType": "image/png",
+      "description": "",
+      "isAnimated": false,
+      "credit": "Johnny's Garage",
+      "cloudflareId": "51cdffcc-328d-41a0-4c79-47adf0432300",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/51cdffcc-328d-41a0-4c79-47adf0432300",
+      "artist": {
+        "id": "a26f4dfd-fe01-45a6-b419-8eb2d2a64977",
+        "name": "Johnny's Garage",
+        "socialLink": "x.com/JohnnyGarageAn",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 18,
+      "tagString": "3girls, multiple_girls, virtual_youtuber, ahoge, pink_hair, brown_hair, two_side_up, breasts, blue_eyes, heart, red_eyes, pointy_ears, purple_background, cleavage, bow, one_eye_closed, teeth, smile, long_hair, sailor_collar, bowtie, cardigan, black_nails, looking_at_viewer, horns, demon_girl, clenched_hand, multicolored_hair, eyeshadow, bare_shoulders, long_sleeves, underwear, open_mouth, skull, medium_breasts, green_bow, facial_mark, makeup, school_uniform, artist_name, grin, sharp_teeth, closed_mouth, green_bowtie, heart_facial_mark, short_hair, detached_collar, panties, serafuku, hair_ornament, blunt_bangs, gloves, hair_ribbon",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": false,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "d822eefe-85d5-4ba0-85f7-e91a50300091/playlist.m3u8"
+  },
+  {
+    "id": "f1da8d2b-39eb-4c56-b0d8-f4d23559c9ba",
+    "title": "DAMIDAMI",
+    "opus": "song-opus/f1da8d2b-39eb-4c56-b0d8-f4d23559c9ba.ogg",
+    "oss": "audio/Sihan (HOYO-MiX), Aylin Abbasova - DAMIDAMI (Duet.v1) (Neuro & Evil).mp3",
+    "cnPath": "audio/Sihan (HOYO-MiX), Aylin Abbasova - DAMIDAMI (Duet.v1) (Neuro & Evil).mp3",
+    "absolutePath": "audio/Sihan%20%28HOYO-MiX%29%2C%20Aylin%20Abbasova%20-%20DAMIDAMI%20%28Duet.v1%29%20%28Neuro%20%26%20Evil%29.mp3",
+    "playCount": 5496,
+    "duration": 188,
+    "streamDate": "2025-11-12T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "Sihan (HOYO-MiX)",
+      "Aylin Abbasova"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "489788bf-8d53-487f-afd2-42db4013a7e7",
+      "fileName": "childrensday.jpg",
+      "contentType": "image/jpeg",
+      "description": null,
+      "isAnimated": false,
+      "credit": "Art by fians (@fiansand)",
+      "cloudflareId": "cf68be97-c1af-42ba-4c05-13723a986c00",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/cf68be97-c1af-42ba-4c05-13723a986c00",
+      "artist": {
+        "id": "068f9bdf-38a0-4e6f-bf82-74695bc67d83",
+        "name": "fians",
+        "socialLink": "x.com/fiansand",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 42,
+      "tagString": "multiple_girls, 2girls, bowtie, siblings, bow, red_bow, virtual_youtuber, one_eye_closed, yellow_cardigan, smile, blue_eyes, twins, thighhighs, sailor_collar, sisters, red_eyes, ahoge, blue_bow, skirt, red_bowtie, two_side_up, outdoors, single_thighhigh, school_uniform, fang, purple_sailor_collar, cardigan, serafuku, hair_bow, socks, skin_fang, blue_bowtie, open_mouth, asymmetrical_legwear, sky, holding_hands, long_hair, kneehighs, grass, brown_footwear, black_thighhighs, brown_hair, uneven_legwear, blue_sailor_collar, single_sock, grey_sailor_collar, black_socks, black_skirt, black_sailor_collar, day, ribbon, shirt, blue_skirt, shoes, long_sleeves, red_ribbon, looking_at_another, pleated_skirt, hair_ribbon, walking, blue_sky, purple_skirt, holding, blush, cloud, single_kneehigh, grey_skirt",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "51a3195d-d4c8-4491-965a-ac015d46026d/playlist.m3u8"
+  },
+  {
+    "id": "f2609a82-b835-464e-88a7-4dc4acfe4a84",
+    "title": "普通DISCO (Ordinary DISCO)",
+    "opus": null,
+    "oss": null,
+    "cnPath": null,
+    "absolutePath": "audio/f2609a82-b835-464e-88a7-4dc4acfe4a84-Ordinary Disco.mp3",
+    "playCount": 885,
+    "duration": 209,
+    "streamDate": "2026-09-30T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "yanhe",
+      "ilem",
+      "luo tianyi"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "3815f133-0353-4811-a49b-9a1571fd1806",
+      "fileName": "IMG_98142.jpg",
+      "contentType": "image/jpeg",
+      "description": null,
+      "isAnimated": false,
+      "credit": null,
+      "cloudflareId": "36192278-0a9d-4354-eb8a-754d28ec2a00",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/36192278-0a9d-4354-eb8a-754d28ec2a00",
+      "artist": {
+        "id": "23225218-3159-4671-8c75-90dc8db17b51",
+        "name": "a.rifa_shiin",
+        "socialLink": "x.com/ripp_aa",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 30,
+      "tagString": "2girls, multiple_girls, skirt, thighhighs, cardigan, bandaid_on_leg, bandaid, long_hair, shirt, smile, bow, school_uniform, single_thighhigh, pleated_skirt, white_shirt, virtual_youtuber, hair_ornament, white_background, looking_at_viewer, red_eyes, bowtie, brown_hair, bandaid_on_knee, brown_cardigan, red_bow, collared_shirt, simple_background, black_cardigan, black_thighhighs, sitting, off_shoulder, blush, ribbon, two_side_up, hair_ribbon, long_sleeves, ahoge, heart_hair_ornament, green_eyes, red_bowtie, closed_mouth, grey_skirt, red_ribbon, blue_skirt, heart, feet_out_of_frame, light_brown_hair, blonde_hair, purple_skirt, hair_between_eyes, miniskirt, asymmetrical_legwear, black_skirt, invisible_chair, hairclip, button_badge, sweater, standing",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "13fdc851-208f-43d6-bc6f-dba6583f7133/playlist.m3u8"
+  },
+  {
+    "id": "c0330f4d-6c6e-4bc6-8e3f-2e9193404199",
+    "title": "かなしばりに遭ったら (If You Were to be Paralyzed by Sleep)",
+    "opus": "song-opus/c0330f4d-6c6e-4bc6-8e3f-2e9193404199.ogg",
+    "oss": null,
+    "cnPath": "audio/c0330f4d-6c6e-4bc6-8e3f-2e9193404199-Kanashibari ni Attara.mp3",
+    "absolutePath": "audio/c0330f4d-6c6e-4bc6-8e3f-2e9193404199-Kanashibari ni Attara.mp3",
+    "playCount": 6232,
+    "duration": 220,
+    "streamDate": "2026-05-13T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "avaraya"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "5e55f868-9367-478b-a9e9-8f038e570036",
+      "fileName": "HE6mapmbAAAaJDD.jpg",
+      "contentType": "image/jpeg",
+      "description": "Happy (late) birthday, Evil!!\n\nJust back from art block :3\nhttps://twitter.com/Philovyc_/status/2039751510935093483",
+      "isAnimated": false,
+      "credit": null,
+      "cloudflareId": "3a80901c-57cd-47c6-9502-22171414ec00",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/3a80901c-57cd-47c6-9502-22171414ec00",
+      "artist": {
+        "id": "4d8cb1a5-3650-47d5-97f5-5f0d2a16822d",
+        "name": "philovyc_",
+        "socialLink": "x.com/Philovyc_",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 44,
+      "tagString": "turtle,2girls,multiple_girls,confetti,ahoge,long_hair,brown_hair,two_side_up,heart,blonde_hair,bandaid_on_leg,skirt,thighhighs,single_thighhigh,heart_hair_ornament,red_eyes,grey_skirt,eyepatch,red_ribbon,ribbon,closed_eyes,bandaid,hair_ornament,bandaid_on_knee,hair_ribbon,open_mouth,yellow_cardigan,virtual_youtuber,smile,black_thighhighs,pleated_skirt,black_jacket,blush,long_sleeves,jacket,socks,sweater,artist_name,feet_out_of_frame,turtle_shell,closed_mouth,hug",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": false,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "80157b79-3c2b-4622-bae2-81a71ded8352/playlist.m3u8"
+  },
+  {
+    "id": "6a1eb3d1-c97c-44b9-9208-b6c90a8929e9",
+    "title": "Be My Star",
+    "opus": "song-opus/6a1eb3d1-c97c-44b9-9208-b6c90a8929e9.ogg",
+    "oss": null,
+    "cnPath": "audio/6a1eb3d1-c97c-44b9-9208-b6c90a8929e9-Be My Star.mp3",
+    "absolutePath": "audio/6a1eb3d1-c97c-44b9-9208-b6c90a8929e9-Be My Star.mp3",
+    "playCount": 5893,
+    "duration": 168,
+    "streamDate": "2026-05-27T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "LEVEL NINE",
+      "T.T. STAR"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "0e94ba22-1402-4665-b5e7-621f3e52e0e2",
+      "fileName": "Image_473340108301212.png",
+      "contentType": "image/png",
+      "description": null,
+      "isAnimated": false,
+      "credit": null,
+      "cloudflareId": "589a7ae1-8df7-4d86-d8f3-70c593652700",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/589a7ae1-8df7-4d86-d8f3-70c593652700",
+      "artist": {
+        "id": "04374682-d0e0-4189-a8be-3d6ef01fd604",
+        "name": "Shinbaru",
+        "socialLink": "x.com/_shinbaru",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 91,
+      "tagString": "virtual_youtuber, bow, horns, red_bow, ahoge, red_eyes, skull_hair_ornament, green_bow, holding_hands, star_(sky), two_side_up, bowtie, blue_eyes, skirt, hair_bow, chibi, sky, multiple_girls, hair_ornament, closed_mouth, space, 2girls, brown_hair, white_skirt, :3, open_mouth, shirt, cloud, smile, fang, v-shaped_eyebrows, blush, jacket, sparkle, green_bowtie, pink_hair, pleated_skirt, hair_between_eyes, dress, starry_sky, grey_skirt, looking_at_viewer, long_hair",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "4f4d1c53-a806-4ee6-b32d-f0a9bcff9ff7/playlist.m3u8"
+  },
+  {
+    "id": "7b89fc54-f596-474f-936f-c8400840e127",
+    "title": "Die with a Smile",
+    "opus": "song-opus/7b89fc54-f596-474f-936f-c8400840e127.ogg",
+    "oss": "audio/Lady Gaga, Bruno Mars - Die With A Smile (Duet.v1) (Neuro & Evil).mp3",
+    "cnPath": "audio/Lady Gaga, Bruno Mars - Die With A Smile (Duet.v1) (Neuro & Evil).mp3",
+    "absolutePath": "audio/Lady%20Gaga%2C%20Bruno%20Mars%20-%20Die%20With%20A%20Smile%20%28Duet.v1%29%20%28Neuro%20%26%20Evil%29.mp3",
+    "playCount": 7334,
+    "duration": 249,
+    "streamDate": "2025-06-11T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "Lady Gaga",
+      "Bruno Mars"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "d8bd1b22-4a63-49a7-a95d-aec00fdfe073",
+      "fileName": "IMG_4988.png",
+      "contentType": "image/png",
+      "description": null,
+      "isAnimated": false,
+      "credit": null,
+      "cloudflareId": "9a92554a-f410-4bd9-518c-cc7dd0346700",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/9a92554a-f410-4bd9-518c-cc7dd0346700",
+      "artist": {
+        "id": "2b9be80b-3b12-45d8-b333-3b98a2a44126",
+        "name": "泠喵喵i (lingmiaoi)",
+        "socialLink": "x.com/lingmiaoooii",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 33,
+      "tagString": "2girls, silhouette, tohsaka_rin, multiple_girls, sky, power_lines, long_hair, outdoors, utility_pole, star_(sky), holding_hands, sunset, two_side_up, night, grass, from_behind, starry_sky, hair_ribbon, twilight, skirt, standing, ribbon, twintails, night_sky",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "e57b7aef-4dd5-426c-91fa-d7792cafc469/playlist.m3u8"
+  },
+  {
+    "id": "17e9a56c-2942-4ad7-8d40-fe8eebac03c3",
+    "title": "can u see me in the dark?",
+    "opus": "song-opus/17e9a56c-2942-4ad7-8d40-fe8eebac03c3.ogg",
+    "oss": "audio/Haelstorm Prevail - can u see me in the dark (Duet.v1) (Neuro & Evil).mp3",
+    "cnPath": "audio/Haelstorm Prevail - can u see me in the dark (Duet.v1) (Neuro & Evil).mp3",
+    "absolutePath": "audio/Haelstorm%20Prevail%20-%20can%20u%20see%20me%20in%20the%20dark%20%28Duet.v1%29%20%28Neuro%20%26%20Evil%29.mp3",
+    "playCount": 7710,
+    "duration": 241,
+    "streamDate": "2025-05-28T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "Halestorm",
+      "I Prevail"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "6192427c-4f96-4734-88c8-2ce0bfbee0e8",
+      "fileName": "noises_in_the_kitchen.png",
+      "contentType": "image/png",
+      "description": null,
+      "isAnimated": false,
+      "credit": null,
+      "cloudflareId": "6e44318b-bdb4-40d8-db11-28e27cfebf00",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/6e44318b-bdb4-40d8-db11-28e27cfebf00",
+      "artist": {
+        "id": "52c1e6e4-f6ca-405c-8d22-4ea34658f3b0",
+        "name": "tanhuluu (food0606)",
+        "socialLink": "x.com/tanhuluu",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 29,
+      "tagString": "multiple_girls, 2girls, virtual_youtuber, animal_ears, yellow_cardigan, red_eyes, food, wariza, bow, bandaid_on_leg, cat_ears, sitting, two_side_up, skirt, long_hair, bandaid_on_knee, hair_ornament, cardigan, bowtie, blue_eyes, socks, single_sock, eating, siblings, aqua_bowtie, aqua_bow, asymmetrical_legwear, hoodie, cookie, single_kneehigh, food_in_mouth, pleated_skirt, kneehighs, black_skirt, black_hoodie, hood, bandaid, looking_at_viewer, long_sleeves, white_skirt, blue_bow, uneven_legwear, animal_ear_fluff, hairclip, ahoge, glowing_eyes, ribbon, green_bowtie, green_bow, hair_bow, hair_ribbon, sisters, thighhighs, looking_back, dark, mouth_hold, red_ribbon, glowing, single_thighhigh, blue_bowtie, paw_pose, cat_girl",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "a530de0c-55b4-44e8-9d47-b51613fdb004/playlist.m3u8"
+  },
+  {
+    "id": "7d4349ff-8e16-44d8-a566-7f6ec7901684",
+    "title": "Are You Bored Yet? (feat. Clairo)",
+    "opus": "song-opus/7d4349ff-8e16-44d8-a566-7f6ec7901684.ogg",
+    "oss": "audio/Wallows - Are You Bored Yet (Duet.v1) (Neuro & Evil).mp3",
+    "cnPath": "audio/Wallows - Are You Bored Yet (Duet.v1) (Neuro & Evil).mp3",
+    "absolutePath": "audio/Wallows%20-%20Are%20You%20Bored%20Yet%20%28Duet.v1%29%20%28Neuro%20%26%20Evil%29.mp3",
+    "playCount": 10099,
+    "duration": 178,
+    "streamDate": "2025-08-06T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "Wallows"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "7354190a-9dd7-4ded-872f-354f41c62f9f",
+      "fileName": "neuro-evil-partnersincrime-notext-watermark.png",
+      "contentType": "image/png",
+      "description": null,
+      "isAnimated": false,
+      "credit": "Art by KyaraShard (@KyaraShard)",
+      "cloudflareId": "5a63afa6-d864-4fbd-04d2-a82ef4a72200",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/5a63afa6-d864-4fbd-04d2-a82ef4a72200",
+      "artist": {
+        "id": "02c8c8a4-bb50-4e7e-ad13-5d492349657d",
+        "name": "KyaraShard",
+        "socialLink": "x.com/KyaraShard",
+        "userId": "5ad97188-03d1-472d-b670-b3698844cf65",
+        "arts": null
+      },
+      "upvotes": 26,
+      "tagString": "neck_ribbon, 2girls, holding_weapon, multiple_girls, ahoge, skirt, weapon, holding, shirt, monochrome, collared_shirt, ribbon, holding_gun, long_hair, smile, cardigan, gun, greyscale, v-shaped_eyebrows, blush_stickers, pleated_skirt, two_side_up, long_sleeves, jacket, open_clothes, holding_hands, handgun, simple_background, hair_ornament, very_long_hair, back-to-back, hair_between_eyes, open_mouth, dress_shirt, blush, looking_at_viewer, white_background, virtual_youtuber, open_jacket, short_hair, school_uniform, hairclip, floating_hair, :d, hand_up, interlocked_fingers, artist_name, open_cardigan, two-handed, hair_ribbon",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "7e201782-0516-41d2-a606-fdb032984414/playlist.m3u8"
+  },
+  {
+    "id": "8513561d-28cd-408c-8ad3-b6be5bb80d2e",
+    "title": "Bye Bye Bye",
+    "opus": "song-opus/8513561d-28cd-408c-8ad3-b6be5bb80d2e.ogg",
+    "oss": "audio/_NSYNC - Bye Bye Bye (Duet.v1) (Neuro & Evil).mp3",
+    "cnPath": "audio/_NSYNC - Bye Bye Bye (Duet.v1) (Neuro & Evil).mp3",
+    "absolutePath": "audio/_NSYNC%20-%20Bye%20Bye%20Bye%20%28Duet.v1%29%20%28Neuro%20%26%20Evil%29.mp3",
+    "playCount": 5994,
+    "duration": 200,
+    "streamDate": "2025-07-09T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "*NSYNC"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "bdd0309a-2117-4735-8f85-5258b41d42c0",
+      "fileName": "tripping-ezgif.com-crop.webp",
+      "contentType": "image/webp",
+      "description": null,
+      "isAnimated": true,
+      "credit": null,
+      "cloudflareId": "22105f33-f6d7-4ef3-070d-7ee473e43100",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/22105f33-f6d7-4ef3-070d-7ee473e43100",
+      "artist": {
+        "id": "a0c44a4c-65c7-49a8-8972-f90c942c3b9e",
+        "name": "paccha!! \uD83C\uDF55\uD83D\uDC9C",
+        "socialLink": "x.com/paccha_7",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 82,
+      "tagString": "bow, bowtie, red_bow, fang, red_eyes, multiple_girls, open_mouth, horns, 2girls, chibi, red_bowtie, grey_skirt, cardigan, yellow_cardigan, blue_eyes, sailor_collar, brown_hair, skin_fang, skirt, blush_stickers, simple_background, green_bow, green_bowtie, virtual_youtuber, sleeves_past_wrists, black_cardigan, surprised, ahoge, long_sleeves, light_brown_hair, socks, dual_persona, two_side_up, white_background, running, hair_bow, pom_pom_(clothes), blue_sailor_collar, long_hair, sleeves_past_fingers, ^^^, grey_sailor_collar, school_uniform, aqua_bow, siblings, shirt, serafuku, twins, blue_skirt, black_jacket, d:",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "bfc7f354-cd63-4925-a0b2-b4aa2a14e14b/playlist.m3u8"
+  },
+  {
+    "id": "3919a283-b9bb-444c-a3d3-d72ab40ebc58",
+    "title": "Tribute",
+    "opus": "song-opus/3919a283-b9bb-444c-a3d3-d72ab40ebc58.ogg",
+    "oss": "audio/Tribute.mp3",
+    "cnPath": "audio/Tribute.mp3",
+    "absolutePath": "audio/Tribute.mp3",
+    "playCount": 7290,
+    "duration": 246,
+    "streamDate": "2026-04-01T20:09:23.739",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "Tenacious D"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "529363b6-dd7e-4a94-b041-7acff6183eba",
+      "fileName": "aa680d27aa09ddd1a631808d7b4b1b63381660852.png",
+      "contentType": "image/png",
+      "description": null,
+      "isAnimated": false,
+      "credit": null,
+      "cloudflareId": "1e1fc090-6729-4fff-2ae2-a9ce1120f400",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/1e1fc090-6729-4fff-2ae2-a9ce1120f400",
+      "artist": {
+        "id": "eca9c384-9de9-40c9-83db-4de5ae6a9cfe",
+        "name": "巳蝰 (Bit1s)",
+        "socialLink": "space.bilibili.com/381660852",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 33,
+      "tagString": "multiple_girls, 2girls, skirt, socks, bandaid_on_leg, brown_footwear, bandaid_on_knee, red_eyes, loafers, long_hair, thighhighs, sitting, single_kneehigh, hair_ornament, brown_hair, kneehighs, single_sock, virtual_youtuber, shoes, blue_eyes, pleated_skirt, indoors, grey_skirt, chair, single_thighhigh, ahoge, bow, bandaid, long_sleeves, asymmetrical_legwear, table, cardigan, red_bow, hairclip, white_skirt, smile, yellow_cardigan, light_brown_hair, uneven_legwear, two_side_up, black_shirt, off_shoulder, :d, bowtie, black_socks, open_mouth, shirt, red_ribbon, brown_cardigan, jacket, brown_jacket, red_bowtie, ribbon, hair_ribbon, black_skirt, closed_mouth, collar, white_shirt, green_bow, very_long_hair, clock, sleeves_past_wrists, black_jacket, on_chair, bare_shoulders, hair_bow, hair_between_eyes, green_bowtie, window, sweater, looking_at_viewer, red_collar, collared_shirt",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "d992fec4-0ca1-4ae1-8717-9751732302c9/playlist.m3u8"
+  },
+  {
+    "id": "bba3d6b5-eec5-4743-be30-69d442b71fd0",
+    "title": "BIRDS OF A FEATHER",
+    "opus": "song-opus/bba3d6b5-eec5-4743-be30-69d442b71fd0.ogg",
+    "oss": "audio/Billie Eilish - BIRDS OF A FEATHER (Duet.v1) (Neuro & Evil).mp3",
+    "cnPath": "audio/Billie Eilish - BIRDS OF A FEATHER (Duet.v1) (Neuro & Evil).mp3",
+    "absolutePath": "audio/Billie%20Eilish%20-%20BIRDS%20OF%20A%20FEATHER%20%28Duet.v1%29%20%28Neuro%20%26%20Evil%29.mp3",
+    "playCount": 8397,
+    "duration": 210,
+    "streamDate": "2025-08-06T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "Billie Eilish"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "292ece83-ef94-4af0-bbf8-233382883683",
+      "fileName": "letmetellyou.jpg",
+      "contentType": "image/jpeg",
+      "description": null,
+      "isAnimated": false,
+      "credit": "Art by kan (@kan1360)",
+      "cloudflareId": "48fe610e-f550-4c65-34dd-226a913fe000",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/48fe610e-f550-4c65-34dd-226a913fe000",
+      "artist": {
+        "id": "00adeee9-1b5a-45de-8ae5-53312f5fdb88",
+        "name": "kan",
+        "socialLink": "x.com/kan1360",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 46,
+      "tagString": "wings, multiple_girls, 3girls, skirt, long_hair, white_dress, black_wings, brown_hair, dress, barefoot, thighhighs, feathered_wings, black_hair, pleated_skirt, angel_wings, feathers, loafers, school_uniform, covering_own_eyes, horns, shoes, white_wings, blue_skirt, cardigan, angel_and_devil, covering_another's_eyes, long_sleeves, open_mouth, sleeveless_dress, angel, serafuku, bow, zettai_ryouiki, sleeveless, black_thighhighs, bare_shoulders, brown_footwear, ribbon",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": null,
+    "hls": "dbc310ea-683d-48f6-898c-48f5e2cc7123/playlist.m3u8"
+  }
+]

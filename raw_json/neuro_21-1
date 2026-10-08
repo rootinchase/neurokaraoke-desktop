@@ -1,0 +1,223 @@
+{
+  "station": {
+    "id": 1,
+    "name": "Neuro 21 Station",
+    "shortcode": "neuro_21",
+    "description": "Neuro 21 Station  - 24/7 live radio streaming Neuro & Evil karaoke covers",
+    "frontend": "icecast",
+    "backend": "liquidsoap",
+    "timezone": "UTC",
+    "listen_url": "https://radio.twinskaraoke.com/listen/neuro_21/radio.mp3",
+    "url": "https://radio.twinskaraoke.com/",
+    "public_player_url": "https://radio.twinskaraoke.com/public/neuro_21",
+    "playlist_pls_url": "https://radio.twinskaraoke.com/public/neuro_21/playlist.pls",
+    "playlist_m3u_url": "https://radio.twinskaraoke.com/public/neuro_21/playlist.m3u",
+    "is_public": true,
+    "requests_enabled": true,
+    "mounts": [
+      {
+        "id": 1,
+        "name": "320kbps MP3",
+        "url": "https://radio.twinskaraoke.com/listen/neuro_21/radio.mp3",
+        "bitrate": 320,
+        "format": "mp3",
+        "listeners": {
+          "total": 13,
+          "unique": 13,
+          "current": 13
+        },
+        "path": "/radio.mp3",
+        "is_default": true
+      },
+      {
+        "id": 2,
+        "name": "Opus",
+        "url": "https://radio.twinskaraoke.com/listen/neuro_21/radio.ogg",
+        "bitrate": 128,
+        "format": "opus",
+        "listeners": {
+          "total": 2,
+          "unique": 2,
+          "current": 2
+        },
+        "path": "/radio.ogg",
+        "is_default": false
+      }
+    ],
+    "remotes": [],
+    "hls_enabled": true,
+    "hls_is_default": true,
+    "hls_url": "https://radio.twinskaraoke.com/hls/neuro_21/live.m3u8",
+    "hls_listeners": 6
+  },
+  "listeners": {
+    "total": 21,
+    "unique": 21,
+    "current": 21
+  },
+  "live": {
+    "is_live": false,
+    "streamer_name": "",
+    "broadcast_start": null,
+    "art": null
+  },
+  "now_playing": {
+    "sh_id": 150967,
+    "played_at": 1790935904,
+    "duration": 199,
+    "playlist": "Feel-Good Friday - Party & Dance",
+    "streamer": "",
+    "is_request": false,
+    "song": {
+      "id": "2bba1bfdaf8901d60793b3b7de57e8af",
+      "art": "https://radio.twinskaraoke.com/api/station/neuro_21/art/d8da9d49016894f6a4713abd-1779061273.jpg",
+      "custom_fields": {
+        "songId": "321ffff9-3238-4e5f-9c08-fe2574f9949b"
+      },
+      "text": "CaptainSparklez/TryHardNinja - TNT (Evil)",
+      "artist": "CaptainSparklez/TryHardNinja",
+      "title": "TNT (Evil)",
+      "album": "",
+      "genre": "",
+      "isrc": "",
+      "lyrics": ""
+    },
+    "elapsed": 79,
+    "remaining": 120
+  },
+  "playing_next": {
+    "cued_at": 1790935689,
+    "played_at": 1790936096,
+    "duration": 209.52816396642,
+    "playlist": "Feel-Good Friday - Party & Dance",
+    "is_request": false,
+    "song": {
+      "id": "c0f905367e9c490c3c3b5dd1e62297c0",
+      "art": "https://radio.twinskaraoke.com/api/station/neuro_21/art/68621c29a7ebbb0754d7efa8-1776373478.jpg",
+      "custom_fields": {
+        "songId": "4455ff12-2397-4852-ab85-48cf4177845f"
+      },
+      "text": "Maneskin - Beggin' (Evil)",
+      "artist": "Maneskin",
+      "title": "Beggin' (Evil)",
+      "album": "",
+      "genre": "",
+      "isrc": "",
+      "lyrics": ""
+    }
+  },
+  "song_history": [
+    {
+      "sh_id": 150966,
+      "played_at": 1790935694,
+      "duration": 212,
+      "playlist": "Feel-Good Friday - Party & Dance",
+      "streamer": "",
+      "is_request": false,
+      "song": {
+        "id": "92d685fe41be97e08336bfe104523881",
+        "art": "https://radio.twinskaraoke.com/api/station/neuro_21/art/3c0a8e30a714cf08bc76c1c5-1770405763.jpg",
+        "custom_fields": {
+          "songId": "670e4348-ac8d-4371-8218-a6e33d1446f0"
+        },
+        "text": "YOASOBI - アイドル (Idol) (Neuro)",
+        "artist": "YOASOBI",
+        "title": "アイドル (Idol) (Neuro)",
+        "album": "",
+        "genre": "",
+        "isrc": "",
+        "lyrics": ""
+      }
+    },
+    {
+      "sh_id": 150964,
+      "played_at": 1790935455,
+      "duration": 242,
+      "playlist": "",
+      "streamer": "",
+      "is_request": true,
+      "song": {
+        "id": "b38166a29021e4826765041b9ca1b11c",
+        "art": "https://radio.twinskaraoke.com/api/station/neuro_21/art/c27e9ae7729b140f034a5446-1770404423.jpg",
+        "custom_fields": {
+          "songId": "f395e57d-4eec-44f9-9ee4-a29a819c5500"
+        },
+        "text": "Architects - Animals (Evil)",
+        "artist": "Architects",
+        "title": "Animals (Evil)",
+        "album": "",
+        "genre": "",
+        "isrc": "",
+        "lyrics": ""
+      }
+    },
+    {
+      "sh_id": 150962,
+      "played_at": 1790935244,
+      "duration": 213,
+      "playlist": "The Original",
+      "streamer": "",
+      "is_request": false,
+      "song": {
+        "id": "33985e49e49661267c3986e364fc8046",
+        "art": "https://radio.twinskaraoke.com/api/station/neuro_21/art/175091c282fc62ac18a3aa43-1773624488.jpg",
+        "custom_fields": {
+          "songId": null
+        },
+        "text": "Neuro-sama - LIFE - LIFE",
+        "artist": "Neuro",
+        "title": "LIFE",
+        "album": "LIFE",
+        "genre": "",
+        "isrc": "",
+        "lyrics": ""
+      }
+    },
+    {
+      "sh_id": 150960,
+      "played_at": 1790935068,
+      "duration": 179,
+      "playlist": "Feel-Good Friday - Party & Dance",
+      "streamer": "",
+      "is_request": false,
+      "song": {
+        "id": "50c394eaf7bf9ee4513c4fbba252358f",
+        "art": "https://radio.twinskaraoke.com/api/station/neuro_21/art/9115408a57f8a237d625ab7c-1787171255.jpg",
+        "custom_fields": {
+          "songId": "f932c5f1-a640-4b4c-bd1b-5bcf1744407e"
+        },
+        "text": "MARINA - Oh No! (Neuro)",
+        "artist": "MARINA",
+        "title": "Oh No! (Neuro)",
+        "album": "",
+        "genre": "",
+        "isrc": "",
+        "lyrics": ""
+      }
+    },
+    {
+      "sh_id": 150957,
+      "played_at": 1790934880,
+      "duration": 191,
+      "playlist": "Feel-Good Friday - Party & Dance",
+      "streamer": "",
+      "is_request": false,
+      "song": {
+        "id": "e2fa30f02c4afffbf1612d554775dbf0",
+        "art": "https://radio.twinskaraoke.com/api/station/neuro_21/art/a4a69deff7049a569e0e3b1c-1770404878.jpg",
+        "custom_fields": {
+          "songId": "67df82da-f54a-4022-ade9-dc36e622a84d"
+        },
+        "text": "HUNTR/X - Golden (Neuro & Evil)",
+        "artist": "HUNTR/X",
+        "title": "Golden (Neuro & Evil)",
+        "album": "",
+        "genre": "",
+        "isrc": "",
+        "lyrics": ""
+      }
+    }
+  ],
+  "is_online": true,
+  "cache": null
+}

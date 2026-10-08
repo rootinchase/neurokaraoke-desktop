@@ -1,0 +1,13 @@
+[
+  {
+    "id": "c36d914d-dd24-42d9-8dfd-692788219f70",
+    "type": "new_setlist",
+    "title": "New Karaoke Setlist!",
+    "description": null,
+    "data": "{\"setlistId\":\"6873080b-0104-47fd-b5ac-1f76d114d623\",\"setlistName\":\"Twin Karaoke - September 30, 2026 Setlist\",\"description\":null}",
+    "activeFrom": "2026-09-30T20:55:26.4391602",
+    "activeUntil": "2026-10-01T20:55:26.4392026",
+    "createdAt": "2026-09-30T20:55:26.4390719",
+    "isRead": true
+  }
+]

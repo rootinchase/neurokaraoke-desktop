@@ -334,4 +334,198 @@ mod tests {
         assert!(playlist.editable);
         assert!(!playlist.is_set_list);
     }
+
+    #[test]
+    fn test_parse_official_setlists() {
+        let json_data = r#"[
+            {
+                "id": "6873080b-0104-47fd-b5ac-1f76d114d623",
+                "name": "Twin Karaoke - September 30, 2026 Setlist",
+                "createdBy": "Admin",
+                "songCount": 25,
+                "playCount": 150,
+                "editable": false,
+                "deletable": false,
+                "isPublic": true,
+                "isSetList": true,
+                "setListDate": "2026-09-30T00:00:00Z"
+            }
+        ]"#;
+        let playlists: Vec<Playlist> = serde_json::from_str(json_data).unwrap();
+        assert_eq!(playlists.len(), 1);
+        let setlist = &playlists[0];
+        assert_eq!(setlist.name.as_ref(), "Twin Karaoke - September 30, 2026 Setlist");
+        assert_eq!(setlist.song_count, 25);
+        assert!(setlist.is_set_list);
+        assert_eq!(setlist.set_list_date.as_deref(), Some("2026-09-30T00:00:00Z"));
+    }
+
+    #[test]
+    #[ignore]
+    fn test_fetch_official_setlists_from_server() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let temp_dir = std::env::temp_dir().join(format!("neurokaraoke_test_server_{}", uuid::Uuid::new_v4()));
+            let _ = tokio::fs::create_dir_all(&temp_dir).await;
+
+            let client = reqwest::Client::new();
+            let map = Arc::new(dashmap::DashMap::new());
+            let guest_id: Arc<str> = uuid::Uuid::new_v4().to_string().into();
+            let config = crate::config::Config::default();
+            let shared_config = config.to_shared();
+
+            let db = LazySongDatabase::new(client, map, guest_id, shared_config);
+
+            match db.get_official_setlists(2026).await {
+                Ok(setlists) => {
+                    println!("Successfully retrieved {} official setlists from server", setlists.len());
+                    for setlist in setlists {
+                        assert!(!setlist.name.is_empty());
+                    }
+                }
+                Err(e) => {
+                    println!("Note: Server request skipped or failed (offline/unreachable): {}", e);
+                }
+            }
+
+            let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+        });
+    }
+
+    #[test]
+    #[ignore]
+    fn test_fetch_public_playlists_from_server() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let temp_dir = std::env::temp_dir().join(format!("neurokaraoke_test_playlists_{}", uuid::Uuid::new_v4()));
+            let _ = tokio::fs::create_dir_all(&temp_dir).await;
+
+            let client = reqwest::Client::new();
+            let map = Arc::new(dashmap::DashMap::new());
+            let guest_id: Arc<str> = uuid::Uuid::new_v4().to_string().into();
+            let config = crate::config::Config::default();
+            let shared_config = config.to_shared();
+
+            let db = LazySongDatabase::new(client, map, guest_id, shared_config);
+
+            match db.get_public_playlists(None, false, 0, 10).await {
+                Ok(playlists) => {
+                    println!("Successfully retrieved {} public playlists from server", playlists.len());
+                    for playlist in playlists {
+                        assert!(!playlist.name.is_empty());
+                    }
+                }
+                Err(e) => {
+                    println!("Note: Server request skipped or failed (offline/unreachable): {}", e);
+                }
+            }
+
+            let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+        });
+    }
+
+    #[test]
+    fn test_parse_playlist_cover_art_and_mosaics() {
+        let json_data = std::fs::read_to_string("raw_json/playlists.json")
+            .expect("Failed to read raw_json/playlists.json");
+        let playlists: Vec<Playlist> = serde_json::from_str(&json_data)
+            .expect("Failed to deserialize playlists.json");
+        assert!(!playlists.is_empty());
+
+        let mut found_media = false;
+        let mut found_mosaic = false;
+
+        for pl in &playlists {
+            if let Some(media) = &pl.media {
+                found_media = true;
+                if !media.id.is_empty() {
+                    assert!(!media.file_name.is_empty());
+                }
+            }
+            if let Some(mosaics) = &pl.mosaic_media {
+                found_mosaic = true;
+                for m in mosaics {
+                    if !m.id.is_empty() {
+                        assert!(!m.file_name.is_empty());
+                    }
+                }
+            }
+        }
+        // At least some playlists in the dataset should have cover art or mosaic metadata
+        assert!(found_media || found_mosaic);
+    }
+
+    #[test]
+    fn test_parse_song_cover_art() {
+        let json_data = std::fs::read_to_string("raw_json/recent.json")
+            .expect("Failed to read raw_json/recent.json");
+        let detail: PlaylistDetail = serde_json::from_str(&json_data)
+            .expect("Failed to deserialize recent.json");
+        assert!(!detail.songs.is_empty());
+
+        let mut found_cover = false;
+        for song in &detail.songs {
+            if let Some(cover) = &song.cover_art {
+                found_cover = true;
+                assert!(!cover.id.is_empty());
+            }
+        }
+        assert!(found_cover);
+    }
+
+    #[test]
+    fn test_parse_raw_playlists_json() {
+        let json_data = std::fs::read_to_string("raw_json/playlists.json")
+            .expect("Failed to read raw_json/playlists.json");
+        let parsed: Vec<Playlist> = serde_json::from_str(&json_data)
+            .expect("Failed to deserialize playlists.json");
+        assert!(!parsed.is_empty());
+        assert!(!parsed[0].name.is_empty());
+    }
+
+    #[test]
+    fn test_parse_raw_recent_json() {
+        let json_data = std::fs::read_to_string("raw_json/recent.json")
+            .expect("Failed to read raw_json/recent.json");
+        let parsed: PlaylistDetail = serde_json::from_str(&json_data)
+            .expect("Failed to deserialize recent.json");
+        assert!(!parsed.songs.is_empty());
+        assert!(parsed.songs[0].is_valid());
+    }
+
+    #[test]
+    fn test_parse_raw_suggested_json() {
+        let json_data = std::fs::read_to_string("raw_json/suggested.json")
+            .expect("Failed to read raw_json/suggested.json");
+        let parsed: Vec<SongDTO> = serde_json::from_str(&json_data)
+            .expect("Failed to deserialize suggested.json");
+        assert!(!parsed.is_empty());
+    }
+
+    #[test]
+    fn test_parse_raw_trending_json() {
+        let json_data = std::fs::read_to_string("raw_json/trending.json")
+            .expect("Failed to read raw_json/trending.json");
+        let parsed: Vec<SongDTO> = serde_json::from_str(&json_data)
+            .expect("Failed to deserialize trending.json");
+        assert!(!parsed.is_empty());
+    }
+
+    #[test]
+    fn test_parse_raw_schedule_json() {
+        let json_data = std::fs::read_to_string("raw_json/schedule.json")
+            .expect("Failed to read raw_json/schedule.json");
+        let parsed: serde_json::Value = serde_json::from_str(&json_data)
+            .expect("Failed to deserialize schedule.json");
+        assert!(parsed.is_array());
+    }
+
+    #[test]
+    fn test_parse_raw_broadcasts_json() {
+        let json_data = std::fs::read_to_string("raw_json/broadcasts.json")
+            .expect("Failed to read raw_json/broadcasts.json");
+        let parsed: serde_json::Value = serde_json::from_str(&json_data)
+            .expect("Failed to deserialize broadcasts.json");
+        assert!(parsed.is_array());
+    }
 }

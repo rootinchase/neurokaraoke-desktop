@@ -1,0 +1,708 @@
+[
+  {
+    "id": "da8d836b-bd94-42ea-98f0-cf218445288c",
+    "title": "CASTLE OF GLASS",
+    "opus": "song-opus/da8d836b-bd94-42ea-98f0-cf218445288c.ogg",
+    "oss": "audio/Linkin Park - Castle of Glass (Neuro.v3).mp3",
+    "cnPath": "audio/Linkin Park - Castle of Glass (Neuro.v3).mp3",
+    "absolutePath": "audio/Linkin%20Park%20-%20Castle%20of%20Glass%20%28Neuro.v3%29.mp3",
+    "playCount": 4660,
+    "duration": 204,
+    "streamDate": "2025-06-11T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro"
+    ],
+    "originalArtists": [
+      "Linkin Park"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "5069c441-b20e-45dd-914e-242deb8983c6",
+      "fileName": "run_nb.webp",
+      "contentType": "image/webp",
+      "description": null,
+      "isAnimated": true,
+      "credit": "Art by Ladi (@LaaaaaDi_)",
+      "cloudflareId": "12aa5102-460d-4281-24cd-8bf29fa95c00",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/12aa5102-460d-4281-24cd-8bf29fa95c00",
+      "artist": {
+        "id": "06bb8e09-b03c-4bc1-8a6f-26b760391d77",
+        "name": "Ladi",
+        "socialLink": "x.com/LaaaaaDi_",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 16,
+      "tagString": "heart_hair_ornament, :3, virtual_youtuber, 1girl, solo, hair_ornament, heart, transparent_background, seal_(animal), chibi, two_side_up, blue_eyes, looking_at_viewer, brown_hair, hair_ribbon, red_ribbon, ribbon, long_hair, simple_background, aqua_eyes, animalization, full_body, white_background, hair_between_eyes, hair_intakes",
+      "mediaTag": 0,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": "bed61ac3-5a71-4c8b-a67b-8b672fad917e",
+    "hls": "68350fa9-c848-4722-aba9-c7df331a4cb3/playlist.m3u8"
+  },
+  {
+    "id": "402655fe-dfc5-436c-a6d3-b6660e678df9",
+    "title": "Panic Room",
+    "opus": "song-opus/402655fe-dfc5-436c-a6d3-b6660e678df9.ogg",
+    "oss": "audio/Au slash Ra - Panic Room (Evil.v1).mp3",
+    "cnPath": "audio/Au slash Ra - Panic Room (Evil.v1).mp3",
+    "absolutePath": "audio/Au%20slash%20Ra%20-%20Panic%20Room%20%28Evil.v1%29.mp3",
+    "playCount": 3547,
+    "duration": 233,
+    "streamDate": "2025-04-02T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Evil"
+    ],
+    "originalArtists": [
+      "Au/Ra"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "f3d96226-8aeb-4e26-9f62-e6a14f463531",
+      "fileName": "f62d4165f440b04a.png",
+      "contentType": "image/png",
+      "description": null,
+      "isAnimated": false,
+      "credit": null,
+      "cloudflareId": "6061dbb1-8879-4653-978e-06cc1fcda100",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/6061dbb1-8879-4653-978e-06cc1fcda100",
+      "artist": {
+        "id": "a0c44a4c-65c7-49a8-8972-f90c942c3b9e",
+        "name": "paccha!! \uD83C\uDF55\uD83D\uDC9C",
+        "socialLink": "x.com/paccha_7",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 25,
+      "tagString": "1girl, hair_ornament, red_eyes, long_hair, horns, smile, black_cardigan, skull_hair_ornament, red_bow, heart_hair_ornament, two_side_up, bow, necktie, burger, solo, ahoge, shirt, heart, reference_inset, food, virtual_youtuber, upper_body, white_background, white_shirt, thought_bubble, light_brown_hair, brown_hair, sailor_collar, grey_sailor_collar, hair_between_eyes, simple_background, imagining, bowtie, demon_horns, star_(symbol), off_shoulder, closed_mouth, cardigan, hair_bow, ribbon, spoken_food, collared_shirt, hair_ribbon, red_bowtie",
+      "mediaTag": 1,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": "90a44ec6-3f41-4c19-b362-673e3df56d1b",
+    "hls": "91b97069-a4f3-4be7-a33d-c29470a848f7/playlist.m3u8"
+  },
+  {
+    "id": "2a8a9717-81bd-41fb-9414-581121884253",
+    "title": "ルル (RuLe)",
+    "opus": "song-opus/2a8a9717-81bd-41fb-9414-581121884253.ogg",
+    "oss": "audio/Ado - ルル (RuLe) (Evil.v1).mp3",
+    "cnPath": "audio/Ado - ルル (RuLe) (Evil.v1).mp3",
+    "absolutePath": "audio/Ado%20-%20%E3%83%AB%E3%83%AB%20%28RuLe%29%20%28Evil.v1%29.mp3",
+    "playCount": 9934,
+    "duration": 198,
+    "streamDate": "2024-10-16T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Evil"
+    ],
+    "originalArtists": [
+      "Ado"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "47250467-4929-4428-b789-1447f1b9dd2c",
+      "fileName": "death-princess.jpg",
+      "contentType": "image/jpeg",
+      "description": null,
+      "isAnimated": false,
+      "credit": "Art by kan (@kan1360)",
+      "cloudflareId": "fc857c0e-91e3-40a3-1158-ecae4afb6800",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/fc857c0e-91e3-40a3-1158-ecae4afb6800",
+      "artist": {
+        "id": "00adeee9-1b5a-45de-8ae5-53312f5fdb88",
+        "name": "kan",
+        "socialLink": "x.com/kan1360",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 35,
+      "tagString": "1girl, solo, hu_tao_(genshin_impact), thighhighs, red_eyes, skull, garter_straps, twintails, black_thighhighs, dress, black_gloves, gloves, long_hair, breasts, flower, full_body, brown_hair, red_flower, red_skirt, bare_shoulders, symbol-shaped_pupils, red_dress, medium_breasts, alternate_costume, looking_at_viewer, skirt, white_background, black_footwear, standing, simple_background, holding, black_dress, veil, jewelry, hair_flower, cane, off_shoulder, hair_ornament",
+      "mediaTag": 1,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": "a24cd851-9a44-4418-b080-b2c4cc7697ee",
+    "hls": "897da315-1781-4026-bfb1-e07e606f44bd/playlist.m3u8"
+  },
+  {
+    "id": "026084c0-3392-4020-a3e5-3794d07b849a",
+    "title": "RTRT",
+    "opus": "song-opus/026084c0-3392-4020-a3e5-3794d07b849a.ogg",
+    "oss": "audio/Mili - RTRT (Evil.v1).mp3",
+    "cnPath": "audio/Mili - RTRT (Evil.v1).mp3",
+    "absolutePath": "audio/Mili%20-%20RTRT%20%28Evil.v1%29.mp3",
+    "playCount": 9133,
+    "duration": 209,
+    "streamDate": "2024-07-24T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Evil"
+    ],
+    "originalArtists": [
+      "Mili"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "0254bc5c-4360-49a0-89e6-f62b99d5f58c",
+      "fileName": "sadfdgnhnm.png",
+      "contentType": "image/png",
+      "description": null,
+      "isAnimated": false,
+      "credit": null,
+      "cloudflareId": "5b520bd5-a48b-493e-662d-a1d5f77e2f00",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/5b520bd5-a48b-493e-662d-a1d5f77e2f00",
+      "artist": {
+        "id": "a0c44a4c-65c7-49a8-8972-f90c942c3b9e",
+        "name": "paccha!! \uD83C\uDF55\uD83D\uDC9C",
+        "socialLink": "x.com/paccha_7",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 92,
+      "tagString": "virtual_youtuber, multiple_girls, tail, 2girls, animal_ears, ahoge, dog, cat_ears, dog_ears, horns, blonde_hair, open_mouth, thighhighs, closed_eyes, skirt, long_hair, red_eyes, brown_footwear, smile, shoes, grey_skirt, on_back, lying, sleeves_past_wrists, one_eye_closed, black_jacket, cat_girl, demon_horns, cat_tail, socks, ribbon, brown_hair, long_sleeves, dog_tail, white_background, jacket, dog_girl, hair_ornament, hair_ribbon, sleeves_past_fingers, blush, skin_fang, purple_shirt, demon_girl, black_thighhighs, :3, single_thighhigh, fang, animal, detached_sleeves, simple_background, bow, +++, bowtie, demon_tail, full_body, black_ribbon, black_socks, >_<, red_bow, licking, red_bowtie, asymmetrical_legwear",
+      "mediaTag": 1,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": "4840f7eb-f2d9-43ac-92da-3bfcc6f0336a",
+    "hls": "534ca997-c833-4b11-a83d-51494f7549b2/playlist.m3u8"
+  },
+  {
+    "id": "79a7e0fb-1453-4f76-8563-b553002a0c67",
+    "title": "Ga1ahad and Scientific Witchery",
+    "opus": "song-opus/79a7e0fb-1453-4f76-8563-b553002a0c67.ogg",
+    "oss": "audio/Mili - Ga1ahad and Scientific Witchery (Duet.v2) (Neuro & Evil).mp3",
+    "cnPath": "audio/Mili - Ga1ahad and Scientific Witchery (Duet.v2) (Neuro & Evil).mp3",
+    "absolutePath": "audio/Mili%20-%20Ga1ahad%20and%20Scientific%20Witchery%20%28Duet.v2%29%20%28Neuro%20%26%20Evil%29.mp3",
+    "playCount": 3972,
+    "duration": 220,
+    "streamDate": "2025-08-20T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "Mili"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "421fa1ef-326d-4a5f-9cb9-6337264b477a",
+      "fileName": "GsCcfPOa4AAQxCk.png",
+      "contentType": "image/png",
+      "description": null,
+      "isAnimated": false,
+      "credit": "Art by klef (@k_lef111256)",
+      "cloudflareId": "98325b16-a28d-4513-47f9-0cec1d28db00",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/98325b16-a28d-4513-47f9-0cec1d28db00",
+      "artist": {
+        "id": "04b96752-0fc3-4724-a23e-b035903dc513",
+        "name": "klef",
+        "socialLink": "x.com/k_lef111256",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 14,
+      "tagString": "sketch, virtual_youtuber, greyscale, multiple_girls, monochrome, 2girls, akai_haato, heart_hair_ornament, sitting, ahoge, off_shoulder, long_hair, bow, skirt, frown, heart, two_side_up, one_side_up, ribbon, bowtie, hair_ribbon, looking_down, looking_at_viewer, :<, pleated_skirt, hair_ornament, v-shaped_eyebrows, hair_bow",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": "9f9e895e-8d1b-4ea9-89d0-01ce0415285d",
+    "hls": "86bbbb9e-9911-4786-91ea-490dba0796d7/playlist.m3u8"
+  },
+  {
+    "id": "92817faf-3c6c-4e85-9f25-d19a6c153268",
+    "title": "Behind Blue Eyes",
+    "opus": "song-opus/92817faf-3c6c-4e85-9f25-d19a6c153268.ogg",
+    "oss": "audio/Limp Bizkit - Behind Blue Eyes (Evil.v1).mp3",
+    "cnPath": "audio/Limp Bizkit - Behind Blue Eyes (Evil.v1).mp3",
+    "absolutePath": "audio/Limp%20Bizkit%20-%20Behind%20Blue%20Eyes%20%28Evil.v1%29.mp3",
+    "playCount": 3788,
+    "duration": 271,
+    "streamDate": "2023-07-19T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Evil"
+    ],
+    "originalArtists": [
+      "Limp Bizkit"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "d075cc20-d050-4eea-af2d-1b718fb1f714",
+      "fileName": "evilsad.png",
+      "contentType": "image/png",
+      "description": null,
+      "isAnimated": false,
+      "credit": "Art by Railyx (@raily_x)",
+      "cloudflareId": "6b5a5200-caf8-4238-e003-a5f10d167100",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/6b5a5200-caf8-4238-e003-a5f10d167100",
+      "artist": {
+        "id": "0199552b-1b13-4373-8576-4bd1345d4308",
+        "name": "Railyx",
+        "socialLink": "x.com/raily_x",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 12,
+      "tagString": "1girl, solo, heart_hair_ornament, monochrome, heart, ahoge, virtual_youtuber, spot_color, red_eyes, hair_between_eyes, long_hair, bow, greyscale, two_side_up, hair_ornament, simple_background, ribbon, school_uniform, looking_at_viewer, parted_lips, white_background, bowtie, sweat, sailor_collar, upper_body, head_tilt, hair_ribbon",
+      "mediaTag": 1,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": "73e732c4-bdee-4b13-b4ba-2fef03358a57",
+    "hls": "47e754da-8dad-4996-b5f7-86dfb0843800/playlist.m3u8"
+  },
+  {
+    "id": "ff167c90-84a3-43af-999a-11326feb92f9",
+    "title": "Breaking the Habit",
+    "opus": "song-opus/ff167c90-84a3-43af-999a-11326feb92f9.ogg",
+    "oss": "audio/Linkin Park - Breaking The Habit (Evil.v1).mp3",
+    "cnPath": "audio/Linkin Park - Breaking The Habit (Evil.v1).mp3",
+    "absolutePath": "audio/Linkin%20Park%20-%20Breaking%20The%20Habit%20%28Evil.v1%29.mp3",
+    "playCount": 6025,
+    "duration": 198,
+    "streamDate": "2024-09-18T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Evil"
+    ],
+    "originalArtists": [
+      "Linkin Park"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "53c425b7-e99e-4fb5-85a0-433adc271343",
+      "fileName": "2026-01-01-evilskull.png",
+      "contentType": "image/png",
+      "description": "",
+      "isAnimated": false,
+      "credit": "Reivoon",
+      "cloudflareId": "bb7a506a-52e5-4463-673b-9c24e6f44d00",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/bb7a506a-52e5-4463-673b-9c24e6f44d00",
+      "artist": {
+        "id": "b951edb9-705d-45e3-b65b-80d47dbbdd08",
+        "name": "Reivoon",
+        "socialLink": "x.com/Reivooon",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 32,
+      "tagString": "1girl, skull, red_eyes, solo, simple_background, brown_hair, horns, looking_at_viewer, hair_between_eyes, hair_ornament, long_hair, holding, strap_slip, white_background, ribbon, closed_mouth, bare_shoulders, hair_ribbon, black_dress, signature, sitting, dress, red_ribbon, sleeveless",
+      "mediaTag": 1,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": "4059136b-09a9-4ff7-abd5-93330ef99e65",
+    "hls": "ef38c79b-be67-48d4-962a-1f9947d03e43/playlist.m3u8"
+  },
+  {
+    "id": "24b333c3-b2f3-4afc-8056-d1798ec1bee2",
+    "title": "The Final Countdown",
+    "opus": "song-opus/24b333c3-b2f3-4afc-8056-d1798ec1bee2.ogg",
+    "oss": "audio/Europe - The Final Countdown (Neuro.v3).mp3",
+    "cnPath": "audio/Europe - The Final Countdown (Neuro.v3).mp3",
+    "absolutePath": "audio/Europe%20-%20The%20Final%20Countdown%20%28Neuro.v3%29.mp3",
+    "playCount": 2052,
+    "duration": 308,
+    "streamDate": "2024-07-10T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro"
+    ],
+    "originalArtists": [
+      "Europe"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "bf6bdca0-db62-4375-979f-d37ac287b2e0",
+      "fileName": "IMG_20231027_225622_edit_14246165058575.jpg",
+      "contentType": "image/jpeg",
+      "description": null,
+      "isAnimated": false,
+      "credit": "Art by 零悠≡ω≡ (@lingyouzzz)",
+      "cloudflareId": "27c4c7f7-06e4-4803-c71a-14edc4f9cf00",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/27c4c7f7-06e4-4803-c71a-14edc4f9cf00",
+      "artist": {
+        "id": "01f68ccb-ee9c-4229-a462-9871a894c76e",
+        "name": "零悠≡ω≡ (lingyou)",
+        "socialLink": "x.com/lingyouzzz",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 11,
+      "tagString": "long_sleeves, 1girl, monochrome, sketch, hat, greyscale, holding, solo, juliet_sleeves, traditional_media, long_hair, skirt, collared_shirt, shirt, ribbon, puffy_sleeves, neck_ribbon, hair_ornament, monocle, looking_at_viewer, bowtie, round_eyewear, cowboy_shot, heart, vest, watch, holding_bag, pocket_watch, bag, hair_between_eyes, bow, glasses, high-waist_skirt, closed_mouth",
+      "mediaTag": 0,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": "09e0b648-13bd-40c2-9b77-78e9f7726647",
+    "hls": "675dc13c-20dd-48a0-a707-25adb98b9646/playlist.m3u8"
+  },
+  {
+    "id": "1724ca65-fb4b-408b-a782-c711df035ec1",
+    "title": "I Want It That Way",
+    "opus": "song-opus/1724ca65-fb4b-408b-a782-c711df035ec1.ogg",
+    "oss": "audio/Backstreet Boys - I Want It That Way (Neuro.v3).mp3",
+    "cnPath": "audio/Backstreet Boys - I Want It That Way (Neuro.v3).mp3",
+    "absolutePath": "audio/Backstreet%20Boys%20-%20I%20Want%20It%20That%20Way%20%28Neuro.v3%29.mp3",
+    "playCount": 2999,
+    "duration": 213,
+    "streamDate": "2023-08-16T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro"
+    ],
+    "originalArtists": [
+      "Backstreet Boys"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "e854cc36-6dc7-46e6-8aa0-84de76ef4b4f",
+      "fileName": "20250612_.jpg",
+      "contentType": "image/jpeg",
+      "description": null,
+      "isAnimated": false,
+      "credit": null,
+      "cloudflareId": "6969e381-810d-4425-5dda-5edea6bc3100",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/6969e381-810d-4425-5dda-5edea6bc3100",
+      "artist": {
+        "id": "06590feb-aab7-43e1-b8a0-e41ba0a2b72a",
+        "name": "瑟林SOREN",
+        "socialLink": "x.com/sorenFTT",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 23,
+      "tagString": "1girl, high-waist_pants, solo, brown_hair, pants, heart, full_body, bow, black_footwear, ahoge, green_bow, looking_at_viewer, brown_pants, hair_ornament, white_shirt, bowtie, shirt, simple_background, green_bowtie, long_sleeves, ribbon, standing, shoes, belt, hair_between_eyes, heart_hair_ornament, red_ribbon, virtual_youtuber, hair_ribbon, two_side_up, white_background, jacket, closed_mouth, arm_behind_back, hand_up, coat, shirt_tucked_in, puffy_sleeves, two-sided_fabric, brown_coat, jacket_on_shoulders, brown_jacket, frills, medium_hair, hand_on_own_chest, black_belt, aqua_eyes",
+      "mediaTag": 0,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": "48f67cb1-8494-4470-9723-ed6494953e6d",
+    "hls": "cad5540c-367f-43f3-86c4-72a84cba6604/playlist.m3u8"
+  },
+  {
+    "id": "ab3469ba-a8e2-4783-b54a-3681052a6687",
+    "title": "What Could Have Been (from the series Arcane League of Legends)",
+    "opus": null,
+    "oss": null,
+    "cnPath": null,
+    "absolutePath": "audio/What could have been (evil).mp3",
+    "playCount": 1458,
+    "duration": 214,
+    "streamDate": "2026-09-25T19:37:20.646",
+    "dateAdded": null,
+    "coverArtists": [
+      "Evil"
+    ],
+    "originalArtists": [
+      "Sting",
+      "Ray Chen"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "961b7de3-77aa-4939-b4e0-2f802927f367",
+      "fileName": "yoink.png",
+      "contentType": "image/png",
+      "description": "",
+      "isAnimated": false,
+      "credit": "cosmicblubb",
+      "cloudflareId": "7ea976bc-6cfc-4d43-c860-256e56cc4f00",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/7ea976bc-6cfc-4d43-c860-256e56cc4f00",
+      "artist": {
+        "id": "71b94fa9-1c77-4709-97ea-61a63584093d",
+        "name": "cosmicblubb",
+        "socialLink": "x.com/cosmicblubb",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 12,
+      "tagString": "1girl, ahoge, virtual_youtuber, two_side_up, red_eyes, hair_ornament, long_hair, socks, blush_stickers, red_bow, blush, red_bowtie, skirt, brown_footwear, red_ribbon, ribbon, white_background, bowtie, long_sleeves, light_brown_hair, brown_hair, heart_hair_ornament, half-closed_eyes, solo_focus, lifting_person, bow, black_socks, simple_background, closed_mouth, very_long_hair, shirt, shoes, looking_at_viewer, hair_ribbon, pom_pom_hair_ornament, black_shirt, carrying, disembodied_limb, loafers, holding, hair_between_eyes, full_body",
+      "mediaTag": 1,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": "69f90af5-e442-4152-86b6-cbf6cd9c495f",
+    "hls": "3001963e-b453-4592-8c2b-035e8d0bcb90/playlist.m3u8"
+  },
+  {
+    "id": "edc3709e-4930-4743-a5f0-a07ccc63e9e5",
+    "title": "勇者 (HERO)",
+    "opus": "song-opus/edc3709e-4930-4743-a5f0-a07ccc63e9e5.ogg",
+    "oss": "audio/YOASOBI - 勇者 (Hero) (Evil.v1).mp3",
+    "cnPath": "audio/YOASOBI - 勇者 (Hero) (Evil.v1).mp3",
+    "absolutePath": "audio/YOASOBI%20-%20%E5%8B%87%E8%80%85%20%28Hero%29%20%28Evil.v1%29.mp3",
+    "playCount": 5890,
+    "duration": 201,
+    "streamDate": "2024-07-24T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Evil"
+    ],
+    "originalArtists": [
+      "YOASOBI"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "a6fc3720-5112-4e9a-8252-51f1405f8aca",
+      "fileName": "ezgif.com-gif-maker_2.webp",
+      "contentType": "image/webp",
+      "description": null,
+      "isAnimated": true,
+      "credit": null,
+      "cloudflareId": "fb0be8b4-7f39-419f-2e0d-4b7faec48300",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/fb0be8b4-7f39-419f-2e0d-4b7faec48300",
+      "artist": {
+        "id": "a0c44a4c-65c7-49a8-8972-f90c942c3b9e",
+        "name": "paccha!! \uD83C\uDF55\uD83D\uDC9C",
+        "socialLink": "x.com/paccha_7",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 53,
+      "tagString": "1girl, solo, closed_eyes, skirt, black_cardigan, asymmetrical_legwear, full_body, red_bow, :<, chibi, ahoge, sleeves_past_wrists, tears, two_side_up, bow, long_hair, blush_stickers, simple_background, virtual_youtuber, cardigan, sleeves_past_fingers, red_bowtie, brown_hair, white_shirt, tearing_up, transparent_background, shirt, grey_skirt, bowtie, open_clothes, red_footwear, horns, uneven_legwear, pom_pom_(clothes), sailor_collar, closed_mouth, socks, standing, serafuku, hair_ornament, school_uniform, grey_sailor_collar, white_background, black_jacket, pom_pom_hair_ornament, open_cardigan, ribbon, black_thighhighs, thighhighs, long_sleeves, black_socks, single_thighhigh, crying, light_brown_hair, single_sock",
+      "mediaTag": 1,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": "623fa56d-4c82-41f9-aecc-076f0713f260",
+    "hls": "6fb7fc66-4f07-44a9-859a-03daf77ce633/playlist.m3u8"
+  },
+  {
+    "id": "f3530a89-15da-42d1-b3b3-8f0acb500ee8",
+    "title": "Paper Bouquet",
+    "opus": "song-opus/f3530a89-15da-42d1-b3b3-8f0acb500ee8.ogg",
+    "oss": "audio/Mili - Paper Bouquet (Evil.v1).mp3",
+    "cnPath": "audio/Mili - Paper Bouquet (Evil.v1).mp3",
+    "absolutePath": "audio/Mili%20-%20Paper%20Bouquet%20%28Evil.v1%29.mp3",
+    "playCount": 3830,
+    "duration": 208,
+    "streamDate": "2025-10-01T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Evil"
+    ],
+    "originalArtists": [
+      "Mili"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "8b91aff1-960f-43e1-9e03-353c922a9984",
+      "fileName": "MelbaEvilPNG.png",
+      "contentType": "image/png",
+      "description": null,
+      "isAnimated": false,
+      "credit": null,
+      "cloudflareId": "d57fbbfe-cf30-4a64-91d0-da930dd31f00",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/d57fbbfe-cf30-4a64-91d0-da930dd31f00",
+      "artist": {
+        "id": "cf1ea8c8-f1cb-4ef1-b5ea-8b7ce531782d",
+        "name": "P3R",
+        "socialLink": "x.com/atari_desu",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 12,
+      "tagString": "2girls, food-themed_hair_ornament, multiple_girls, open_mouth, long_hair, hair_ornament, smile, bow, closed_eyes, siblings, sisters, ahoge, heart, bowtie, sky, pink_hair, cloud, blush, fang, sailor_collar, black_jacket, upper_body, fruit, blonde_hair, strawberry, drill_hair, heart_hair_ornament, skin_fang, :d, bat_hair_ornament, pink_sailor_collar, side-by-side, outdoors, jacket, petals, orange_bow, food, school_uniform, pink_bow, ribbon, blue_sky, hair_ribbon, purple_sailor_collar, twin_drills, facing_viewer, cardigan, red_bow, red_bowtie, long_sleeves, hair_bow, signature, purple_sky, very_long_hair, shirt",
+      "mediaTag": 1,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": "de420ac9-5c67-4ed9-9562-984f71f0540d",
+    "hls": "ffdf1298-072a-4f78-ad75-4686b5c58dbb/playlist.m3u8"
+  },
+  {
+    "id": "37486f6a-3692-4f0f-9f90-85dc79dab3e9",
+    "title": "Crawling",
+    "opus": "song-opus/37486f6a-3692-4f0f-9f90-85dc79dab3e9.ogg",
+    "oss": "audio/Linkin Park - Crawling (Evil.v2).mp3",
+    "cnPath": "audio/Linkin Park - Crawling (Evil.v2).mp3",
+    "absolutePath": "audio/Linkin%20Park%20-%20Crawling%20%28Evil.v2%29.mp3",
+    "playCount": 6578,
+    "duration": 210,
+    "streamDate": "2025-09-03T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Evil"
+    ],
+    "originalArtists": [
+      "Linkin Park"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "4b33b1b6-3892-4eb2-b7c1-140c8448beae",
+      "fileName": "1696768502687_edit_297809253846284.png",
+      "contentType": "image/png",
+      "description": null,
+      "isAnimated": false,
+      "credit": null,
+      "cloudflareId": "faac7c87-fdaf-4b1b-38f7-c7a0d579f800",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/faac7c87-fdaf-4b1b-38f7-c7a0d579f800",
+      "artist": {
+        "id": "93b737ac-defd-40d6-8827-f0ce0f6acc22",
+        "name": "EOcelot (EggpieART)",
+        "socialLink": "x.com/EggpieART",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 24,
+      "tagString": "1girl, virtual_youtuber, red_eyes, middle_finger, two_side_up, ahoge, meme, :3, red_bow, bowtie, solo, red_bowtie, bow, light_brown_hair, long_hair, hair_ornament, looking_at_viewer, brown_hair, heart, english_text, white_background, black_cardigan, upper_body, cardigan, sailor_collar, profanity, long_sleeves, transparent_background, ribbon, red_ribbon, simple_background, heart_hair_ornament, hair_bow, closed_mouth, smile, hair_between_eyes, button_badge, hair_ribbon, black_shirt, blush",
+      "mediaTag": 1,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": "19fe4083-e6a5-4e4b-9dff-92c8eff1778c",
+    "hls": "b794f12d-f680-40c9-b8b7-6caf5f9b4f01/playlist.m3u8"
+  },
+  {
+    "id": "bba3d6b5-eec5-4743-be30-69d442b71fd0",
+    "title": "BIRDS OF A FEATHER",
+    "opus": "song-opus/bba3d6b5-eec5-4743-be30-69d442b71fd0.ogg",
+    "oss": "audio/Billie Eilish - BIRDS OF A FEATHER (Duet.v1) (Neuro & Evil).mp3",
+    "cnPath": "audio/Billie Eilish - BIRDS OF A FEATHER (Duet.v1) (Neuro & Evil).mp3",
+    "absolutePath": "audio/Billie%20Eilish%20-%20BIRDS%20OF%20A%20FEATHER%20%28Duet.v1%29%20%28Neuro%20%26%20Evil%29.mp3",
+    "playCount": 8397,
+    "duration": 210,
+    "streamDate": "2025-08-06T00:00:00",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro & Evil"
+    ],
+    "originalArtists": [
+      "Billie Eilish"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "292ece83-ef94-4af0-bbf8-233382883683",
+      "fileName": "letmetellyou.jpg",
+      "contentType": "image/jpeg",
+      "description": null,
+      "isAnimated": false,
+      "credit": "Art by kan (@kan1360)",
+      "cloudflareId": "48fe610e-f550-4c65-34dd-226a913fe000",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/48fe610e-f550-4c65-34dd-226a913fe000",
+      "artist": {
+        "id": "00adeee9-1b5a-45de-8ae5-53312f5fdb88",
+        "name": "kan",
+        "socialLink": "x.com/kan1360",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 46,
+      "tagString": "wings, multiple_girls, 3girls, skirt, long_hair, white_dress, black_wings, brown_hair, dress, barefoot, thighhighs, feathered_wings, black_hair, pleated_skirt, angel_wings, feathers, loafers, school_uniform, covering_own_eyes, horns, shoes, white_wings, blue_skirt, cardigan, angel_and_devil, covering_another's_eyes, long_sleeves, open_mouth, sleeveless_dress, angel, serafuku, bow, zettai_ryouiki, sleeveless, black_thighhighs, bare_shoulders, brown_footwear, ribbon",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": "38c40ff8-6dc6-4f83-9453-8c1500d2c1cf",
+    "hls": "dbc310ea-683d-48f6-898c-48f5e2cc7123/playlist.m3u8"
+  },
+  {
+    "id": "263b4780-bb4d-4763-8ba4-e3e9febedd68",
+    "title": "La Gata Bajo la Lluvia",
+    "opus": "song-opus/263b4780-bb4d-4763-8ba4-e3e9febedd68.ogg",
+    "oss": "audio/La Gata Bajo la Lluvia.mp3",
+    "cnPath": "audio/La Gata Bajo la Lluvia.mp3",
+    "absolutePath": "audio/La Gata Bajo la Lluvia.mp3",
+    "playCount": 5251,
+    "duration": 215,
+    "streamDate": "2026-03-04T21:19:02.448",
+    "dateAdded": null,
+    "coverArtists": [
+      "Neuro"
+    ],
+    "originalArtists": [
+      "Rocío Dúrcal"
+    ],
+    "genres": null,
+    "coverArt": {
+      "id": "8d4950f6-7b4a-448c-a787-230aaffcc4f2",
+      "fileName": "NeuroSink.png",
+      "contentType": "image/png",
+      "description": null,
+      "isAnimated": false,
+      "credit": null,
+      "cloudflareId": "077908ec-86d4-4dec-0899-6ecefe22d900",
+      "mediaStorageType": 1,
+      "absolutePath": "/WxURxyML82UkE7gY-PiBKw/077908ec-86d4-4dec-0899-6ecefe22d900",
+      "artist": {
+        "id": "cf1ea8c8-f1cb-4ef1-b5ea-8b7ce531782d",
+        "name": "P3R",
+        "socialLink": "x.com/atari_desu",
+        "userId": null,
+        "arts": null
+      },
+      "upvotes": 56,
+      "tagString": "faucet, 2girls, animal_ears, chibi, open_mouth, multiple_girls, hair_ornament, red_bow, brown_hair, bow, >_<, sink, blush_stickers, long_hair, water, bathtub, cat, long_sleeves, cat_ears, closed_eyes, shower_head, tail, hair_bow, fang, cat_girl, dual_persona, cardigan",
+      "mediaTag": 2,
+      "isSensitive": false
+    },
+    "thumbnailArt": null,
+    "order": 0,
+    "hasLyrics": true,
+    "userUploaded": false,
+    "videoId": "cf3137ee-20bb-468b-959c-e228dd7f9208",
+    "hls": "b29e4b8e-dedf-4b1a-91e4-15b6743bc974/playlist.m3u8"
+  }
+]

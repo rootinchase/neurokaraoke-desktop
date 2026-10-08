@@ -1,0 +1,50 @@
+[
+  {
+    "id": 5,
+    "type": "playlist",
+    "name": "Feel-Good Friday - Party & Dance",
+    "title": "Feel-Good Friday - Party & Dance",
+    "description": "Playlist: Feel-Good Friday - Party & Dance",
+    "start_timestamp": 1790899200,
+    "start": "2026-10-02T00:00:00+00:00",
+    "end_timestamp": 1790985540,
+    "end": "2026-10-02T23:59:00+00:00",
+    "is_now": true
+  },
+  {
+    "id": 8,
+    "type": "playlist",
+    "name": "The Original",
+    "title": "The Original",
+    "description": "Playlist: The Original",
+    "start_timestamp": 1790899200,
+    "start": "2026-10-02T00:00:00+00:00",
+    "end_timestamp": 1790985540,
+    "end": "2026-10-02T23:59:00+00:00",
+    "is_now": true
+  },
+  {
+    "id": 6,
+    "type": "playlist",
+    "name": "Wildcard Saturday - Electric Mix",
+    "title": "Wildcard Saturday - Electric Mix",
+    "description": "Playlist: Wildcard Saturday - Electric Mix",
+    "start_timestamp": 1790985600,
+    "start": "2026-10-03T00:00:00+00:00",
+    "end_timestamp": 1791071940,
+    "end": "2026-10-03T23:59:00+00:00",
+    "is_now": false
+  },
+  {
+    "id": 8,
+    "type": "playlist",
+    "name": "The Original",
+    "title": "The Original",
+    "description": "Playlist: The Original",
+    "start_timestamp": 1790985600,
+    "start": "2026-10-03T00:00:00+00:00",
+    "end_timestamp": 1791071940,
+    "end": "2026-10-03T23:59:00+00:00",
+    "is_now": false
+  }
+]
