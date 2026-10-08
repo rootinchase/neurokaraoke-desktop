@@ -1,4 +1,4 @@
-use crate::activity::resolve_and_render_art;
+use crate::activity::{render_fallback_art, resolve_and_render_art};
 use crate::api::{Artwork, LazySongDatabase, LoadingState, SongDTO, TrendingTimes};
 use crate::theme::ThemeManager;
 use crate::utilities::cache::{PersistentMediaCache, cache_dir};
@@ -212,10 +212,10 @@ impl HomeActivity {
                         if let Some(cover) = &song.cover_art {
                             self.resolve_and_render_art(ui, cover, size / 2.0);
                         } else {
-                            ui.allocate_exact_size(size / 2.0, Sense::hover());
+                            render_fallback_art(ui, size / 2.0);
                         }
                     } else {
-                        ui.allocate_exact_size(size / 2.0, Sense::hover());
+                        render_fallback_art(ui, size / 2.0);
                     }
                     if i == 1 {
                         ui.end_row();

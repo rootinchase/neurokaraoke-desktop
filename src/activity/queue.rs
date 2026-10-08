@@ -3,6 +3,7 @@ use crate::audio::types::Player;
 use eframe::egui::Ui;
 use egui_extras::{Column, TableBuilder};
 use uuid::Uuid;
+use crate::utilities::util::format_duration;
 
 pub struct QueueActivity {
     pub songs: LazySongDatabase,
