@@ -66,7 +66,6 @@ impl AuthService {
         let res = self.client.post(&url).json(&payload).send().await?;
         let status = res.status().clone();
 
-        // ─── ADD RESPONSE TEXT CAPTURING TO PREVENT COLD DECODING CRASHES ───
         let response_text = res
             .text()
             .await
@@ -100,7 +99,6 @@ impl AuthService {
 
     /// GET /api/auth/me
     /// Verifies an active JWT structure against the core validation gate.
-    #[allow(dead_code)]
     pub async fn verify_token(&self, token: &str) -> anyhow::Result<api::UserClaims> {
         let url = format!("{}/api/auth/me", self.auth_host);
         let res = self.client.get(&url).bearer_auth(token).send().await?;
