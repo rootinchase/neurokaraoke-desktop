@@ -54,7 +54,7 @@ jobs:
         shell: powershell
         run: |
           Set-MpPreference -DisableRealtimeMonitoring $true
-          Add-MpPreference -ExclusionPath "${{ github.workspace }}
+          Add-MpPreference -ExclusionPath "${{ github.workspace }}"
 
       - uses: actions/checkout@v7
 
