@@ -455,7 +455,10 @@ impl PersistentMediaCache {
     }
 
     pub async fn evict_expired(&self, max_age: Duration) -> Result<usize> {
-        let dir_path = Self::get_assets_dir();
+        self.evict_expired_in(&Self::get_assets_dir(), max_age).await
+    }
+
+    pub async fn evict_expired_in(&self, dir_path: &Path, max_age: Duration) -> Result<usize> {
         if !metadata(&dir_path).await.is_ok() {
             return Ok(0);
         }
@@ -486,7 +489,10 @@ impl PersistentMediaCache {
     }
 
     pub async fn evict_to_fit_size(&self, max_size_bytes: u64) -> Result<usize> {
-        let dir_path = Self::get_assets_dir();
+        self.evict_to_fit_size_in(&Self::get_assets_dir(), max_size_bytes).await
+    }
+
+    pub async fn evict_to_fit_size_in(&self, dir_path: &Path, max_size_bytes: u64) -> Result<usize> {
         if !metadata(&dir_path).await.is_ok() {
             return Ok(0);
         }
@@ -551,6 +557,12 @@ impl PersistentMediaCache {
         let size_count = self.evict_to_fit_size(max_size_bytes).await?;
         Ok(expired_count + size_count)
     }
+
+    pub async fn evict_in(&self, dir_path: &Path, max_age: Duration, max_size_bytes: u64) -> Result<usize> {
+        let expired_count = self.evict_expired_in(dir_path, max_age).await?;
+        let size_count = self.evict_to_fit_size_in(dir_path, max_size_bytes).await?;
+        Ok(expired_count + size_count)
+    }
 }
 
 #[cfg(test)]
@@ -566,7 +578,8 @@ mod tests {
     fn test_cache_eviction_async() {
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
-            let dir = PersistentMediaCache::get_assets_dir();
+            let temp_dir = std::env::temp_dir().join(format!("neurokaraoke_test_cache_{}", uuid::Uuid::new_v4()));
+            let dir = temp_dir.join("assets");
             let _ = create_dir_all(&dir).await;
 
             let file1 = dir.join("test_old.bin");
@@ -584,11 +597,12 @@ mod tests {
             let client = create_reqwest_client();
             let cache = PersistentMediaCache::new(client, 4);
 
-            let evicted = cache.evict(Duration::from_secs(3600), 1).await.unwrap();
+            let evicted = cache.evict_in(&dir, Duration::from_secs(3600), 1).await.unwrap();
             assert!(evicted >= 1);
             assert!(!file1.exists());
 
-            let _ = tokio::fs::remove_dir_all(dir.parent().unwrap()).await;
+            // Clean up isolated test temp directory
+            let _ = tokio::fs::remove_dir_all(&temp_dir).await;
         });
     }
 }
