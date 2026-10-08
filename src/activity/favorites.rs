@@ -4,7 +4,7 @@ use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongD
 use crate::debug_log;
 use crate::theme::ThemeManager;
 use crate::utilities::cache::{PersistentMediaCache, cache_dir, playlist_cache_dir};
-use crate::utilities::util::spawn_fetch_playlist_details;
+use crate::utilities::util::{load_cached_song_list, spawn_fetch_playlist_details};
 use dashmap::DashMap;
 use eframe::egui::{Context, ScrollArea, Ui, Vec2};
 use reqwest::Client;
@@ -122,13 +122,7 @@ impl FavoritesActivity {
                 }
             }
 
-            let mut has_cached_songs = false;
-            if let Ok(data) = read(&songs_cache_path).await {
-                if let Ok(song_list) = from_bytes::<Vec<SongDTO>>(&data) {
-                    *s.lock().await = LoadingState::Loaded(song_list);
-                    has_cached_songs = true;
-                }
-            }
+            let has_cached_songs = load_cached_song_list(&songs_cache_path, &s).await;
 
             // Fetch playlists
             match db.fetch_favorite_playlists().await {

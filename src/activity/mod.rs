@@ -17,7 +17,7 @@ use eframe::egui::{
     Align2, Color32, Context, FontId, Frame, Grid, Image, ImageSource, Sense, Ui, Vec2,
     include_image, vec2,
 };
-use egui_extras::{Column, TableBuilder};
+use egui_extras::{Column, Table, TableBuilder};
 use reqwest::Client;
 use std::fs::read;
 use std::sync::Arc;
@@ -225,13 +225,8 @@ pub fn render_mosaic(
     }
 }
 
-pub fn render_playlist_table(
-    ui: &mut Ui,
-    id: &str,
-    playlist: &PlaylistDetail,
-    on_play_song: &mut impl FnMut(Vec<SongDTO>, Uuid),
-) {
-    let table = TableBuilder::new(ui)
+pub fn build_playlist_table<'a>(ui: &'a mut Ui, id: &str) -> Table<'a> {
+    TableBuilder::new(ui)
         .id_salt(format!("{}-songs", id))
         .column(Column::remainder())
         .column(Column::exact(60.0))
@@ -250,7 +245,16 @@ pub fn render_playlist_table(
             header.col(|ui| {
                 ui.label("Dur");
             });
-        });
+        })
+}
+
+pub fn render_playlist_table(
+    ui: &mut Ui,
+    id: &str,
+    playlist: &PlaylistDetail,
+    on_play_song: &mut impl FnMut(Vec<SongDTO>, Uuid),
+) {
+    let table = build_playlist_table(ui, id);
 
     let songs_list = &playlist.songs;
     table.body(|body| {

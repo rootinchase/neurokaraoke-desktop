@@ -1,13 +1,15 @@
-use crate::activity::{render_duration_label, render_fallback_art, resolve_and_render_art};
+use crate::activity::{
+    build_playlist_table, render_duration_label, render_fallback_art, resolve_and_render_art,
+};
 use crate::api::{Artwork, LazySongDatabase, LoadingState, SongDTO, TrendingTimes};
 use crate::theme::ThemeManager;
 use crate::utilities::cache::{PersistentMediaCache, cache_dir};
 use crate::utilities::persistence::{AppState, load_app_state};
-use crate::utilities::util::get_playlist_details_cached;
+use crate::utilities::util::{get_playlist_details_cached, load_cached_song_list};
 use eframe::egui::{
     Button, Context, Frame, Grid, Image, RichText, ScrollArea, Sense, Ui, Vec2, include_image,
 };
-use egui_extras::{Column, TableBuilder};
+
 use reqwest::Client;
 use ron::de::from_bytes;
 use ron::ser::to_string_pretty;
@@ -63,13 +65,7 @@ impl HomeActivity {
 
         tokio::spawn(async move {
             let cache_path = cache_dir().join("home_suggested.ron");
-            let mut has_cached = false;
-            if let Ok(data) = read(&cache_path).await {
-                if let Ok(cached) = from_bytes::<Vec<SongDTO>>(&data) {
-                    *songs_state.lock().await = LoadingState::Loaded(cached);
-                    has_cached = true;
-                }
-            }
+            let has_cached = load_cached_song_list(&cache_path, &songs_state).await;
 
             match songs.get_suggested(20).await {
                 Ok(data) => {
@@ -98,13 +94,7 @@ impl HomeActivity {
 
         tokio::spawn(async move {
             let cache_path = cache_dir().join("home_trending.ron");
-            let mut has_cached = false;
-            if let Ok(data) = read(&cache_path).await {
-                if let Ok(cached) = from_bytes::<Vec<SongDTO>>(&data) {
-                    *songs_state.lock().await = LoadingState::Loaded(cached);
-                    has_cached = true;
-                }
-            }
+            let has_cached = load_cached_song_list(&cache_path, &songs_state).await;
 
             match songs.get_trending(TrendingTimes::Week).await {
                 Ok(data) => {
@@ -258,26 +248,7 @@ impl HomeActivity {
                         ui.set_width(ui.available_width());
                         ui.set_height(200.0);
 
-                        let table = TableBuilder::new(ui)
-                            .id_salt(format!("{}-songs", id))
-                            .column(Column::remainder())
-                            .column(Column::exact(60.0))
-                            .column(Column::exact(100.0))
-                            .column(Column::exact(60.0))
-                            .header(20.0, |mut header| {
-                                header.col(|ui| {
-                                    ui.label("Song");
-                                });
-                                header.col(|ui| {
-                                    ui.label("Plays");
-                                });
-                                header.col(|ui| {
-                                    ui.label("Date");
-                                });
-                                header.col(|ui| {
-                                    ui.label("Dur");
-                                });
-                            });
+                        let table = build_playlist_table(ui, id);
 
                         match &*songs_list {
                             LoadingState::Loaded(songs_list) => {

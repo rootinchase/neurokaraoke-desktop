@@ -1,5 +1,5 @@
 use crate::activity::SortOption;
-use crate::api::{LazySongDatabase, PlaylistDetail};
+use crate::api::{LazySongDatabase, PlaylistDetail, SongDTO};
 use crate::config::config_dir;
 use crate::utilities::cache;
 use chrono::Utc;
@@ -131,6 +131,19 @@ pub fn spawn_fetch_playlist_details(
             }
         });
     }
+}
+
+pub async fn load_cached_song_list(
+    cache_path: &std::path::Path,
+    state: &Arc<tokio::sync::Mutex<crate::api::LoadingState<Vec<SongDTO>>>>,
+) -> bool {
+    if let Ok(data) = tokio::fs::read(cache_path).await {
+        if let Ok(song_list) = from_bytes::<Vec<SongDTO>>(&data) {
+            *state.lock().await = crate::api::LoadingState::Loaded(song_list);
+            return true;
+        }
+    }
+    false
 }
 
 pub fn write_debug_log(msg: &str) {

@@ -3,7 +3,7 @@ use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongD
 use crate::config::Config;
 use crate::theme::ThemeManager;
 use crate::utilities::cache::{PersistentMediaCache, playlist_cache_dir};
-use crate::utilities::util::{get_playlist_details_cached, sort_items};
+use crate::utilities::util::{sort_items, spawn_fetch_playlist_details};
 
 use crate::debug_log;
 use dashmap::DashMap;
@@ -358,33 +358,7 @@ impl PlaylistActivity {
 
                             let scroll_output = ScrollArea::vertical().show(ui, |ui| {
                                 for (_index, playlist) in sorted_playlists.iter().enumerate() {
-                                    // Fetch detail if needed
-                                    if !self.playlist_details.contains_key(&playlist.id) {
-                                        self.playlist_details
-                                            .insert(playlist.id, LoadingState::Loading);
-                                        let p_id = playlist.id;
-                                        let p_name = playlist.name.clone();
-                                        let p_songs = self.songs.clone();
-                                        let p_details = self.playlist_details.clone();
-                                        self.rt.spawn(async move {
-                                            match get_playlist_details_cached(p_id, &p_songs).await
-                                            {
-                                                Ok(detail) => {
-                                                    p_details
-                                                        .insert(p_id, LoadingState::Loaded(detail));
-                                                }
-                                                Err(_) => {
-                                                    p_details.insert(
-                                                        p_id,
-                                                        LoadingState::Loaded(PlaylistDetail {
-                                                            name: p_name,
-                                                            songs: vec![],
-                                                        }),
-                                                    );
-                                                }
-                                            }
-                                        });
-                                    }
+                                    spawn_fetch_playlist_details(&self.rt, Some(&self.ctx), &self.songs, &self.playlist_details, playlist.id, playlist.name.clone());
 
                                     if let Some(detail_state) =
                                         self.playlist_details.get(&playlist.id)

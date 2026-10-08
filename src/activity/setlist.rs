@@ -3,7 +3,7 @@ use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail};
 use crate::debug_log;
 use crate::theme::ThemeManager;
 use crate::utilities::cache::{PersistentMediaCache, cache_dir};
-use crate::utilities::util::get_playlist_details_cached;
+use crate::utilities::util::spawn_fetch_playlist_details;
 use chrono::{Datelike, Utc};
 use dashmap::DashMap;
 use eframe::egui::{Context, ScrollArea, Ui};
@@ -101,32 +101,7 @@ impl SetlistActivity {
             if let Ok(data) = read(&cache_path).await {
                 if let Ok(setlists) = from_bytes::<Vec<Playlist>>(&data) {
                     for setlist in &setlists {
-                        if !details.contains_key(&setlist.id) {
-                            details.insert(setlist.id, LoadingState::Loading);
-
-                            let s_id = setlist.id;
-                            let s_name = setlist.name.clone();
-                            let s_songs = songs.clone();
-                            let s_details = details.clone();
-                            let s_ctx = ctx.clone();
-                            rt.spawn(async move {
-                                match get_playlist_details_cached(s_id, &s_songs).await {
-                                    Ok(detail) => {
-                                        s_details.insert(s_id, LoadingState::Loaded(detail));
-                                    }
-                                    Err(_) => {
-                                        s_details.insert(
-                                            s_id,
-                                            LoadingState::Loaded(PlaylistDetail {
-                                                name: s_name,
-                                                songs: vec![],
-                                            }),
-                                        );
-                                    }
-                                }
-                                s_ctx.request_repaint();
-                            });
-                        }
+                        spawn_fetch_playlist_details(&rt, Some(&ctx), &songs, &details, setlist.id, setlist.name.clone());
                     }
                     *s.lock().await = LoadingState::Loaded(setlists);
                     has_cached = true;
@@ -175,34 +150,7 @@ impl SetlistActivity {
                     );
 
                     for setlist in &data {
-                        // Only fetch if not already present
-                        if !details.contains_key(&setlist.id) {
-                            details.insert(setlist.id, LoadingState::Loading);
-
-                            // Spawn fetch for detail
-                            let s_id = setlist.id;
-                            let s_name = setlist.name.clone();
-                            let s_songs = songs.clone();
-                            let s_details = details.clone();
-                            let s_ctx = ctx.clone();
-                            rt.spawn(async move {
-                                match get_playlist_details_cached(s_id, &s_songs).await {
-                                    Ok(detail) => {
-                                        s_details.insert(s_id, LoadingState::Loaded(detail));
-                                    }
-                                    Err(_) => {
-                                        s_details.insert(
-                                            s_id,
-                                            LoadingState::Loaded(PlaylistDetail {
-                                                name: s_name,
-                                                songs: vec![],
-                                            }),
-                                        );
-                                    }
-                                }
-                                s_ctx.request_repaint();
-                            });
-                        }
+                        spawn_fetch_playlist_details(&rt, Some(&ctx), &songs, &details, setlist.id, setlist.name.clone());
                     }
                     *s.lock().await = LoadingState::Loaded(data.clone());
                     let _ = write(
