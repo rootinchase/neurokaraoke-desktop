@@ -1,9 +1,9 @@
+use crate::activity::render_duration_label;
 use crate::api::{LazySongDatabase, LoadingState, PlaylistDetail, SongDTO};
 use crate::audio::types::Player;
 use eframe::egui::Ui;
 use egui_extras::{Column, TableBuilder};
 use uuid::Uuid;
-use crate::utilities::util::format_duration;
 
 pub struct QueueActivity {
     pub songs: LazySongDatabase,
@@ -105,11 +105,7 @@ impl QueueActivity {
                                     ui.label(cover_artists);
                                 });
                                 row.col(|ui| {
-                                    if let Some(dur) = duration {
-                                        ui.label(format!("{}:{:02}", dur / 60, dur % 60));
-                                    } else {
-                                        ui.label("-");
-                                    }
+                                    render_duration_label(ui, duration);
                                 });
                             });
                         });

@@ -4,7 +4,7 @@ use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongD
 use crate::debug_log;
 use crate::theme::ThemeManager;
 use crate::utilities::cache::{PersistentMediaCache, cache_dir, playlist_cache_dir};
-use crate::utilities::util::get_playlist_details_cached;
+use crate::utilities::util::spawn_fetch_playlist_details;
 use dashmap::DashMap;
 use eframe::egui::{Context, ScrollArea, Ui, Vec2};
 use reqwest::Client;
@@ -115,29 +115,7 @@ impl FavoritesActivity {
             if let Ok(data) = read(&playlists_cache_path).await {
                 if let Ok(playlists) = from_bytes::<Vec<Playlist>>(&data) {
                     for playlist in &playlists {
-                        if !details.contains_key(&playlist.id) {
-                            details.insert(playlist.id, LoadingState::Loading);
-                            let p_id = playlist.id;
-                            let p_name = playlist.name.clone();
-                            let p_songs = db.clone();
-                            let p_details = details.clone();
-                            rt.spawn(async move {
-                                match get_playlist_details_cached(p_id, &p_songs).await {
-                                    Ok(detail) => {
-                                        p_details.insert(p_id, LoadingState::Loaded(detail));
-                                    }
-                                    Err(_) => {
-                                        p_details.insert(
-                                            p_id,
-                                            LoadingState::Loaded(PlaylistDetail {
-                                                name: p_name,
-                                                songs: vec![],
-                                            }),
-                                        );
-                                    }
-                                }
-                            });
-                        }
+                        spawn_fetch_playlist_details(&rt, None, &db, &details, playlist.id, playlist.name.clone());
                     }
                     *p.lock().await = LoadingState::Loaded(playlists);
                     has_cached_playlists = true;
@@ -165,29 +143,7 @@ impl FavoritesActivity {
                     .await;
 
                     for playlist in &playlists {
-                        if !details.contains_key(&playlist.id) {
-                            details.insert(playlist.id, LoadingState::Loading);
-                            let p_id = playlist.id;
-                            let p_name = playlist.name.clone();
-                            let p_songs = db.clone();
-                            let p_details = details.clone();
-                            rt.spawn(async move {
-                                match get_playlist_details_cached(p_id, &p_songs).await {
-                                    Ok(detail) => {
-                                        p_details.insert(p_id, LoadingState::Loaded(detail));
-                                    }
-                                    Err(_) => {
-                                        p_details.insert(
-                                            p_id,
-                                            LoadingState::Loaded(PlaylistDetail {
-                                                name: p_name,
-                                                songs: vec![],
-                                            }),
-                                        );
-                                    }
-                                }
-                            });
-                        }
+                        spawn_fetch_playlist_details(&rt, None, &db, &details, playlist.id, playlist.name.clone());
                     }
                     *p.lock().await = LoadingState::Loaded(playlists);
                 }
@@ -301,33 +257,7 @@ impl FavoritesActivity {
 
                         // Render each favorite playlist card box
                         for playlist in playlists {
-                            if !self.playlist_details.contains_key(&playlist.id) {
-                                self.playlist_details
-                                    .insert(playlist.id, LoadingState::Loading);
-                                let p_id = playlist.id;
-                                let p_name = playlist.name.clone();
-                                let p_songs = self.db.clone();
-                                let p_details = self.playlist_details.clone();
-                                let rt = self.rt.clone();
-                                let ctx = self.ctx.clone();
-                                rt.spawn(async move {
-                                    match get_playlist_details_cached(p_id, &p_songs).await {
-                                        Ok(detail) => {
-                                            p_details.insert(p_id, LoadingState::Loaded(detail));
-                                        }
-                                        Err(_) => {
-                                            p_details.insert(
-                                                p_id,
-                                                LoadingState::Loaded(PlaylistDetail {
-                                                    name: p_name,
-                                                    songs: vec![],
-                                                }),
-                                            );
-                                        }
-                                    }
-                                    ctx.request_repaint();
-                                });
-                            }
+                            spawn_fetch_playlist_details(&self.rt, Some(&self.ctx), &self.db, &self.playlist_details, playlist.id, playlist.name.clone());
 
                             if let Some(detail_state) = self.playlist_details.get(&playlist.id) {
                                 match &*detail_state {

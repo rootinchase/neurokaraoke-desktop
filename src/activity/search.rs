@@ -2,6 +2,7 @@ use eframe::egui::{TextEdit, Ui};
 use egui_extras::{Column, TableBuilder};
 use uuid::Uuid;
 
+use crate::activity::render_duration_label;
 use crate::api::{LazySongDatabase, LoadingState};
 use crate::audio::types::Player;
 use crate::utilities::util::split_by_space_respecting_quotes;
@@ -284,11 +285,7 @@ impl SearchActivity {
                         ui.label(play_count.to_string());
                     });
                     row.col(|ui| {
-                        if let Some(dur) = duration {
-                            ui.label(format!("{}:{:02}", dur / 60, dur % 60));
-                        } else {
-                            ui.label("-");
-                        }
+                        render_duration_label(ui, duration);
                     });
                 });
             });

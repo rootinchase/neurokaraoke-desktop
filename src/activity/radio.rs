@@ -82,13 +82,7 @@ impl RadioActivity {
                             let is_radio_specific = np
                                 .song
                                 .as_ref()
-                                .and_then(|s| s.custom_fields.as_ref())
-                                .and_then(|cf| cf.get("songId"))
-                                .map(|sid| {
-                                    let t = sid.trim();
-                                    t.is_empty() || t.eq_ignore_ascii_case("null")
-                                })
-                                .unwrap_or(true);
+                                .map_or(true, |s| s.song_id_uuid().is_none());
 
                             if let Some(old_uuid) = last_radio_art_uuid_clone.lock().await.take() {
                                 cache_clone_for_cleanup.remove_asset(old_uuid, AssetType::Image);
@@ -158,32 +152,9 @@ impl RadioActivity {
         let ctx = self.ctx.clone();
 
         self.rt.spawn(async move {
-            match songs.get_radio_current_state().await {
-                Ok(res) => {
-                    *current_state.lock().await = LoadingState::Loaded(res);
-                }
-                Err(e) => {
-                    *current_state.lock().await = LoadingState::Failed(Arc::new(e));
-                }
-            }
-
-            match songs.get_azuracast_now_playing().await {
-                Ok(res) => {
-                    *azuracast_state.lock().await = LoadingState::Loaded(res);
-                }
-                Err(e) => {
-                    *azuracast_state.lock().await = LoadingState::Failed(Arc::new(e));
-                }
-            }
-
-            match songs.get_gamehub_schedule().await {
-                Ok(res) => {
-                    *gamehub_schedule.lock().await = LoadingState::Loaded(res);
-                }
-                Err(e) => {
-                    *gamehub_schedule.lock().await = LoadingState::Failed(Arc::new(e));
-                }
-            }
+            update_loading_state(&current_state, songs.get_radio_current_state().await).await;
+            update_loading_state(&azuracast_state, songs.get_azuracast_now_playing().await).await;
+            update_loading_state(&gamehub_schedule, songs.get_gamehub_schedule().await).await;
 
             ctx.request_repaint();
         });
@@ -284,38 +255,33 @@ impl RadioActivity {
             );
 
             if let Ok(LoadingState::Loaded(curr)) = current_guard.as_deref() {
-                if !curr.upcoming.is_empty() {
-                    ui.add_space(16.0);
-                    ui.heading(RichText::new("Upcoming Queue").size(16.0).color(theme.text));
-                    ui.add_space(8.0);
-                    for song in &curr.upcoming {
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new(song.title.as_ref()).color(theme.text));
-                        });
-                    }
-                }
-
-                if !curr.history.is_empty() {
-                    ui.add_space(16.0);
-                    ui.heading(
-                        RichText::new("Recently Played")
-                            .size(16.0)
-                            .color(theme.text),
-                    );
-                    ui.add_space(8.0);
-                    for song in &curr.history {
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                RichText::new(song.title.as_ref()).color(theme.text_secondary),
-                            );
-                        });
-                    }
-                }
+                render_song_title_list(ui, theme, "Upcoming Queue", &curr.upcoming, theme.text);
+                render_song_title_list(ui, theme, "Recently Played", &curr.history, theme.text_secondary);
             } else if let Ok(LoadingState::Failed(e)) = current_guard.as_deref() {
                 ui.label(
                     RichText::new(format!("Failed to load radio state: {}", e)).color(Color32::RED),
                 );
             }
+        });
+    }
+}
+
+fn render_song_title_list(
+    ui: &mut Ui,
+    theme: &ThemeManager,
+    heading: &str,
+    songs: &[SongDTO],
+    color: Color32,
+) {
+    if songs.is_empty() {
+        return;
+    }
+    ui.add_space(16.0);
+    ui.heading(RichText::new(heading).size(16.0).color(theme.text));
+    ui.add_space(8.0);
+    for song in songs {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(song.title.as_ref()).color(color));
         });
     }
 }
@@ -374,33 +340,13 @@ pub fn render_radio_now_playing(
                     } else if let Some(np) = az_np.as_ref() {
                         if let Some(song) = &np.song {
                             if let Some(art_url) = &song.art {
-                                let song_id_uuid = song
-                                    .custom_fields
-                                    .as_ref()
-                                    .and_then(|cf| cf.get("songId"))
-                                    .and_then(|sid| {
-                                        let trimmed = sid.trim();
-                                        if trimmed.is_empty()
-                                            || trimmed.eq_ignore_ascii_case("null")
-                                        {
-                                            None
-                                        } else {
-                                            Uuid::parse_str(trimmed).ok()
-                                        }
-                                    });
+                                let song_id_uuid = song.song_id_uuid();
 
                                 let art_uuid = song_id_uuid.unwrap_or_else(|| {
                                     Uuid::new_v5(&Uuid::NAMESPACE_URL, art_url.as_bytes())
                                 });
 
-                                let art_obj = Artwork {
-                                    id: art_uuid.to_string(),
-                                    file_name: art_url.clone().into(),
-                                    cloudflare_id: Some(art_uuid.to_string().into()),
-                                    absolute_path: art_url.clone().into(),
-                                    artist: None,
-                                    is_sensitive: false,
-                                };
+                                let art_obj = Artwork::from_url(art_uuid, art_url);
                                 resolve_and_render_art(
                                     ui,
                                     cache,
@@ -495,4 +441,12 @@ pub fn render_radio_now_playing(
     } else {
         ui.label("Radio is currently offline or between tracks.");
     }
+}
+
+async fn update_loading_state<T>(state: &Mutex<LoadingState<T>>, result: anyhow::Result<T>) {
+    let mut guard = state.lock().await;
+    *guard = match result {
+        Ok(res) => LoadingState::Loaded(res),
+        Err(e) => LoadingState::Failed(Arc::new(e)),
+    };
 }

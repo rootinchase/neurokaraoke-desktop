@@ -1,4 +1,4 @@
-use crate::activity::{render_fallback_art, resolve_and_render_art};
+use crate::activity::{render_duration_label, render_fallback_art, resolve_and_render_art};
 use crate::api::{Artwork, LazySongDatabase, LoadingState, SongDTO, TrendingTimes};
 use crate::theme::ThemeManager;
 use crate::utilities::cache::{PersistentMediaCache, cache_dir};
@@ -322,11 +322,7 @@ impl HomeActivity {
                                             );
                                         });
                                         row.col(|ui| {
-                                            if let Some(dur) = song.duration {
-                                                ui.label(format!("{}:{:02}", dur / 60, dur % 60));
-                                            } else {
-                                                ui.label("-");
-                                            }
+                                            render_duration_label(ui, song.duration);
                                         });
                                     });
                                 });

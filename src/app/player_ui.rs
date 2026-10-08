@@ -34,18 +34,7 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                         az_elapsed = np.elapsed_secs();
                         az_duration = np.duration_secs();
                         if let Some(az_song) = &np.song {
-                            let song_id_uuid = az_song
-                                .custom_fields
-                                .as_ref()
-                                .and_then(|cf| cf.get("songId"))
-                                .and_then(|sid| {
-                                    let trimmed = sid.trim();
-                                    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("null") {
-                                        None
-                                    } else {
-                                        Uuid::parse_str(trimmed).ok()
-                                    }
-                                });
+                            let song_id_uuid = az_song.song_id_uuid();
 
                             let art_uuid = song_id_uuid.unwrap_or_else(|| {
                                 if let Some(art_url) = &az_song.art {
@@ -56,14 +45,7 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                             });
 
                             let art = if let Some(art_url) = &az_song.art {
-                                Artwork {
-                                    id: art_uuid.to_string(),
-                                    file_name: art_url.clone().into(),
-                                    cloudflare_id: Some(art_uuid.to_string().into()),
-                                    absolute_path: art_url.clone().into(),
-                                    artist: None,
-                                    is_sensitive: false,
-                                }
+                                Artwork::from_url(art_uuid, art_url)
                             } else {
                                 Artwork::default_art()
                             };

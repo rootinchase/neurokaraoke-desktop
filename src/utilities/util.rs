@@ -98,6 +98,41 @@ pub fn format_duration(seconds: u64) -> String {
     format!("{}:{:02}", seconds / 60, seconds % 60)
 }
 
+pub fn spawn_fetch_playlist_details(
+    rt: &tokio::runtime::Runtime,
+    ctx: Option<&eframe::egui::Context>,
+    db: &LazySongDatabase,
+    details: &Arc<dashmap::DashMap<Uuid, crate::api::LoadingState<PlaylistDetail>>>,
+    playlist_id: Uuid,
+    playlist_name: Arc<str>,
+) {
+    if !details.contains_key(&playlist_id) {
+        details.insert(playlist_id, crate::api::LoadingState::Loading);
+        let p_songs = db.clone();
+        let p_details = details.clone();
+        let ctx = ctx.cloned();
+        rt.spawn(async move {
+            match get_playlist_details_cached(playlist_id, &p_songs).await {
+                Ok(detail) => {
+                    p_details.insert(playlist_id, crate::api::LoadingState::Loaded(detail));
+                }
+                Err(_) => {
+                    p_details.insert(
+                        playlist_id,
+                        crate::api::LoadingState::Loaded(PlaylistDetail {
+                            name: playlist_name,
+                            songs: vec![],
+                        }),
+                    );
+                }
+            }
+            if let Some(c) = ctx {
+                c.request_repaint();
+            }
+        });
+    }
+}
+
 pub fn write_debug_log(msg: &str) {
     let log_path = catch_unwind(|| config_dir().join("debug.log")).unwrap_or_else(|_| {
         if let Some(dir) = dirs::config_dir() {

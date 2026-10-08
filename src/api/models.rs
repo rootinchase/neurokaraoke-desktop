@@ -154,6 +154,17 @@ impl Artwork {
             is_sensitive: false,
         }
     }
+
+    pub fn from_url(art_uuid: Uuid, art_url: &str) -> Self {
+        Self {
+            id: art_uuid.to_string(),
+            file_name: art_url.into(),
+            cloudflare_id: Some(art_uuid.to_string().into()),
+            absolute_path: art_url.into(),
+            artist: None,
+            is_sensitive: false,
+        }
+    }
 }
 
 #[serde_as]
@@ -648,6 +659,22 @@ pub struct AzuraCastSong {
     pub art: Option<String>,
     #[serde(default)]
     pub custom_fields: Option<std::collections::HashMap<String, String>>,
+}
+
+impl AzuraCastSong {
+    pub fn song_id_uuid(&self) -> Option<Uuid> {
+        self.custom_fields
+            .as_ref()
+            .and_then(|cf| cf.get("songId"))
+            .and_then(|sid| {
+                let trimmed = sid.trim();
+                if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("null") {
+                    None
+                } else {
+                    Uuid::parse_str(trimmed).ok()
+                }
+            })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -283,11 +283,7 @@ pub fn render_playlist_table(
                 );
             });
             row.col(|ui| {
-                if let Some(dur) = song.duration {
-                    ui.label(format_duration(dur));
-                } else {
-                    ui.label("-");
-                }
+                render_duration_label(ui, song.duration);
             });
         });
     });
@@ -533,6 +529,14 @@ pub fn render_playlist_art_advanced(
     }
 
     render_fallback_art(ui, size);
+}
+
+pub fn render_duration_label(ui: &mut Ui, duration: Option<u64>) {
+    if let Some(dur) = duration {
+        ui.label(format_duration(dur));
+    } else {
+        ui.label("-");
+    }
 }
 
 pub fn render_playlist_art(
