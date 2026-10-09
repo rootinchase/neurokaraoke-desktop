@@ -68,6 +68,7 @@ pub struct App {
     pub sleep_timer_end: Option<Instant>,
     pub show_timer_menu: bool,
     pub show_queue: bool,
+    pub show_fullscreen: bool,
     pub(crate) _tray_icon: TrayIconMenu,
 }
 
@@ -126,7 +127,10 @@ impl App {
 
             // 5. Dispatch tasks safely onto the background executor thread pool
             self.rt.spawn(async move {
-                match cache.get_or_download_image(target_uuid, url).await {
+                match cache
+                    .get_or_download_image(target_uuid, url, cache::AssetType::Image)
+                    .await
+                {
                     Ok(path) => {
                         let path_str = path.to_string_lossy().into_owned();
                         cached_paths.insert(key_str.clone(), path_str.clone());
@@ -134,6 +138,84 @@ impl App {
                     Err(e) => {
                         debug_log!(
                             "❌ [Image Pipeline] Download failure for {}: {}",
+                            key_str,
+                            e
+                        );
+                    }
+                }
+
+                active_downloads.remove::<Arc<str>>(&key_str);
+                ctx_clone.request_repaint();
+            });
+        }
+
+        None
+    }
+
+    /// Resolves the full-resolution artwork asset (Cloudflare `public` variant),
+    /// cached under a namespaced key so it never collides with the 512x512 thumbnail.
+    pub fn resolve_full_artwork_uri(
+        &self,
+        ctx: &egui::Context,
+        cloudflare_id: Option<Arc<str>>,
+        absolute_path: Arc<str>,
+    ) -> Option<String> {
+        let key_str: Arc<str> = format!(
+            "full:{}",
+            cloudflare_id.as_deref().unwrap_or(absolute_path.as_ref())
+        )
+        .into();
+
+        // 1. Check hot in-memory UI reference cache
+        if let Some(path_str) = self.cached_art_paths.get::<Arc<str>>(&key_str) {
+            return Some(path_str.value().clone());
+        }
+
+        // 2. Derive a stable UUID namespaced away from the thumbnail key
+        let target_uuid = Uuid::new_v5(&Uuid::NAMESPACE_URL, key_str.as_bytes());
+
+        // 3. Check persistent disk cache before downloading
+        if let Some(path) = self
+            .cache
+            .get_cached_path(target_uuid, cache::AssetType::FullImage)
+        {
+            let path_str = path.to_string_lossy().into_owned();
+            self.cached_art_paths
+                .insert(key_str.clone(), path_str.clone());
+            return Some(path_str);
+        }
+
+        // 4. Dispatch a background download if one is not already in flight
+        if self.active_art_downloads.insert(key_str.clone()) {
+            let cache = self.cache.clone();
+            let cached_paths = self.cached_art_paths.clone();
+            let active_downloads = self.active_art_downloads.clone();
+            let ctx_clone = ctx.clone();
+
+            let url = cache::get_full_image_url(cloudflare_id.as_deref(), &absolute_path);
+
+            if url.is_empty() {
+                active_downloads.remove::<Arc<str>>(&key_str);
+                return None;
+            }
+
+            debug_log!(
+                "⚡ [Image Pipeline] Checking/Downloading full artwork: {}",
+                url
+            );
+
+            self.rt.spawn(async move {
+                match cache
+                    .get_or_download_image(target_uuid, url, cache::AssetType::FullImage)
+                    .await
+                {
+                    Ok(path) => {
+                        let path_str = path.to_string_lossy().into_owned();
+                        cached_paths.insert(key_str.clone(), path_str.clone());
+                    }
+                    Err(e) => {
+                        debug_log!(
+                            "❌ [Image Pipeline] Full artwork download failure for {}: {}",
                             key_str,
                             e
                         );

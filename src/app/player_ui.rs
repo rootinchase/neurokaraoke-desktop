@@ -1,12 +1,13 @@
 use crate::api::{Artwork, LoadingState, Song};
 use crate::app::state::App;
-use crate::audio::{LoopMode, Player};
+use crate::audio::{LoopMode, PlaybackState, Player};
 use crate::debug_log;
 use crate::theme::ThemeManager;
 use crate::utilities::util::format_duration;
 use eframe::egui::{
-    self, Align, Button, Color32, Context, CursorIcon, Image, ImageSource, Layout, PopupKind, Pos2,
-    Rgba, RichText, Sense, Stroke, TextWrapMode, Ui, Vec2, include_image, lerp,
+    self, Align, Align2, Button, Color32, Context, CursorIcon, Image, ImageSource, Key, Layout,
+    Order, PopupKind, Pos2, Rgba, RichText, Sense, Stroke, TextWrapMode, Ui, Vec2, include_image,
+    lerp,
 };
 use egui::{
     Area, Frame, Id, InnerResponse, Label, Margin, Mesh, Panel, Popup, PopupAnchor, Rect, Shape,
@@ -121,6 +122,158 @@ pub fn render_sleep_timer_popup(app: &mut App, ctx: &Context, pos: Pos2) -> Inne
         })
 }
 
+/// Resolves the song currently being played — radio now-playing (azuracast or
+/// current-state), the lazy song database, or URL metadata as a fallback —
+/// along with the radio elapsed/duration used by the seek bar.
+fn resolve_current_song(
+    app: &App,
+    state: &PlaybackState,
+    is_radio: bool,
+) -> (Option<Song>, u64, u64) {
+    let mut az_elapsed = 0u64;
+    let mut az_duration = 0u64;
+
+    let song = if is_radio {
+        let mut s = None;
+        if let Ok(az_guard) = app.radio_activity.azuracast_state.try_lock() {
+            if let LoadingState::Loaded(az) = &*az_guard {
+                if let Some(np) = az.effective_now_playing() {
+                    az_elapsed = np.elapsed_secs();
+                    az_duration = np.duration_secs();
+                    if let Some(az_song) = &np.song {
+                        let song_id_uuid = az_song.song_id_uuid();
+
+                        let art_uuid = song_id_uuid.unwrap_or_else(|| {
+                            if let Some(art_url) = &az_song.art {
+                                Uuid::new_v5(&Uuid::NAMESPACE_URL, art_url.as_bytes())
+                            } else {
+                                Uuid::nil()
+                            }
+                        });
+
+                        let art = if let Some(art_url) = &az_song.art {
+                            Artwork::from_url(art_uuid, art_url)
+                        } else {
+                            Artwork::default_art()
+                        };
+                        s = Some(Song {
+                            id: Uuid::nil(),
+                            title: az_song
+                                .title
+                                .clone()
+                                .unwrap_or_else(|| "Radio Stream".into())
+                                .into(),
+                            absolute_path: None,
+                            opus: None,
+                            cover_artists: Arc::from([]),
+                            original_artists: az_song
+                                .artist
+                                .clone()
+                                .map(|a| Arc::from([a.into()]))
+                                .unwrap_or_else(|| Arc::from([])),
+                            cover_art: Some(art),
+                            play_count: None,
+                            duration: np.duration,
+                        });
+                    }
+                }
+            }
+        }
+        if s.is_none() {
+            if let Ok(guard) = app.radio_activity.current_state.try_lock() {
+                if let LoadingState::Loaded(curr) = &*guard {
+                    if let Some(cur_song) = &curr.current {
+                        s = Some(Song {
+                            id: Uuid::nil(),
+                            title: cur_song.title.clone(),
+                            absolute_path: cur_song.audio_url.clone().map(|x| x.to_string().into()),
+                            opus: None,
+                            cover_artists: cur_song.cover_artists.clone(),
+                            original_artists: cur_song.original_artists.clone(),
+                            cover_art: cur_song.cover_art.clone(),
+                            play_count: None,
+                            duration: cur_song.duration,
+                        });
+                    }
+                }
+            }
+        }
+        if s.is_none() {
+            s = Some(Song {
+                id: Uuid::nil(),
+                title: "24/7 NeuroKaraoke Radio".into(),
+                absolute_path: None,
+                opus: None,
+                cover_artists: Arc::from([]),
+                original_artists: Arc::from([]),
+                cover_art: Some(Artwork::default_art()),
+                play_count: None,
+                duration: None,
+            });
+        }
+        s
+    } else {
+        let mut s = match app.songs.get(&state.song(), |song| song.clone()) {
+            LoadingState::Loaded(s) => Some(s),
+            _ => None,
+        };
+
+        // Fallback to URL-based metadata if database lookup failed
+        if s.is_none() {
+            if let Ok(meta) = app.player.current_url_metadata.lock() {
+                if let Some(meta) = &*meta
+                    && meta.id == state.song()
+                {
+                    s = Some(Song {
+                        id: state.song(),
+                        title: meta.title.clone(),
+                        absolute_path: meta.audio_url.clone().map(|s| s.to_string().into()),
+                        opus: None,
+                        cover_artists: meta.cover_artists.clone(),
+                        original_artists: meta.original_artists.clone(),
+                        cover_art: meta.cover_art.clone(),
+                        play_count: None,
+                        duration: None,
+                    });
+                }
+            }
+        }
+        s
+    };
+
+    (song, az_elapsed, az_duration)
+}
+
+/// Resolves the artwork identifiers (cloudflare id + absolute path) for the
+/// current song, falling back to URL metadata when the song has no cover art.
+fn current_artwork_refs(
+    app: &App,
+    song: Option<&Song>,
+    state: &PlaybackState,
+) -> (Option<Arc<str>>, Option<Arc<str>>) {
+    let mut current_img_uuid: Option<Arc<str>> = None;
+    let mut current_abs_path: Option<Arc<str>> = None;
+    if let Some(s) = song {
+        if let Some(cover_art) = &s.cover_art {
+            current_img_uuid = cover_art.cloudflare_id.clone();
+            current_abs_path = Some(cover_art.absolute_path.clone());
+        }
+    }
+    if current_img_uuid.is_none() {
+        if let Ok(meta) = app.player.current_url_metadata.lock() {
+            if let Some(meta) = &*meta
+                && meta.id == state.song()
+            {
+                if let Some(art) = &meta.cover_art {
+                    current_img_uuid = art.cloudflare_id.clone();
+                    current_abs_path = Some(art.absolute_path.clone());
+                }
+            }
+        }
+    }
+    (current_img_uuid, current_abs_path)
+}
+
 pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
     let player_vol = app.player.get_volume();
     if (app.config.volume - player_vol).abs() > f32::EPSILON {
@@ -130,119 +283,7 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
 
     if let Some(state) = app.player.get_playback_state() {
         let is_radio = state.song() == Uuid::nil();
-        let mut az_elapsed = 0u64;
-        let mut az_duration = 0u64;
-
-        let song = if is_radio {
-            let mut s = None;
-            if let Ok(az_guard) = app.radio_activity.azuracast_state.try_lock() {
-                if let LoadingState::Loaded(az) = &*az_guard {
-                    if let Some(np) = az.effective_now_playing() {
-                        az_elapsed = np.elapsed_secs();
-                        az_duration = np.duration_secs();
-                        if let Some(az_song) = &np.song {
-                            let song_id_uuid = az_song.song_id_uuid();
-
-                            let art_uuid = song_id_uuid.unwrap_or_else(|| {
-                                if let Some(art_url) = &az_song.art {
-                                    Uuid::new_v5(&Uuid::NAMESPACE_URL, art_url.as_bytes())
-                                } else {
-                                    Uuid::nil()
-                                }
-                            });
-
-                            let art = if let Some(art_url) = &az_song.art {
-                                Artwork::from_url(art_uuid, art_url)
-                            } else {
-                                Artwork::default_art()
-                            };
-                            s = Some(Song {
-                                id: Uuid::nil(),
-                                title: az_song
-                                    .title
-                                    .clone()
-                                    .unwrap_or_else(|| "Radio Stream".into())
-                                    .into(),
-                                absolute_path: None,
-                                opus: None,
-                                cover_artists: Arc::from([]),
-                                original_artists: az_song
-                                    .artist
-                                    .clone()
-                                    .map(|a| Arc::from([a.into()]))
-                                    .unwrap_or_else(|| Arc::from([])),
-                                cover_art: Some(art),
-                                play_count: None,
-                                duration: np.duration,
-                            });
-                        }
-                    }
-                }
-            }
-            if s.is_none() {
-                if let Ok(guard) = app.radio_activity.current_state.try_lock() {
-                    if let LoadingState::Loaded(curr) = &*guard {
-                        if let Some(cur_song) = &curr.current {
-                            s = Some(Song {
-                                id: Uuid::nil(),
-                                title: cur_song.title.clone(),
-                                absolute_path: cur_song
-                                    .audio_url
-                                    .clone()
-                                    .map(|x| x.to_string().into()),
-                                opus: None,
-                                cover_artists: cur_song.cover_artists.clone(),
-                                original_artists: cur_song.original_artists.clone(),
-                                cover_art: cur_song.cover_art.clone(),
-                                play_count: None,
-                                duration: cur_song.duration,
-                            });
-                        }
-                    }
-                }
-            }
-            if s.is_none() {
-                s = Some(Song {
-                    id: Uuid::nil(),
-                    title: "24/7 NeuroKaraoke Radio".into(),
-                    absolute_path: None,
-                    opus: None,
-                    cover_artists: Arc::from([]),
-                    original_artists: Arc::from([]),
-                    cover_art: Some(Artwork::default_art()),
-                    play_count: None,
-                    duration: None,
-                });
-            }
-            s
-        } else {
-            let mut s = match app.songs.get(&state.song(), |song| song.clone()) {
-                LoadingState::Loaded(s) => Some(s),
-                _ => None,
-            };
-
-            // Fallback to URL-based metadata if database lookup failed
-            if s.is_none() {
-                if let Ok(meta) = app.player.current_url_metadata.lock() {
-                    if let Some(meta) = &*meta
-                        && meta.id == state.song()
-                    {
-                        s = Some(Song {
-                            id: state.song(),
-                            title: meta.title.clone(),
-                            absolute_path: meta.audio_url.clone().map(|s| s.to_string().into()),
-                            opus: None,
-                            cover_artists: meta.cover_artists.clone(),
-                            original_artists: meta.original_artists.clone(),
-                            cover_art: meta.cover_art.clone(),
-                            play_count: None,
-                            duration: None,
-                        });
-                    }
-                }
-            }
-            s
-        };
+        let (song, az_elapsed, az_duration) = resolve_current_song(app, &state, is_radio);
 
         Panel::bottom("player")
             .resizable(false)
@@ -366,26 +407,8 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                     let left_resp = ui
                         .horizontal(|ui| {
                             ui.add_space(7.5);
-                            let mut current_img_uuid: Option<Arc<str>> = None;
-                            let mut current_abs_path: Option<Arc<str>> = None;
-                            if let Some(s) = &song {
-                                if let Some(cover_art) = &s.cover_art {
-                                    current_img_uuid = cover_art.cloudflare_id.clone();
-                                    current_abs_path = Some(cover_art.absolute_path.clone());
-                                }
-                            }
-                            if current_img_uuid.is_none() {
-                                if let Ok(meta) = app.player.current_url_metadata.lock() {
-                                    if let Some(meta) = &*meta
-                                        && meta.id == state.song()
-                                    {
-                                        if let Some(art) = &meta.cover_art {
-                                            current_img_uuid = art.cloudflare_id.clone();
-                                            current_abs_path = Some(art.absolute_path.clone());
-                                        }
-                                    }
-                                }
-                            }
+                            let (current_img_uuid, current_abs_path) =
+                                current_artwork_refs(app, song.as_ref(), &state);
 
                             let mut cached_path_str = None;
                             if let Some(abs_path) = current_abs_path {
@@ -804,6 +827,19 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                                     }
                                 }
 
+                                ui.add_space(10.0);
+
+                                // Fullscreen toggle button
+                                let fullscreen_source = if app.show_fullscreen {
+                                    include_image!("../../assets/fullscreen-exit.svg")
+                                } else {
+                                    include_image!("../../assets/fullscreen.svg")
+                                };
+                                if btn(&app.theme, ui, fullscreen_source, app.show_fullscreen) {
+                                    app.show_fullscreen = !app.show_fullscreen;
+                                    ui.ctx().request_repaint();
+                                }
+
                                 // Timer menu popup logic
                                 if app.show_timer_menu {
                                     // Use the measured popup height from the previous frame
@@ -855,4 +891,72 @@ pub fn btn(theme: &ThemeManager, ui: &mut Ui, source: ImageSource, active: bool)
         ui.set_cursor_icon(CursorIcon::PointingHand);
     }
     resp.clicked()
+}
+
+/// Draws the fullscreen player overlay: full-resolution artwork filling the
+/// screen above the embedded player controls. Esc exits, and the toggle button
+/// in the player controls (now showing the collapse icon) also exits.
+pub fn render_fullscreen_player(app: &mut App, ctx: &Context) {
+    if ctx.input(|i| i.key_pressed(Key::Escape)) {
+        app.show_fullscreen = false;
+        ctx.request_repaint();
+        return;
+    }
+
+    let screen_rect = ctx.input(|i| i.content_rect());
+
+    Area::new(Id::new("fullscreen_player"))
+        .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
+        .default_size(screen_rect.size())
+        .constrain(false)
+        .order(Order::Foreground)
+        .show(ctx, |ui| {
+            ui.painter()
+                .rect_filled(screen_rect, 0.0, app.theme.background);
+
+            // The player controls dock to the bottom of the overlay, giving the
+            // fullscreen view embedded play/pause, seek, volume, favorite, timer and queue.
+            render_player_controls(app, ui);
+
+            let avail = ui.available_rect_before_wrap();
+            let size = avail.width().min(avail.height());
+            if size <= 0.0 {
+                return;
+            }
+
+            let (rect, _resp) =
+                ui.allocate_exact_size(vec2(avail.width(), avail.height()), Sense::hover());
+
+            let artwork_path = app.player.get_playback_state().and_then(|state| {
+                let is_radio = state.song() == Uuid::nil();
+                let (song, _, _) = resolve_current_song(app, &state, is_radio);
+                let (img_uuid, abs_path) = current_artwork_refs(app, song.as_ref(), &state);
+                app.resolve_full_artwork_uri(
+                    ctx,
+                    img_uuid,
+                    abs_path.unwrap_or_else(|| Arc::from("")),
+                )
+            });
+
+            let art_rect = Rect::from_center_size(rect.center(), vec2(size, size));
+
+            if let Some(path_str) = artwork_path {
+                if let Ok(image_bytes) = std::fs::read(&path_str) {
+                    let image_source = ImageSource::Bytes {
+                        uri: std::borrow::Cow::Owned(format!("bytes://{}", path_str)),
+                        bytes: image_bytes.into(),
+                    };
+                    ui.put(
+                        art_rect,
+                        Image::new(image_source)
+                            .max_size(vec2(size, size))
+                            .bg_fill(Color32::TRANSPARENT)
+                            .corner_radius(20.0),
+                    );
+                }
+            } else {
+                ui.painter()
+                    .rect_filled(art_rect, 20.0, app.theme.background_elevated);
+            }
+        });
 }

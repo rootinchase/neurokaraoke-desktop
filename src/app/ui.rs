@@ -1,6 +1,8 @@
 use crate::activity::{self, ActivityType, profile::ProfileMessage};
 use crate::api::{API_URLS, LazySongDatabase, LoadingState, ProfileResponse, Song, SongDTO};
-use crate::app::{player_ui::render_player_controls, state::App};
+use crate::app::{
+    player_ui::render_fullscreen_player, player_ui::render_player_controls, state::App,
+};
 use crate::audio::Player;
 use crate::auth::AuthService;
 use crate::debug_log;
@@ -530,6 +532,15 @@ impl App {
         } else if self.activity == ActivityType::Settings {
             self.settings_activity
                 .render(ui, &self.theme, &mut self.config, &self.rt);
+        }
+
+        // Fullscreen overlay: guard against a missing playback state, then draw
+        // the full-resolution artwork with the embedded player controls on top.
+        if self.show_fullscreen && self.player.get_playback_state().is_none() {
+            self.show_fullscreen = false;
+        }
+        if self.show_fullscreen {
+            render_fullscreen_player(self, ui.ctx());
         }
     }
 }

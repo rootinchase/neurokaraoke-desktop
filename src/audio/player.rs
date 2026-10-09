@@ -1,7 +1,7 @@
 use crate::api::{API_URLS, LazySongDatabase, LoadingState, SongDTO};
 use crate::audio::types::*;
 use crate::debug_log;
-use crate::utilities::cache::{PersistentMediaCache, cache_dir, get_thumbnail_url};
+use crate::utilities::cache::{AssetType, PersistentMediaCache, cache_dir, get_thumbnail_url};
 use crate::utilities::util::create_reqwest_client;
 use eframe::egui;
 use rand::prelude::SliceRandom;
@@ -218,13 +218,25 @@ impl Player {
                                     let img_url = get_thumbnail_url(cf, &cover.absolute_path, "crop,gravity=auto");
                                     if let Ok(art_uuid) = Uuid::parse_str(&cover.id) {
                                         if !img_url.is_empty() {
-                                            let _ = cache_worker.get_or_download_image(art_uuid, img_url).await;
+                                            let _ = cache_worker
+                                                .get_or_download_image(
+                                                    art_uuid,
+                                                    img_url,
+                                                    AssetType::Image,
+                                                )
+                                                .await;
                                         }
                                     }
                                 } else if let Some(audio_url) = dto.audio_url.as_ref().or(dto.absolute_path.as_ref()) {
                                     let img_url = audio_url.replace("/audio/", "/images/").replace(".mp3", ".webp").replace(".m4a", ".webp");
                                     if img_url.as_str() != audio_url.as_ref() {
-                                        let _ = cache_worker.get_or_download_image(next_uuid, img_url).await;
+                                        let _ = cache_worker
+                                            .get_or_download_image(
+                                                next_uuid,
+                                                img_url,
+                                                AssetType::Image,
+                                            )
+                                            .await;
                                     }
                                 }
                             } else {
@@ -235,7 +247,13 @@ impl Player {
                                     let _ = cache_worker.get_or_download_audio(&client_worker, next_uuid, url).await;
 
                                     let img_url = format!("{}/{}", API_URLS.storage, path_str.as_ref().replace("audio/", "images/").replace(".mp3", ".webp").replace(".ogg", ".webp"));
-                                    let _ = cache_worker.get_or_download_image(next_uuid, img_url).await;
+                                    let _ = cache_worker
+                                        .get_or_download_image(
+                                            next_uuid,
+                                            img_url,
+                                            AssetType::Image,
+                                        )
+                                        .await;
                                 }
                             }
                         });

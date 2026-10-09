@@ -126,7 +126,7 @@ pub fn resolve_and_render_art(
     let artwork_url_clone = artwork_url.clone();
     rt.spawn(async move {
         let _ = cache_clone
-            .get_or_download_image(art_uuid, artwork_url_clone)
+            .get_or_download_image(art_uuid, artwork_url_clone, cache::AssetType::Image)
             .await;
         ctx_clone.request_repaint();
     });

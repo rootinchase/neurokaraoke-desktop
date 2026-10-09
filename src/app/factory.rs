@@ -373,6 +373,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
         sleep_timer_end: None,
         show_timer_menu: false,
         show_queue: false,
+        show_fullscreen: false,
         _tray_icon: tray_icon,
     };
 

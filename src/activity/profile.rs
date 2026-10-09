@@ -3,7 +3,7 @@ use crate::api::{AuthContext, Badge, ProfileHeader, UserLimits};
 use crate::auth::{AuthService, auth_ui::render_login_form};
 use crate::debug_log;
 use crate::theme::ThemeManager;
-use crate::utilities::cache::PersistentMediaCache;
+use crate::utilities::cache::{AssetType, PersistentMediaCache};
 use eframe::egui::{self, Frame, RichText, Ui, Vec2, include_image};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -138,7 +138,10 @@ impl ProfileActivity {
             let hash_val = std::hash::Hasher::finish(&hasher);
             let badge_uuid = Uuid::from_u128(hash_val as u128);
 
-            match cache.get_or_download_image(badge_uuid, final_url).await {
+            match cache
+                .get_or_download_image(badge_uuid, final_url, AssetType::Image)
+                .await
+            {
                 Ok(path) => {
                     let path_str = path.to_string_lossy().into_owned();
                     let _ = tx
@@ -197,7 +200,10 @@ impl ProfileActivity {
         let cache = self.cache.clone();
 
         rt.spawn(async move {
-            match cache.get_or_download_image(avatar_uuid, final_url).await {
+            match cache
+                .get_or_download_image(avatar_uuid, final_url, AssetType::Image)
+                .await
+            {
                 Ok(path) => {
                     let path_str = path.to_string_lossy().into_owned();
                     let _ = tx.send(ProfileMessage::AvatarLoaded(path_str)).await;

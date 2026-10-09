@@ -15,6 +15,9 @@ use uuid::Uuid;
 pub enum AssetType {
     Audio,
     Image,
+    /// Full-resolution artwork (Cloudflare `public` variant), cached separately
+    /// from the 512x512 thumbnail so the two never collide.
+    FullImage,
 }
 
 #[derive(Clone)]
@@ -85,7 +88,7 @@ impl PersistentMediaCache {
 
         // 2. Fallback check for raw files existing on the operating system storage drive
         match asset_type {
-            AssetType::Image => {
+            AssetType::Image | AssetType::FullImage => {
                 for ext in &["webp", "jpeg", "jpg", "png", "gif", "bin"] {
                     let potential_path = Self::get_asset_path(id, Some(ext));
                     if std::fs::metadata(&potential_path).is_ok() {
@@ -176,13 +179,18 @@ impl PersistentMediaCache {
         Ok(())
     }
 
-    pub async fn get_or_download_image(&self, cloudflare_id: Uuid, url: String) -> Result<PathBuf> {
+    pub async fn get_or_download_image(
+        &self,
+        cloudflare_id: Uuid,
+        url: String,
+        asset_type: AssetType,
+    ) -> Result<PathBuf> {
         debug_log!(
             "🔍 [Cache] Requesting image: {} (URL: {})",
             cloudflare_id,
             url
         );
-        let key = (cloudflare_id, AssetType::Image);
+        let key = (cloudflare_id, asset_type);
 
         loop {
             if let Some(status) = self.in_flight.get(&key) {
@@ -662,6 +670,52 @@ pub fn get_thumbnail_url(cloudflare_id: Option<&str>, absolute_path: &str, fit: 
                 API_URLS.storage,
                 abs.trim_start_matches('/'),
                 fit
+            )
+        }
+    } else {
+        "".to_string()
+    }
+}
+
+/// Builds the full-resolution Cloudflare Images delivery URL (the `public` variant,
+/// no width/height constraints). Mirrors `get_thumbnail_url`'s branch structure.
+pub fn get_full_image_url(cloudflare_id: Option<&str>, absolute_path: &str) -> String {
+    let clean_cf = cloudflare_id
+        .filter(|s| !s.is_empty() && *s != "null")
+        .map(|s| s.trim());
+    let clean_abs = if absolute_path.is_empty() || absolute_path == "null" {
+        None
+    } else {
+        Some(absolute_path.trim())
+    };
+
+    if let Some(abs) = clean_abs
+        && (abs.starts_with("http://") || abs.starts_with("https://"))
+    {
+        return abs.to_string();
+    }
+
+    if let Some(id) = clean_cf {
+        format!(
+            "{}/{}/{}{}",
+            API_URLS.images, API_URLS.account_hash, id, "/public"
+        )
+    } else if let Some(abs) = clean_abs {
+        if abs.starts_with("/WxURxyML82UkE7gY-PiBKw/") || abs.starts_with("WxURxyML82UkE7gY-PiBKw/")
+        {
+            let path_clean = abs.trim_start_matches('/');
+            format!(
+                "{}/{}/public",
+                API_URLS.images,
+                path_clean.replace("/public", "").replace("/thumbnail", "")
+            )
+        } else if abs.starts_with("http://") || abs.starts_with("https://") {
+            abs.to_string()
+        } else {
+            format!(
+                "{}/{}/public",
+                API_URLS.storage,
+                abs.trim_start_matches('/')
             )
         }
     } else {

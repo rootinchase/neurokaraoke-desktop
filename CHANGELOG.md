@@ -2,7 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
-## v0.4.1
+## v0.4.2
+
+### Added features
+* **Fullscreen Player:** Added a fullscreen player overlay toggled from the player controls (fullscreen icon, fullscreen-exit icon when active, Esc to exit) that shows the full-resolution cover artwork filling the screen with the embedded play/pause, seek, volume, favorite, timer and queue controls
+
+### Improvements
+* Added a separate full-resolution artwork cache asset (`AssetType::FullImage`) using the Cloudflare Images `public` variant, downloaded lazily only when fullscreen is opened so the 512x512 thumbnails are never served as fullscreen artwork
+
+---
+
+## v0.4.1g
 
 ### Added features
 * **Radio Mode:** Introduced dedicated Radio functionality with persistent volume control and smooth playback switching between Radio and normal tracks
