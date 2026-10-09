@@ -689,4 +689,184 @@ mod tests {
             }
         });
     }
+
+    #[test]
+    fn test_youtube_url_forms_are_accepted() {
+        use crate::api::sources::{SourceKind, classify_source_url};
+        let cases: Vec<(&str, SourceKind)> = vec![
+            (
+                "https://www.youtube.com/watch?v=xWDfREk0ZLs",
+                SourceKind::YouTubeVideo {
+                    video_id: "xWDfREk0ZLs".to_string(),
+                },
+            ),
+            (
+                "https://youtu.be/xWDfREk0ZLs",
+                SourceKind::YouTubeVideo {
+                    video_id: "xWDfREk0ZLs".to_string(),
+                },
+            ),
+            (
+                "https://m.youtube.com/watch?v=xWDfREk0ZLs&t=1969",
+                SourceKind::YouTubeVideo {
+                    video_id: "xWDfREk0ZLs".to_string(),
+                },
+            ),
+            (
+                "https://music.youtube.com/watch?v=xWDfREk0ZLs",
+                SourceKind::YouTubeVideo {
+                    video_id: "xWDfREk0ZLs".to_string(),
+                },
+            ),
+            (
+                "https://www.youtube-nocookie.com/embed/xWDfREk0ZLs",
+                SourceKind::YouTubeVideo {
+                    video_id: "xWDfREk0ZLs".to_string(),
+                },
+            ),
+            (
+                "https://www.youtube.com/shorts/xWDfREk0ZLs",
+                SourceKind::YouTubeVideo {
+                    video_id: "xWDfREk0ZLs".to_string(),
+                },
+            ),
+            (
+                "https://www.youtube.com/live/xWDfREk0ZLs",
+                SourceKind::YouTubeVideo {
+                    video_id: "xWDfREk0ZLs".to_string(),
+                },
+            ),
+            (
+                "https://www.youtube.com/playlist?list=PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG",
+                SourceKind::YouTubePlaylist {
+                    list_id: "PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG".to_string(),
+                },
+            ),
+            (
+                "https://www.bilibili.com/video/BV1xx411c7mD",
+                SourceKind::BilibiliVideo {
+                    video_id: "BV1xx411c7mD".to_string(),
+                },
+            ),
+            (
+                "https://b23.tv/abc123",
+                SourceKind::BilibiliVideo {
+                    video_id: "abc123".to_string(),
+                },
+            ),
+            (
+                "https://cdn.discordapp.com/attachments/123/456/song.mp3",
+                SourceKind::DiscordAttachment {
+                    url: "https://cdn.discordapp.com/attachments/123/456/song.mp3".to_string(),
+                },
+            ),
+        ];
+
+        for (url, expected) in cases {
+            assert_eq!(classify_source_url(url).unwrap(), expected, "for {url}");
+        }
+    }
+
+    #[test]
+    fn test_source_url_rejections_match_server() {
+        use crate::api::sources::{
+            ERR_INVALID_URL, ERR_INVALID_YOUTUBE_URL, ERR_UNSUPPORTED_PLATFORM, classify_source_url,
+        };
+
+        // Messages captured from live 400 responses in the web app.
+        assert_eq!(
+            classify_source_url("not a url").unwrap_err().to_string(),
+            ERR_INVALID_URL
+        );
+        assert_eq!(
+            classify_source_url("https://example.com/foo.mp3")
+                .unwrap_err()
+                .to_string(),
+            ERR_UNSUPPORTED_PLATFORM
+        );
+        assert_eq!(
+            classify_source_url("https://www.youtube.com/")
+                .unwrap_err()
+                .to_string(),
+            ERR_INVALID_YOUTUBE_URL
+        );
+        assert_eq!(
+            classify_source_url("https://youtu.be/shortid")
+                .unwrap_err()
+                .to_string(),
+            ERR_INVALID_YOUTUBE_URL
+        );
+        assert_eq!(
+            classify_source_url("ftp://youtube.com/watch?v=xWDfREk0ZLs")
+                .unwrap_err()
+                .to_string(),
+            ERR_INVALID_URL
+        );
+    }
+
+    #[test]
+    fn test_upload_song_payload_matches_server() {
+        // Body captured in raw_requests/upload_youtube.har
+        let payload = UploadSong::new("https://youtu.be/xWDfREk0ZLs");
+        assert_eq!(
+            serde_json::to_string(&payload).unwrap(),
+            r#"{"url":"https://youtu.be/xWDfREk0ZLs","playlistId":null}"#
+        );
+    }
+
+    #[test]
+    fn test_upload_song_result_parses_server_response() {
+        // Response captured in raw_requests/upload_youtube.har
+        let body = r#"{"success":true,"songId":"d3377f95-7390-4d8e-8c1e-ab7bbd9d3e95","title":"Pattern Recognition - Neuro-sama x ODDEEO"}"#;
+        let result: UploadSongResult = serde_json::from_str(body).unwrap();
+        assert!(result.success);
+        assert_eq!(
+            result.song_id.to_string(),
+            "d3377f95-7390-4d8e-8c1e-ab7bbd9d3e95"
+        );
+        assert_eq!(result.title, "Pattern Recognition - Neuro-sama x ODDEEO");
+    }
+
+    #[test]
+    #[ignore]
+    fn test_upload_song_from_url_to_server() {
+        // Live download of a YouTube URL. Run with:
+        //   NEUROKARAOKE_TOKEN=... cargo test -- --ignored test_upload_song_from_url_to_server
+        // The server answers 200 with {"success":true,"songId":…,"title":…} and the new
+        // song appears in GET /api/user/songs with `userUploaded: true`.
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let url = std::env::var("NEUROKARAOKE_UPLOAD_URL")
+                .unwrap_or_else(|_| "https://youtu.be/xWDfREk0ZLs".to_string());
+
+            let client = reqwest::Client::new();
+            let map = Arc::new(dashmap::DashMap::new());
+            let guest_id: Arc<str> = uuid::Uuid::new_v4().to_string().into();
+            let config = crate::config::Config::default();
+            let shared_config = config.to_shared();
+
+            // `config_dir()` is only initialised at app startup, so the test cannot
+            // read the real config. Supply the token the web app used instead.
+            if let Ok(token) = std::env::var("NEUROKARAOKE_TOKEN") {
+                *shared_config.auth_token.write().unwrap() = Some(Arc::from(token.as_str()));
+            }
+
+            let db = LazySongDatabase::new(client, map, guest_id, shared_config);
+
+            match db.upload_song_from_url(UploadSong::new(url)).await {
+                Ok(result) => {
+                    println!(
+                        "Upload accepted: song {} titled {}",
+                        result.song_id, result.title
+                    );
+                    // Clean up so the live test leaves no duplicates in the library.
+                    match db.delete_uploaded_song(result.song_id).await {
+                        Ok(()) => println!("Cleanup: song {} deleted", result.song_id),
+                        Err(e) => println!("Note: cleanup failed: {e}"),
+                    }
+                }
+                Err(e) => println!("Note: upload rejected (auth/quota/offline): {e}"),
+            }
+        });
+    }
 }

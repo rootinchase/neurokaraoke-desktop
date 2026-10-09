@@ -387,11 +387,36 @@ pub struct LazySongDatabase {
     pub shared_config: SharedConfig,
 }
 
-#[derive(Serialize)]
-#[allow(dead_code)]
+/// Payload for `POST /api/user/song/download-from-url` on the IDK host. The server
+/// accepts YouTube, Bilibili, and Discord attachment URLs; `playlist_id` is the
+/// destination playlist the downloaded song is added to, if any.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UploadSong {
     pub url: String,
-    pub playlist_url: String,
+    pub playlist_id: Option<Uuid>,
+}
+
+impl UploadSong {
+    /// Builds the payload with no destination playlist. The URL is validated by
+    /// `classify_source_url` before the request is sent.
+    pub fn new(url: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            playlist_id: None,
+        }
+    }
+}
+
+/// Response of a successful `POST /api/user/song/download-from-url`. The server
+/// downloads the source, stores it as `/audio/{hash}/{title}.m4a`, and reports the
+/// new song id plus the title it derived from the source.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadSongResult {
+    pub success: bool,
+    pub song_id: Uuid,
+    pub title: String,
 }
 
 /// A local-file upload payload for `POST /api/user/song/upload` on the IDK host.

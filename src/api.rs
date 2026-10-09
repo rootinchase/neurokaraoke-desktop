@@ -1,6 +1,7 @@
 pub mod client;
 pub mod internal;
 pub mod models;
+pub mod sources;
 pub mod tests;
 pub mod urls;
 

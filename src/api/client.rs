@@ -1,8 +1,9 @@
+use crate::api::sources::classify_source_url;
 use crate::api::{
     API_URLS, AzuraCastNowPlayingResponse, FavoriteEntry, FavoriteItem, FileUpload,
     GameHubScheduledInfo, LazySongDatabase, LoadingState, Playlist, PlaylistDetail,
     ProfileResponse, RadioCurrentStateResponse, SetlistStats, Song, SongDTO, TrendingTimes,
-    UploadSong, UserLimits,
+    UploadSong, UploadSongResult, UserLimits,
 };
 use crate::app::fonts;
 use crate::config::SharedConfig;
@@ -203,19 +204,33 @@ impl LazySongDatabase {
         Ok(())
     }
 
-    #[allow(dead_code)]
-    pub async fn upload_song(&self, upload: UploadSong) -> anyhow::Result<()> {
-        debug_log!("Adding song to favorites: {}", upload.url);
+    /// Downloads a song from a YouTube, Bilibili, or Discord attachment URL and adds it
+    /// to the user's library, `POST /api/user/song/download-from-url` on the IDK host.
+    ///
+    /// The URL is validated offline first (see `classify_source_url`), which reproduces
+    /// the server's fast rejections verbatim. The server then fetches the source itself
+    /// and answers `200` with `{"success":true,"songId":…,"title":…}`, or `400` with a
+    /// bare JSON string such as `"Failed to retrieve video information. …"`.
+    pub async fn upload_song_from_url(
+        &self,
+        upload: UploadSong,
+    ) -> anyhow::Result<UploadSongResult> {
+        let kind = classify_source_url(&upload.url)?;
+        debug_log!("Uploading song from source {:?}: {}", kind, upload.url);
         let url = format!("{}/api/user/song/download-from-url", API_URLS.idk);
 
         let request = self.client.post(url).json(&upload);
         let request = self.apply_auth(request).await;
 
         let response = request.send().await?;
-        if !response.status().is_success() {
-            return Err(anyhow!("Failed to upload: {}", response.status()));
+        let status = response.status();
+        let body = response.text().await?;
+        if !status.is_success() {
+            // The server answers failures with a bare JSON string holding the reason.
+            let message = serde_json::from_str::<String>(&body).unwrap_or(body);
+            return Err(anyhow!("Failed to upload: {}", message));
         }
-        Ok(())
+        Ok(serde_json::from_str::<UploadSongResult>(&body)?)
     }
 
     /// Uploads a local audio file to `POST /api/user/song/upload` on the IDK host.
@@ -245,6 +260,29 @@ impl LazySongDatabase {
         let response = request.send().await?;
         if !response.status().is_success() {
             return Err(anyhow!("Failed to upload: {}", response.status()));
+        }
+        Ok(())
+    }
+
+    /// Removes one of the user's own uploads, `DELETE /api/user/song/{id}` on the IDK
+    /// host. Success is `204 No Content`.
+    ///
+    /// The generic `DELETE /api/songs/{id}` on the API host answers `200` with an empty
+    /// body and leaves the song in place for regular users, so this owner-scoped route
+    /// is the one that actually deletes.
+    pub async fn delete_uploaded_song(&self, song_id: Uuid) -> anyhow::Result<()> {
+        debug_log!("Deleting uploaded song {}", song_id);
+        let url = format!("{}/api/user/song/{}", API_URLS.idk, song_id);
+
+        let request = self.client.delete(url);
+        let request = self.apply_auth(request).await;
+
+        let response = request.send().await?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await?;
+            let message = serde_json::from_str::<String>(&body).unwrap_or(body);
+            return Err(anyhow!("Failed to delete: {}", message));
         }
         Ok(())
     }
@@ -353,9 +391,7 @@ impl LazySongDatabase {
     /// `songs`/`items`/`data`, and entries may be wrapped in a `song` key. Each parsed
     /// song is also inserted into the lazy song DB so artwork/audio/playback resolve.
     pub async fn get_user_uploads(&self) -> anyhow::Result<Vec<SongDTO>> {
-        let mut request = self
-            .client
-            .get(format!("{}/api/user/songs", API_URLS.api));
+        let mut request = self.client.get(format!("{}/api/user/songs", API_URLS.api));
         request = self.apply_auth(request).await;
 
         let response = request.send().await?;
@@ -374,9 +410,7 @@ impl LazySongDatabase {
                 .or_else(|| obj.get("data"))
                 .and_then(|v| v.as_array())
                 .cloned()
-                .ok_or_else(|| {
-                    anyhow!("Could not find list of uploads in response: {:?}", json)
-                })?
+                .ok_or_else(|| anyhow!("Could not find list of uploads in response: {:?}", json))?
         } else {
             return Err(anyhow!("Invalid response structure: {:?}", json));
         };
@@ -611,11 +645,11 @@ impl LazySongDatabase {
             ));
         }
         let data: AzuraCastNowPlayingResponse = response.json().await?;
-        for track in
-            data.song_history
-                .iter()
-                .chain(data.now_playing.as_ref())
-                .chain(data.playing_next.as_ref())
+        for track in data
+            .song_history
+            .iter()
+            .chain(data.now_playing.as_ref())
+            .chain(data.playing_next.as_ref())
         {
             if let Some(song) = &track.song {
                 let mut mask = 0;
