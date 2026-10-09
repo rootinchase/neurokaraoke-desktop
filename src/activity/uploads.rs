@@ -466,10 +466,14 @@ impl UploadsActivity {
                         }),
                 );
                 ui.label(RichText::new("Upload Your Songs").strong().size(16.0));
-                ui.label(
-                    RichText::new("Drag and drop audio files here, or click to browse")
-                        .color(theme.text_secondary),
-                );
+                // Drops never arrive on Wayland with winit 0.30.13, so the hint
+                // only mentions browsing there.
+                let hint = if is_wayland() {
+                    "Click to browse for audio files"
+                } else {
+                    "Drag and drop audio files here, or click to browse"
+                };
+                ui.label(RichText::new(hint).color(theme.text_secondary));
                 ui.add_space(4.0);
             });
         });
@@ -727,6 +731,22 @@ fn describe_source(kind: &SourceKind) -> String {
         SourceKind::YouTubePlaylist { list_id } => format!("YouTube playlist {}", list_id),
         SourceKind::BilibiliVideo { video_id } => format!("Bilibili video {}", video_id),
         SourceKind::DiscordAttachment { .. } => "Discord attachment".to_string(),
+    }
+}
+
+/// Whether the app is running as a Wayland client. winit 0.30.13 has no
+/// `data_device` support, so file drops never arrive there; the drop zone drops
+/// the drag-and-drop hint in that case. Detection mirrors how winit chooses its
+/// Linux backend.
+fn is_wayland() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        std::env::var("WAYLAND_DISPLAY").is_ok()
+            || std::env::var("XDG_SESSION_TYPE").is_ok_and(|ty| ty == "wayland")
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
     }
 }
 
