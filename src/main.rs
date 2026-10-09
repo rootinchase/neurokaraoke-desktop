@@ -48,7 +48,13 @@ fn main() -> Result<()> {
         println!("✨ [Cache] Cache successfully cleared.");
     }
 
-    let runtime = Arc::new(Builder::new_multi_thread().enable_all().build().unwrap());
+    let runtime = Arc::new(
+        Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap()
+    );
 
     let _guard = runtime.enter();
 
