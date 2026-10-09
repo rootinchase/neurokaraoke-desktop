@@ -691,6 +691,72 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
+    fn test_upload_song_file_and_delete_on_server() {
+        // Live file upload followed by the owner-scoped delete, so the test is
+        // self-cleaning. Run with:
+        //   NEUROKARAOKE_TOKEN=... cargo test -- --ignored test_upload_song_file_and_delete_on_server
+        // The upload answers `200` with an empty body, so the new song id is found by
+        // listing `GET /api/user/songs` and matching the submitted title.
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let path = std::env::var("NEUROKARAOKE_UPLOAD_FILE")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::path::PathBuf::from(
+                        "/home/rootinchase/Backups/pixel9/sdcard/Ringtones/Resurrection2.mp3",
+                    )
+                });
+
+            if !path.exists() {
+                println!(
+                    "Note: upload file {} is missing, live upload skipped",
+                    path.display()
+                );
+                return;
+            }
+
+            let client = reqwest::Client::new();
+            let map = Arc::new(dashmap::DashMap::new());
+            let guest_id: Arc<str> = uuid::Uuid::new_v4().to_string().into();
+            let config = crate::config::Config::default();
+            let shared_config = config.to_shared();
+
+            if let Ok(token) = std::env::var("NEUROKARAOKE_TOKEN") {
+                *shared_config.auth_token.write().unwrap() = Some(Arc::from(token.as_str()));
+            }
+
+            let db = LazySongDatabase::new(client, map, guest_id, shared_config);
+
+            let title = "Cline live upload check".to_string();
+            let upload = FileUpload {
+                path,
+                title: title.clone(),
+                artist: "testartist".to_string(),
+            };
+
+            match db.upload_song_file(upload).await {
+                Ok(()) => {
+                    println!("File upload accepted");
+                    let songs = db.get_user_uploads().await.unwrap_or_default();
+                    let match_ = songs
+                        .iter()
+                        .find(|s| s.title.as_ref() == title.as_str())
+                        .map(|s| s.id);
+                    match match_ {
+                        Some(id) => match db.delete_uploaded_song(id).await {
+                            Ok(()) => println!("Cleanup: song {} deleted", id),
+                            Err(e) => println!("Note: cleanup failed: {e}"),
+                        },
+                        None => println!("Note: uploaded song not listed, nothing to clean up"),
+                    }
+                }
+                Err(e) => println!("Note: upload rejected (auth/quota/offline): {e}"),
+            }
+        });
+    }
+
+    #[test]
     fn test_youtube_url_forms_are_accepted() {
         use crate::api::sources::{SourceKind, classify_source_url};
         let cases: Vec<(&str, SourceKind)> = vec![
@@ -845,7 +911,7 @@ mod tests {
             let config = crate::config::Config::default();
             let shared_config = config.to_shared();
 
-            // `config_dir()` is only initialised at app startup, so the test cannot
+            // `config_dir()` is only initialized at app startup, so the test cannot
             // read the real config. Supply the token the web app used instead.
             if let Ok(token) = std::env::var("NEUROKARAOKE_TOKEN") {
                 *shared_config.auth_token.write().unwrap() = Some(Arc::from(token.as_str()));

@@ -65,7 +65,10 @@ fn main() -> Result<()> {
             .with_title("Neuro Karaoke App")
             .with_app_id("com.neurokaraoke.desktop")
             .with_icon(icon)
-            .with_min_inner_size(Vec2::new(1040.0, 610.0)),
+            .with_min_inner_size(Vec2::new(1040.0, 610.0))
+            // Enables OS file drops. winit delivers them on Windows today, on X11
+            // once winit 0.31 lands, and on the web.
+            .with_drag_and_drop(true),
         ..Default::default()
     };
 
