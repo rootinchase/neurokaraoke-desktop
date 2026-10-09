@@ -55,6 +55,10 @@ pub struct UploadsActivity {
     pub is_uploading: Arc<AtomicBool>,
     /// Set by a finished URL download; the panel closes itself on the next frame.
     pub url_done: Arc<AtomicBool>,
+    /// Paths returned by the background file picker, drained by `render`.
+    pub picked: Arc<Mutex<Vec<PathBuf>>>,
+    /// Whether the system file picker dialog is open.
+    pub picker_open: Arc<AtomicBool>,
 }
 
 impl UploadsActivity {
@@ -73,6 +77,8 @@ impl UploadsActivity {
             feedback: Arc::new(Mutex::new(UploadFeedback::Idle)),
             is_uploading: Arc::new(AtomicBool::new(false)),
             url_done: Arc::new(AtomicBool::new(false)),
+            picked: Arc::new(Mutex::new(Vec::new())),
+            picker_open: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -114,6 +120,26 @@ impl UploadsActivity {
                 *l.lock().await = Some(limits);
             }
 
+            ctx.request_repaint();
+        });
+    }
+
+    /// Opens the system file picker off the UI thread. `rfd` blocks the calling
+    /// thread, so the dialog runs on the tokio blocking pool; the chosen paths land
+    /// in `picked`, which `render` drains on the next frame.
+    fn open_file_picker(&self) {
+        if self.picker_open.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let picked = self.picked.clone();
+        let open = self.picker_open.clone();
+        let ctx = self.ctx.clone();
+        tokio::task::spawn_blocking(move || {
+            let paths = pick_audio_files();
+            if !paths.is_empty() {
+                picked.blocking_lock().extend(paths);
+            }
+            open.store(false, Ordering::SeqCst);
             ctx.request_repaint();
         });
     }
@@ -464,15 +490,19 @@ impl UploadsActivity {
             StrokeKind::Inside,
         );
         if zone.clicked() {
-            for path in pick_audio_files() {
-                debug_log!("Selected audio file for upload: {}", path.display());
-                self.pending.push(FileUpload::from_path(path));
-            }
+            self.open_file_picker();
+        }
+
+        // Paths handed back by the background picker, drained once per frame.
+        let picked = std::mem::take(&mut *self.picked.blocking_lock());
+        for path in picked {
+            debug_log!("Selected audio file for upload: {}", path.display());
+            self.pending.push(FileUpload::from_path(path));
         }
 
         // Files dragged in from the OS, filtered to the accepted audio extensions.
-        // winit 0.30.13 delivers drops on Windows and the web; X11 drops start
-        // arriving as soon as the project moves to winit 0.31.
+        // winit 0.30.13 delivers drops on X11 (XDND) and Windows; Wayland drops
+        // need the unreleased winit 0.31.x.
         let dropped: Vec<PathBuf> = ui.input(|i| {
             i.raw
                 .dropped_files
