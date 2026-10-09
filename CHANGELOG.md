@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.4.3
+
+### Improvements
+* **Debug Log Username Redaction:** `redact_username` (`src/utilities/util.rs`) masks usernames written to `debug.log`. Names of six characters or more keep their first two and last two characters, so someone who already knows the username can confirm a match while outsiders cannot reconstruct it (`rootinchase` → `ro•••••••se`). Names of five characters or fewer are reduced to the first character plus a mask, because keeping a suffix would expose the whole name, and single-character names are masked entirely. The auth login log line in `src/auth/service.rs` now uses it.
+* **CodeQL Triage:** all 21 CodeQL alerts reviewed. Of the 10 open alerts, 9 (`src/utilities/cache.rs` lines 188/199/203/218/224 and `src/audio/player.rs` lines 832/870/969/988) log public Cloudflare image and song UUIDs, matching the existing false-positive dismissals for alerts 1-5, 7, 8, 18 and 19. Alert 6 (`src/auth/service.rs:86`) flagged the username and is addressed by the redaction above.
+
+### Bug fixes
+* **Removed Raw Auth Response Logging:** the inbound raw auth response body and the outbound JSON payload are no longer written to `debug.log` (`src/auth/service.rs`). The inbound body contains the JWT session token and the outbound payload contains the Discord `access_token`, so both were plaintext credential leaks in a local log file. CodeQL flagged neither.
+
+### Testing
+* Added `test_redact_username_keeps_prefix_and_suffix`, `test_redact_username_masks_short_names` and `test_redact_username_is_unicode_safe` (`src/utilities/util.rs`), bringing the suite to 52 passing tests with 5 ignored
+
+---
+
 ## v0.4.2
 
 ### Added features

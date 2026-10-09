@@ -116,6 +116,33 @@ pub fn format_duration(seconds: u64) -> String {
     format!("{}:{:02}", seconds / 60, seconds % 60)
 }
 
+/// Redacts a username for logging. Long names keep their first two and last two
+/// characters so someone who already knows the username can confirm it matches, while
+/// outsiders cannot reconstruct it. Short names are masked down to the first character
+/// because keeping a suffix would expose the whole name.
+pub fn redact_username(username: &str) -> String {
+    let chars: Vec<char> = username.chars().collect();
+    let len = chars.len();
+    if len == 0 {
+        return String::new();
+    }
+    if len == 1 {
+        return "•".to_string();
+    }
+    if len <= 5 {
+        let mut out = String::from(chars[0]);
+        out.push_str(&"•".repeat(len - 1));
+        return out;
+    }
+    let mut out = String::new();
+    out.push(chars[0]);
+    out.push(chars[1]);
+    out.push_str(&"•".repeat(len - 4));
+    out.push(chars[len - 2]);
+    out.push(chars[len - 1]);
+    out
+}
+
 pub fn spawn_fetch_playlist_details(
     rt: &tokio::runtime::Runtime,
     ctx: Option<&eframe::egui::Context>,
@@ -356,4 +383,24 @@ mod tests {
             assert!(content.contains("Test debug log entry 123"));
         }
     }
+
+    #[test]
+    fn test_redact_username_keeps_prefix_and_suffix() {
+        assert_eq!(redact_username("rootinchase"), "ro•••••••se");
+        assert_eq!(redact_username("abcdef"), "ab••ef");
+    }
+
+    #[test]
+    fn test_redact_username_masks_short_names() {
+        assert_eq!(redact_username(""), "");
+        assert_eq!(redact_username("a"), "•");
+        assert_eq!(redact_username("ab"), "a•");
+        assert_eq!(redact_username("abcde"), "a••••");
+    }
+
+    #[test]
+    fn test_redact_username_is_unicode_safe() {
+        assert_eq!(redact_username("日本語ユーザ"), "日本••ーザ");
+    }
+
 }

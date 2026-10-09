@@ -1,5 +1,6 @@
 use crate::api::API_URLS;
 use crate::auth::jwt::extract_claims_from_jwt;
+use crate::utilities::util::redact_username;
 use crate::{api, debug_log};
 use anyhow::anyhow;
 use reqwest::Client;
@@ -58,11 +59,6 @@ impl AuthService {
         let payload = api::DiscordTokenRequest {
             access_token: access_token.into(),
         };
-        if let Ok(json_string) = serde_json::to_string(&payload) {
-            debug_log!("🔍 DEBUG OUTBOUND JSON PAYLOAD: {}", json_string);
-        } else {
-            debug_log!("🔍 DEBUG OUTBOUND JSON PAYLOAD: [Failed to serialize struct]");
-        }
         let res = self.client.post(&url).json(&payload).send().await?;
         let status = res.status().clone();
 
@@ -70,11 +66,6 @@ impl AuthService {
             .text()
             .await
             .unwrap_or_else(|_| "[Failed to read response body]".to_string());
-        debug_log!(
-            "📥 DEBUG INBOUND RAW RESPONSE (Status {}): {}",
-            status,
-            response_text
-        );
 
         if status.is_success() {
             // 1. Parse the flat token container
@@ -85,7 +76,7 @@ impl AuthService {
 
             debug_log!(
                 "Successfully parsed claims for user: {}",
-                user_claims.username
+                redact_username(&user_claims.username)
             );
 
             Ok(api::AuthContext {
