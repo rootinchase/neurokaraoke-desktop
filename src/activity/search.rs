@@ -49,6 +49,7 @@ impl SearchActivity {
         current_song_uuid: &Option<Uuid>,
     ) {
         ui.add(TextEdit::singleline(&mut self.search));
+        crate::app::fonts::ensure_str(&self.search);
 
         ui.add_space(10.0);
 

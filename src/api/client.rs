@@ -3,6 +3,7 @@ use crate::api::{
     LazySongDatabase, LoadingState, Playlist, PlaylistDetail, ProfileResponse,
     RadioCurrentStateResponse, SetlistStats, Song, SongDTO, TrendingTimes, UploadSong, UserLimits,
 };
+use crate::app::fonts;
 use crate::config::SharedConfig;
 use crate::debug_log;
 use anyhow::anyhow;
@@ -41,6 +42,10 @@ impl LazySongDatabase {
         }
 
         let profile: ProfileResponse = response.json().await?;
+        fonts::ensure_str(&profile.profile.display_name);
+        if let Some(title) = &profile.profile.level_title {
+            fonts::ensure_str(title);
+        }
         Ok(profile)
     }
 
@@ -78,8 +83,9 @@ impl LazySongDatabase {
 
         let items: Vec<FavoriteItem> = response.json().await?;
 
-        let playlists = items.into_iter().filter_map(|item| item.playlist).collect();
+        let playlists: Vec<Playlist> = items.into_iter().filter_map(|item| item.playlist).collect();
 
+        fonts::scan_playlists(&playlists);
         Ok(playlists)
     }
 
@@ -125,6 +131,7 @@ impl LazySongDatabase {
 
         let json: Value = response.json().await?;
         let playlists: Vec<Playlist> = serde_json::from_value(json)?;
+        fonts::scan_playlists(&playlists);
         Ok(playlists)
     }
 
@@ -141,6 +148,7 @@ impl LazySongDatabase {
 
         let json: Value = response.json().await?;
         let playlists: Vec<Playlist> = serde_json::from_value(json)?;
+        fonts::scan_playlists(&playlists);
         Ok(playlists)
     }
 
@@ -302,6 +310,7 @@ impl LazySongDatabase {
             }
         }
 
+        fonts::scan_song_dtos(&songs);
         Ok(songs)
     }
 
@@ -368,6 +377,7 @@ impl LazySongDatabase {
             }
         }
 
+        fonts::scan_song_dtos(&songs);
         Ok(songs)
     }
 
@@ -384,6 +394,7 @@ impl LazySongDatabase {
 
         let json: Value = response.json().await?;
         let detail: PlaylistDetail = serde_json::from_value(json)?;
+        fonts::scan_playlist_detail(&detail);
         // debug_log!("Deserialized PlaylistDetail: {:?}", detail);
 
         Ok(detail)
@@ -403,6 +414,7 @@ impl LazySongDatabase {
         }
 
         let songs: Vec<SongDTO> = response.json().await?;
+        fonts::scan_song_dtos(&songs);
         Ok(songs)
     }
 
@@ -421,6 +433,7 @@ impl LazySongDatabase {
         }
 
         let songs: Vec<SongDTO> = response.json().await?;
+        fonts::scan_song_dtos(&songs);
         Ok(songs)
     }
 
@@ -443,20 +456,21 @@ impl LazySongDatabase {
                 let mut req = client.get(url);
                 req = db_self.apply_auth(req).await; // <-- Inject token directly into the thread loop
 
-                map.insert(
-                    id,
-                    match async {
-                        Ok(serde_json::from_slice(
-                            req.send().await?.bytes().await?.as_ref(),
-                        )?)
-                    }
-                    .await
-                    .map_err(Arc::new)
-                    {
-                        Ok(song) => LoadingState::Loaded(song),
-                        Err(err) => LoadingState::Failed(err),
-                    },
-                );
+                let state = match async {
+                    Ok(serde_json::from_slice(
+                        req.send().await?.bytes().await?.as_ref(),
+                    )?)
+                }
+                .await
+                .map_err(Arc::new)
+                {
+                    Ok(song) => LoadingState::Loaded(song),
+                    Err(err) => LoadingState::Failed(err),
+                };
+                if let LoadingState::Loaded(song) = &state {
+                    fonts::scan_song(song);
+                }
+                map.insert(id, state);
             });
             LoadingState::Loading
         }
@@ -514,6 +528,7 @@ impl LazySongDatabase {
             )?;
             match serde_json::from_value::<Song>(value) {
                 Ok(song) => {
+                    fonts::scan_song(&song);
                     result.push(LoadingState::Loaded(f(&song)));
                     self.map.insert(id, LoadingState::Loaded(song));
                 }
@@ -540,7 +555,15 @@ impl LazySongDatabase {
                 response.status()
             ));
         }
-        let data = response.json().await?;
+        let data: RadioCurrentStateResponse = response.json().await?;
+        if let Some(current) = &data.current {
+            fonts::scan_song_dto(current);
+        }
+        fonts::scan_song_dtos(&data.upcoming);
+        fonts::scan_song_dtos(&data.history);
+        if let Some(name) = &data.playlist_name {
+            fonts::ensure_str(name);
+        }
         Ok(data)
     }
 
@@ -553,7 +576,27 @@ impl LazySongDatabase {
                 response.status()
             ));
         }
-        let data = response.json().await?;
+        let data: AzuraCastNowPlayingResponse = response.json().await?;
+        for track in
+            data.song_history
+                .iter()
+                .chain(data.now_playing.as_ref())
+                .chain(data.playing_next.as_ref())
+        {
+            if let Some(song) = &track.song {
+                let mut mask = 0;
+                if let Some(t) = &song.title {
+                    mask |= fonts::detect_scripts(t);
+                }
+                if let Some(a) = &song.artist {
+                    mask |= fonts::detect_scripts(a);
+                }
+                if let Some(text) = &song.text {
+                    mask |= fonts::detect_scripts(text);
+                }
+                fonts::ensure_scripts(mask);
+            }
+        }
         Ok(data)
     }
 

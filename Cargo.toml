@@ -22,6 +22,9 @@ incremental = true
 
 [build-dependencies]
 winresource = "0.1.31"
+# Lazy font assets: gzip the Noto .ttf files at max level (see `compress_fonts`).
+# The zlib backend matches `gzip -9` output, which beats the default Rust backend.
+flate2 = { version = "1.0", default-features = false, features = ["zlib"] }
 
 [dependencies]
 mimalloc = "0.1.52"
@@ -53,3 +56,5 @@ presenceforge = { version = "0.3", features = ["tokio-runtime"] }
 futures-util = "0.3"
 tray-icon = { version = "0.26", features = ["ksni"] }
 fs2 = "0.4"
+# Lazy font loading: decompress embedded .ttf.gz on demand
+flate2 = "1.0"

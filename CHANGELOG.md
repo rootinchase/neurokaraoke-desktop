@@ -7,10 +7,12 @@ All notable changes to this project will be documented in this file.
 ### Added features
 * **Fullscreen Player:** Added a fullscreen player overlay toggled from the player controls (fullscreen icon, fullscreen-exit icon when active, Esc to exit) that shows the full-resolution cover artwork filling the screen with the embedded play/pause, seek, volume, favorite, timer and queue controls
 * **My Uploads:** Added a dedicated view for the user's own uploaded songs, fetched from the server with cache-first loading, a cover-art mosaic, sortable columns (title, plays, date), and per-song play/queue controls
+* **Lazy Font Loading:** The Noto JP/KR/SC/Cuneiform fallback fonts are embedded gzip-compressed and only decompressed and registered with egui when text containing their scripts appears in song titles, artists, playlists, or playlist details, so startup stays lightweight; Latin text keeps rendering with Roboto and only missing glyphs come from the Noto fallbacks
 
 ### Improvements
 * Added a separate full-resolution artwork cache asset (`AssetType::FullImage`) using the Cloudflare Images `public` variant, downloaded lazily only when fullscreen is opened so the 512x512 thumbnails are never served as fullscreen artwork
 * Relocated My Playlists, Favorites, and My Uploads to the bottom of the sidebar navigation list, separated from the main navigation by a divider
+* **Font Compression:** `build.rs` now gzip-compresses the lazy Noto fonts at the highest level (zlib level 9, smaller than `gzip -9`) into `assets/fonts/*.ttf.gz`, cached in place by mtime so incremental builds reuse existing archives instead of recompressing
 
 ---
 

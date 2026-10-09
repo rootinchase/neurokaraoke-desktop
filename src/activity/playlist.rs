@@ -1,5 +1,6 @@
 use crate::activity::{SortOption, render_playlist_art_advanced, render_playlist_box, search};
 use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongDTO};
+use crate::app::fonts;
 use crate::config::Config;
 use crate::theme::ThemeManager;
 use crate::utilities::cache::{PersistentMediaCache, playlist_cache_dir};
@@ -54,6 +55,9 @@ impl PlaylistActivity {
         let cached_playlists: Option<Vec<Playlist>> = read(&cache_path)
             .ok()
             .and_then(|data| de::from_bytes(&data).ok());
+        if let Some(ref data) = cached_playlists {
+            fonts::scan_playlists(data);
+        }
 
         let all_playlists = Arc::new(Mutex::new(cached_playlists.clone()));
 
@@ -89,6 +93,7 @@ impl PlaylistActivity {
 
             match result {
                 Ok(data) => {
+                    fonts::scan_playlists(&data);
                     *ap.lock().await = Some(data.clone());
                     let initial: Vec<_> = data.iter().take(20).cloned().collect();
                     *p.lock().await = LoadingState::Loaded(initial);
@@ -220,6 +225,8 @@ impl PlaylistActivity {
             };
             drop(all_opt);
 
+            fonts::scan_playlists(&all);
+
             let current_len = match &*playlists.lock().await {
                 LoadingState::Loaded(list) => list.len(),
                 _ => 0,
@@ -252,6 +259,7 @@ impl PlaylistActivity {
         let play_song = RefCell::new(play_song);
         ui.vertical(|ui| {
             if let Some(search) = playlist_search {
+                fonts::ensure_str(search);
                 ui.horizontal(|ui| {
                     ui.add(TextEdit::singleline(*search));
                     ui.add_space(15.0);

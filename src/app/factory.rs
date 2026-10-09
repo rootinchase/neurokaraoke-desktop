@@ -56,15 +56,15 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
     let ctx = &creation_ctx.egui_ctx;
     egui_extras::install_image_loaders(ctx);
 
+    // Roboto is the only font loaded eagerly. The Noto CJK/cuniform fallbacks are
+    // decompressed and registered lazily when text containing their scripts shows up
+    // (see `crate::app::fonts`).
     let fonts = build_font_defs![
-        "noto-sans-jp"        => "../../assets/fonts/NotoSansJP-Regular.ttf",
-        "noto-sans-cuneiform" => "../../assets/fonts/NotoSansCuneiform-Regular.ttf",
-        "Roboto"              => "../../assets/fonts/Roboto-VariableFont_wdth,wght.ttf",
-        "noto-sans-kr"        => "../../assets/fonts/NotoSansKR-Regular.ttf",
-        "noto-sans-sc"        => "../../assets/fonts/NotoSansSC-Regular.ttf",
+        "Roboto" => "../../assets/fonts/Roboto-VariableFont_wdth,wght.ttf",
     ];
 
     ctx.set_fonts(fonts);
+    crate::app::fonts::init_lazy_fonts(ctx.clone(), rt.clone());
 
     #[cfg(debug_assertions)]
     ctx.global_style_mut(|s| s.debug.warn_if_rect_changes_id = false);
