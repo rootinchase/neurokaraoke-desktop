@@ -2,7 +2,7 @@ use crate::api::{API_URLS, LazySongDatabase, LoadingState, SongDTO};
 use crate::audio::types::*;
 use crate::debug_log;
 use crate::utilities::cache::{AssetType, PersistentMediaCache, cache_dir, get_thumbnail_url};
-use crate::utilities::util::create_reqwest_client;
+use crate::utilities::util::{create_reqwest_client, resolve_audio_url};
 use eframe::egui;
 use rand::prelude::SliceRandom;
 use rodio::Source;
@@ -197,18 +197,7 @@ impl Player {
                             if let Some(dto) = next_url_dto {
                                 // Prefetch audio
                                 if let Some(audio_url) = dto.audio_url.as_ref().or(dto.absolute_path.as_ref()) {
-                                    let url = if audio_url.starts_with("http://") || audio_url.starts_with("https://") {
-                                        audio_url.to_string()
-                                    } else {
-                                        let clean_path = audio_url.trim_start_matches('/');
-                                        format!("{}/{}", API_URLS.storage, clean_path)
-                                    };
-                                    let url = if url.contains(API_URLS.base) {
-                                        url.replace(API_URLS.base, API_URLS.storage)
-                                    } else {
-                                        url
-                                    }.replace(' ', "%20");
-
+                                    let url = resolve_audio_url(audio_url);
                                     let _ = cache_worker.get_or_download_audio(&client_worker, next_uuid, url).await;
                                 }
 
@@ -228,8 +217,32 @@ impl Player {
                                         }
                                     }
                                 } else if let Some(audio_url) = dto.audio_url.as_ref().or(dto.absolute_path.as_ref()) {
-                                    let img_url = audio_url.replace("/audio/", "/images/").replace(".mp3", ".webp").replace(".m4a", ".webp");
-                                    if img_url.as_str() != audio_url.as_ref() {
+                                    // Uploads have no server-side cover art; skip the derived
+                                    // image URL to avoid 404s against the storage host.
+                                    if !audio_url.starts_with("uploads/") {
+                                        let img_url = audio_url.replace("/audio/", "/images/").replace(".mp3", ".webp").replace(".m4a", ".webp");
+                                        if img_url.as_str() != audio_url.as_ref() {
+                                            let _ = cache_worker
+                                                .get_or_download_image(
+                                                    next_uuid,
+                                                    img_url,
+                                                    AssetType::Image,
+                                                )
+                                                .await;
+                                        }
+                                    }
+                                }
+                            } else {
+                                // DB song fallback
+                                let path_opt = db_worker.get(&next_uuid, |s| s.opus.clone().or_else(|| s.absolute_path.clone()));
+                                if let LoadingState::Loaded(Some(path_str)) = path_opt {
+                                    let url = resolve_audio_url(path_str.as_ref());
+                                    let _ = cache_worker.get_or_download_audio(&client_worker, next_uuid, url).await;
+
+                                    // Uploads have no server-side cover art; skip the derived
+                                    // image URL to avoid 404s against the storage host.
+                                    if !path_str.starts_with("uploads/") {
+                                        let img_url = format!("{}/{}", API_URLS.storage, path_str.as_ref().replace("audio/", "images/").replace(".mp3", ".webp").replace(".ogg", ".webp"));
                                         let _ = cache_worker
                                             .get_or_download_image(
                                                 next_uuid,
@@ -238,22 +251,6 @@ impl Player {
                                             )
                                             .await;
                                     }
-                                }
-                            } else {
-                                // DB song fallback
-                                let path_opt = db_worker.get(&next_uuid, |s| s.opus.clone().or_else(|| s.absolute_path.clone()));
-                                if let LoadingState::Loaded(Some(path_str)) = path_opt {
-                                    let url = format!("{}/{}", API_URLS.storage, path_str.as_ref()).replace(' ', "%20");
-                                    let _ = cache_worker.get_or_download_audio(&client_worker, next_uuid, url).await;
-
-                                    let img_url = format!("{}/{}", API_URLS.storage, path_str.as_ref().replace("audio/", "images/").replace(".mp3", ".webp").replace(".ogg", ".webp"));
-                                    let _ = cache_worker
-                                        .get_or_download_image(
-                                            next_uuid,
-                                            img_url,
-                                            AssetType::Image,
-                                        )
-                                        .await;
                                 }
                             }
                         });
@@ -803,11 +800,7 @@ impl Player {
                                                         let cache_worker = cache_worker.clone();
                                                         let client_worker = client.clone();
                                                         let cb_worker = cb;
-                                                        let url = format!(
-                                                            "{}/{}",
-                                                            API_URLS.storage,
-                                                            path_str.as_ref()
-                                                        );
+                                                        let url = resolve_audio_url(path_str.as_ref());
 
                                                         rt_worker.spawn(async move {
                                                             match cache_worker.get_or_download_audio(&client_worker, uuid, url).await {
@@ -891,22 +884,7 @@ impl Player {
                                         .as_ref()
                                         .or(song_dto.absolute_path.as_ref())
                                     {
-                                        let url = if audio_url.starts_with("http://")
-                                            || audio_url.starts_with("https://")
-                                        {
-                                            audio_url.to_string()
-                                        } else {
-                                            let clean_path = audio_url.trim_start_matches('/');
-                                            format!("{}/{}", API_URLS.storage, clean_path)
-                                        };
-
-                                        let url = if url.contains(API_URLS.base) {
-                                            url.replace(API_URLS.base, API_URLS.storage)
-                                        } else {
-                                            url
-                                        };
-
-                                        let url = url.replace(' ', "%20");
+                                        let url = resolve_audio_url(audio_url);
 
                                         let handle = player_worker.clone();
                                         let client_worker = client.clone();

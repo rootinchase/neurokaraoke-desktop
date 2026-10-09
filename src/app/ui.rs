@@ -520,6 +520,15 @@ impl App {
                     play_song(&mut player2, songs, song_id, "Setlist");
                 },
             );
+        } else if self.activity == ActivityType::Uploads {
+            let is_logged_in = self.config.auth.is_some();
+            self.uploads_activity.render(
+                ui,
+                &self.theme,
+                &mut self.player,
+                &self.current_song_uuid,
+                is_logged_in,
+            );
         } else if self.activity == ActivityType::Profile {
             let auth_service = AuthService::new(self.client.clone());
             self.profile_activity.render(

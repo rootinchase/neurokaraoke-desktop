@@ -391,11 +391,15 @@ pub fn render_sidebar(
             nav_button(ui, ActivityType::Search);
             nav_button(ui, ActivityType::Radio);
             nav_button(ui, ActivityType::Playlists);
+            nav_button(ui, ActivityType::Setlists);
+
             if config.auth.is_some() {
+                ui.separator();
+                ui.add_space(10.0);
                 nav_button(ui, ActivityType::MyPlaylists);
                 nav_button(ui, ActivityType::Favorites);
+                nav_button(ui, ActivityType::Uploads);
             }
-            nav_button(ui, ActivityType::Setlists);
 
             // Push bottom area to the very bottom of the sidebar panel
             let bottom_height = if config.compact_sidebar { 152.0 } else { 90.0 };

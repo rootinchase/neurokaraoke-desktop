@@ -7,6 +7,7 @@ pub mod radio;
 pub mod search;
 pub mod setlist;
 pub mod settings;
+pub mod uploads;
 pub mod sidebar;
 
 use crate::api::{Artwork, Playlist, PlaylistDetail, SongDTO};
@@ -34,6 +35,7 @@ pub enum ActivityType {
     MyPlaylists,
     Setlists,
     Favorites,
+    Uploads,
     Settings,
 }
 
@@ -56,6 +58,7 @@ impl ActivityType {
             Self::MyPlaylists => "My Playlists",
             Self::Setlists => "Official Setlists",
             Self::Favorites => "Favorites",
+            Self::Uploads => "My Uploads",
             Self::Settings => "Settings",
         }
     }
@@ -69,6 +72,7 @@ impl ActivityType {
             Self::MyPlaylists => Some(include_image!("../../assets/playlist.svg")),
             Self::Setlists => Some(include_image!("../../assets/setlist.svg")),
             Self::Favorites => Some(include_image!("../../assets/favorite.svg")),
+            Self::Uploads => Some(include_image!("../../assets/uploaded.svg")),
             Self::Profile => Some(include_image!("../../assets/icon.png")),
             Self::Settings => Some(include_image!("../../assets/settings.svg")),
         }

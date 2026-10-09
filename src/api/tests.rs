@@ -147,6 +147,7 @@ mod tests {
             play_count: Some(10),
             stream_date: None,
             duration: Some(180),
+            user_uploaded: false,
         };
         assert!(song_valid.is_valid());
 
@@ -163,8 +164,37 @@ mod tests {
             play_count: Some(0),
             stream_date: None,
             duration: Some(180),
+            user_uploaded: false,
         };
         assert!(!song_invalid.is_valid());
+    }
+
+    #[test]
+    fn test_parse_raw_uploads_json() {
+        let json_data = include_str!("../../raw_json/uploads.json");
+        let items: Vec<serde_json::Value> =
+            serde_json::from_str(json_data).expect("uploads.json should be a JSON array");
+
+        // Mirrors get_user_uploads tolerant parsing: entries may be wrapped in a "song" key.
+        let songs: Vec<SongDTO> = items
+            .iter()
+            .filter_map(|v| {
+                let song_value = v
+                    .as_object()
+                    .and_then(|obj| obj.get("song"))
+                    .cloned()
+                    .unwrap_or(v.clone());
+                serde_json::from_value::<SongDTO>(song_value).ok()
+            })
+            .collect();
+
+        assert_eq!(songs.len(), 2);
+        assert_eq!(songs[0].title, "My Upload One".into());
+        assert_eq!(songs[0].play_count, Some(5));
+        assert_eq!(songs[0].duration, Some(180));
+        assert!(songs[0].user_uploaded);
+        assert_eq!(songs[1].title, "My Upload Two".into());
+        assert!(songs[1].user_uploaded);
     }
 
     #[test]

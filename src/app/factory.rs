@@ -2,6 +2,7 @@ use crate::activity::{
     ActivityType, SortOption, favorites::FavoritesActivity, home::HomeActivity,
     playlist::PlaylistActivity, profile::ProfileActivity, profile::ProfileMessage,
     queue::QueueActivity, radio, search, setlist::SetlistActivity, settings::SettingsActivity,
+    uploads::UploadsActivity,
 };
 use chrono::{Timelike, Utc};
 
@@ -350,6 +351,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
             client.clone(),
             songs.clone(),
         ),
+        uploads_activity: UploadsActivity::new(ctx.clone(), songs.clone()),
         queue_activity: QueueActivity::new(songs.clone()),
         profile_activity,
         settings_activity: SettingsActivity::new(cache.clone()),
@@ -390,6 +392,10 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
             ctx_clone.request_repaint();
         }
     });
+
+    if app.config.auth.is_some() {
+        app.uploads_activity.fetch_uploads();
+    }
 
     app
 }

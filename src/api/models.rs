@@ -94,6 +94,9 @@ pub struct SongDTO {
     pub stream_date: Option<Arc<str>>,
     #[serde(rename = "duration", default)]
     pub duration: Option<u64>,
+    /// Community upload rather than an official karaoke cut (`userUploaded`).
+    #[serde(default)]
+    pub user_uploaded: bool,
 }
 
 #[serde_as]

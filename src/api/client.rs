@@ -305,6 +305,72 @@ impl LazySongDatabase {
         Ok(songs)
     }
 
+    /// Lists songs the authenticated user has uploaded (`GET /api/user/songs`).
+    /// Tolerant parsing: the body may be a bare array, an object wrapping one under
+    /// `songs`/`items`/`data`, and entries may be wrapped in a `song` key. Each parsed
+    /// song is also inserted into the lazy song DB so artwork/audio/playback resolve.
+    pub async fn get_user_uploads(&self) -> anyhow::Result<Vec<SongDTO>> {
+        let mut request = self
+            .client
+            .get(format!("{}/api/user/songs", API_URLS.api));
+        request = self.apply_auth(request).await;
+
+        let response = request.send().await?;
+        if !response.status().is_success() {
+            return Err(anyhow!("Failed to fetch uploads: {}", response.status()));
+        }
+
+        let json: Value = response.json().await?;
+
+        // Flexible parsing: Handle different possible root keys or bare array
+        let items = if let Some(arr) = json.as_array() {
+            arr.clone()
+        } else if let Some(obj) = json.as_object() {
+            obj.get("songs")
+                .or_else(|| obj.get("items"))
+                .or_else(|| obj.get("data"))
+                .and_then(|v| v.as_array())
+                .cloned()
+                .ok_or_else(|| {
+                    anyhow!("Could not find list of uploads in response: {:?}", json)
+                })?
+        } else {
+            return Err(anyhow!("Invalid response structure: {:?}", json));
+        };
+
+        // Parse items. Some entries may be wrapped in a "song" object.
+        let mut songs: Vec<SongDTO> = Vec::new();
+        for v in items {
+            let song_value = v
+                .as_object()
+                .and_then(|obj| obj.get("song"))
+                .cloned()
+                .unwrap_or(v.clone());
+
+            match serde_json::from_value::<SongDTO>(song_value.clone()) {
+                Ok(dto) => {
+                    if dto.is_valid() {
+                        // Populate the lazy song DB so artwork/audio/playback resolve.
+                        if let Ok(song) = serde_json::from_value::<Song>(song_value) {
+                            self.map.insert(dto.id, LoadingState::Loaded(song));
+                        }
+                        songs.push(dto);
+                    } else {
+                        debug_log!(
+                            "Warning: skipping upload entry with invalid metadata: {:?}",
+                            dto.id
+                        );
+                    }
+                }
+                Err(e) => {
+                    debug_log!("Error deserializing upload entry: {:?}, item: {:?}", e, v);
+                }
+            }
+        }
+
+        Ok(songs)
+    }
+
     pub async fn get_playlist_details(&self, id: Uuid) -> anyhow::Result<PlaylistDetail> {
         let mut request = self
             .client
