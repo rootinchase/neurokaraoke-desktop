@@ -6,6 +6,7 @@ use serde::de::Error;
 use serde::{Deserialize, Serialize};
 use serde_with::{DefaultOnNull, serde_as};
 use std::fmt::Formatter;
+use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -393,6 +394,33 @@ pub struct UploadSong {
     pub playlist_url: String,
 }
 
+/// A local-file upload payload for `POST /api/user/song/upload` on the IDK host.
+/// Mirrors the `multipart/form-data` form the web app sends: one `File` part plus
+/// `Title` and `Artist` text parts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileUpload {
+    pub path: PathBuf,
+    pub title: String,
+    pub artist: String,
+}
+
+impl FileUpload {
+    /// Prefills `title` from the file stem and leaves `artist` empty, matching the
+    /// web app, which reads the ID3 tags to prefill both fields.
+    pub fn from_path(path: PathBuf) -> Self {
+        Self {
+            title: path
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .unwrap_or_default()
+                .to_string(),
+            path,
+            artist: String::new(),
+        }
+    }
+}
+
 impl SongDTO {
     pub fn is_valid(&self) -> bool {
         !self.title.is_empty()
@@ -415,6 +443,25 @@ pub struct UserLimits {
     pub current_playlist_count: u64,
     pub playlist_limit: u64,
     pub song_per_playlist_limit: u64,
+}
+
+impl UserLimits {
+    /// Bytes still available under the storage cap.
+    pub fn remaining_storage_bytes(&self) -> u64 {
+        self.max_storage_bytes
+            .saturating_sub(self.used_storage_bytes)
+    }
+
+    /// Whether the account is still below the song-count cap.
+    pub fn has_song_slot(&self) -> bool {
+        self.current_song_count < self.max_songs
+    }
+
+    /// Whether a file of `size` bytes fits under both caps. The server transcodes
+    /// uploads to m4a, so the eventual footprint is smaller than the source file.
+    pub fn can_fit(&self, size: u64) -> bool {
+        self.has_song_slot() && size <= self.remaining_storage_bytes()
+    }
 }
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]

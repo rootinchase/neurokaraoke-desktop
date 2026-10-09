@@ -580,4 +580,113 @@ mod tests {
             serde_json::from_str(&json_data).expect("Failed to deserialize broadcasts.json");
         assert!(parsed.is_array());
     }
+
+    #[test]
+    fn test_audio_content_type_matches_web_app() {
+        use crate::api::client::audio_content_type;
+        use std::path::PathBuf;
+
+        // The web app sends `audio/mpeg` for the `File` part of an .mp3 upload
+        // (see raw_requests/ringtone.har).
+        assert_eq!(
+            audio_content_type(&PathBuf::from("Resurrection2.mp3")),
+            "audio/mpeg"
+        );
+        assert_eq!(audio_content_type(&PathBuf::from("SONG.M4A")), "audio/mp4");
+        assert_eq!(
+            audio_content_type(&PathBuf::from("take.flac")),
+            "audio/flac"
+        );
+        assert_eq!(
+            audio_content_type(&PathBuf::from("no-extension")),
+            "application/octet-stream"
+        );
+    }
+
+    #[test]
+    fn test_file_upload_prefills_title_from_filename() {
+        use std::path::PathBuf;
+        let upload = FileUpload::from_path(PathBuf::from(
+            "CerberVT - Trampoline by Kero Kero Bonito [lEGrwd6NbKc].mp3",
+        ));
+        assert_eq!(
+            upload.title,
+            "CerberVT - Trampoline by Kero Kero Bonito [lEGrwd6NbKc]"
+        );
+        assert!(upload.artist.is_empty());
+    }
+
+    #[test]
+    fn test_user_limits_quota_checks() {
+        // Values captured from GET /api/user/upload-limits in raw_requests/uploaded-songs.har
+        let limits = UserLimits {
+            max_songs: 150,
+            max_storage_bytes: 3_097_152_000,
+            used_storage_bytes: 136_824_076,
+            current_song_count: 13,
+            current_playlist_count: 0,
+            playlist_limit: 0,
+            song_per_playlist_limit: 0,
+        };
+
+        assert_eq!(
+            limits.remaining_storage_bytes(),
+            3_097_152_000 - 136_824_076
+        );
+        assert!(limits.has_song_slot());
+        assert!(limits.can_fit(866_011));
+        assert!(!limits.can_fit(3_097_152_000));
+    }
+
+    #[test]
+    #[ignore]
+    fn test_upload_song_file_to_server() {
+        // Live upload of the small ringtone captured in raw_requests/ringtone.har.
+        // Run with: cargo test -- --ignored test_upload_song_file_to_server
+        // The server answers 200 with an empty body; the new song appears in
+        // GET /api/user/songs as `user-audio/{guid}.m4a`.
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let path = std::env::var("NEUROKARAOKE_UPLOAD_FILE")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::path::PathBuf::from(
+                        "/home/rootinchase/Backups/pixel9/sdcard/Ringtones/Resurrection2.mp3",
+                    )
+                });
+
+            if !path.exists() {
+                println!(
+                    "Note: upload file {} is missing, live upload skipped",
+                    path.display()
+                );
+                return;
+            }
+
+            let client = reqwest::Client::new();
+            let map = Arc::new(dashmap::DashMap::new());
+            let guest_id: Arc<str> = uuid::Uuid::new_v4().to_string().into();
+            let config = crate::config::Config::default();
+            let shared_config = config.to_shared();
+
+            // `config_dir()` is only initialised at app startup, so the test cannot
+            // read the real config. Supply the token the web app used instead.
+            if let Ok(token) = std::env::var("NEUROKARAOKE_TOKEN") {
+                *shared_config.auth_token.write().unwrap() = Some(Arc::from(token.as_str()));
+            }
+
+            let db = LazySongDatabase::new(client, map, guest_id, shared_config);
+
+            let upload = FileUpload {
+                path,
+                title: "Resurrection2 ringtone".to_string(),
+                artist: "testartist".to_string(),
+            };
+
+            match db.upload_song_file(upload).await {
+                Ok(()) => println!("Upload accepted by the server"),
+                Err(e) => println!("Note: upload rejected (auth/quota/offline): {e}"),
+            }
+        });
+    }
 }

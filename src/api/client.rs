@@ -1,7 +1,8 @@
 use crate::api::{
-    API_URLS, AzuraCastNowPlayingResponse, FavoriteEntry, FavoriteItem, GameHubScheduledInfo,
-    LazySongDatabase, LoadingState, Playlist, PlaylistDetail, ProfileResponse,
-    RadioCurrentStateResponse, SetlistStats, Song, SongDTO, TrendingTimes, UploadSong, UserLimits,
+    API_URLS, AzuraCastNowPlayingResponse, FavoriteEntry, FavoriteItem, FileUpload,
+    GameHubScheduledInfo, LazySongDatabase, LoadingState, Playlist, PlaylistDetail,
+    ProfileResponse, RadioCurrentStateResponse, SetlistStats, Song, SongDTO, TrendingTimes,
+    UploadSong, UserLimits,
 };
 use crate::app::fonts;
 use crate::config::SharedConfig;
@@ -9,9 +10,11 @@ use crate::debug_log;
 use anyhow::anyhow;
 use dashmap::DashMap;
 use reqwest::Client;
+use reqwest::multipart::{Form, Part};
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use serde_json::{Value, json};
+use std::path::Path;
 use std::sync::Arc;
 use uuid::{Uuid, uuid};
 
@@ -206,6 +209,37 @@ impl LazySongDatabase {
         let url = format!("{}/api/user/song/download-from-url", API_URLS.idk);
 
         let request = self.client.post(url).json(&upload);
+        let request = self.apply_auth(request).await;
+
+        let response = request.send().await?;
+        if !response.status().is_success() {
+            return Err(anyhow!("Failed to upload: {}", response.status()));
+        }
+        Ok(())
+    }
+
+    /// Uploads a local audio file to `POST /api/user/song/upload` on the IDK host.
+    ///
+    /// The body is a `multipart/form-data` form with exactly three parts, in this
+    /// order: the `File` part (typed by extension, e.g. `audio/mpeg` for `.mp3`),
+    /// then `Title` and `Artist` text parts typed `text/plain; charset=utf-8`. The
+    /// server transcodes the upload to m4a, stores it as `user-audio/{guid}.m4a`,
+    /// strips a leading `"<Artist> - "` prefix from the submitted title, and answers
+    /// `200` with an empty body — so there is no payload to parse here.
+    pub async fn upload_song_file(&self, upload: FileUpload) -> anyhow::Result<()> {
+        debug_log!("Uploading local song file: {}", upload.path.display());
+        let url = format!("{}/api/user/song/upload", API_URLS.idk);
+
+        let file_part = Part::file(&upload.path)
+            .await?
+            .mime_str(audio_content_type(&upload.path))?;
+
+        let form = Form::new()
+            .part("File", file_part)
+            .part("Title", text_part(&upload.title))
+            .part("Artist", text_part(&upload.artist));
+
+        let request = self.client.post(url).multipart(form);
         let request = self.apply_auth(request).await;
 
         let response = request.send().await?;
@@ -630,4 +664,33 @@ impl Serialize for LazySongDatabase {
 
         map.end()
     }
+}
+
+/// The `Content-Type` the web app sends for the `File` part, keyed by extension.
+/// Extensions the web app does not use fall back to `application/octet-stream`.
+pub fn audio_content_type(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("mp3") => "audio/mpeg",
+        Some("m4a" | "mp4" | "m4b") => "audio/mp4",
+        Some("aac") => "audio/aac",
+        Some("ogg" | "oga") => "audio/ogg",
+        Some("opus") => "audio/opus",
+        Some("flac") => "audio/flac",
+        Some("wav" | "wave") => "audio/wav",
+        Some("webm") => "audio/webm",
+        _ => "application/octet-stream",
+    }
+}
+
+/// A `multipart` text field, typed `text/plain; charset=utf-8` exactly like the
+/// `Title` and `Artist` parts the web app sends.
+fn text_part(value: &str) -> Part {
+    Part::text(value.to_owned())
+        .mime_str("text/plain; charset=utf-8")
+        .expect("static content type always parses")
 }
