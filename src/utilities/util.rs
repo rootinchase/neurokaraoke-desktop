@@ -19,6 +19,21 @@ use tokio::sync::Mutex;
 use tokio::task::block_in_place;
 use uuid::Uuid;
 
+pub fn resolve_audio_url(audio_url: &str) -> String {
+    let url = if audio_url.starts_with("http://") || audio_url.starts_with("https://") {
+        audio_url.to_string()
+    } else {
+        let clean_path = audio_url.trim_start_matches('/');
+        format!("{}/{}", crate::api::urls::API_URLS.storage, clean_path)
+    };
+    let url = if url.contains(crate::api::urls::API_URLS.base) {
+        url.replace(crate::api::urls::API_URLS.base, crate::api::urls::API_URLS.storage)
+    } else {
+        url
+    };
+    url.replace(' ', "%20")
+}
+
 pub fn create_reqwest_client() -> Client {
     Client::builder()
         .user_agent(concat!(

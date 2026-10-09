@@ -1,0 +1,34 @@
+[
+  {
+    "id": "00000000-0000-0000-0000-000000000001",
+    "title": "My Upload One",
+    "opus": null,
+    "audioUrl": null,
+    "absolutePath": null,
+    "oss": null,
+    "coverArt": null,
+    "originalArtists": [],
+    "coverArtists": [],
+    "playCount": 5,
+    "streamDate": null,
+    "duration": 180,
+    "userUploaded": true
+  },
+  {
+    "song": {
+      "id": "00000000-0000-0000-0000-000000000002",
+      "title": "My Upload Two",
+      "opus": null,
+      "audioUrl": null,
+      "absolutePath": null,
+      "oss": null,
+      "coverArt": null,
+      "originalArtists": [],
+      "coverArtists": [],
+      "playCount": 0,
+      "streamDate": null,
+      "duration": 200,
+      "userUploaded": true
+    }
+  }
+]
