@@ -160,8 +160,8 @@ impl UploadsActivity {
                     .show(ui, |ui| {
                         TableBuilder::new(ui)
                             .column(Column::exact(24.0))
-                            .column(Column::auto())
-                            .column(Column::auto())
+                            .column(Column::remainder())
+                            .column(Column::exact(120.0))
                             .header(20.0, |mut header| {
                                 header.col(|ui| {
                                     ui.label("");
