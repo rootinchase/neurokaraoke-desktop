@@ -53,7 +53,7 @@ fn main() -> Result<()> {
             .worker_threads(2)
             .enable_all()
             .build()
-            .unwrap()
+            .unwrap(),
     );
 
     let _guard = runtime.enter();

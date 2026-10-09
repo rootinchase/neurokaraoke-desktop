@@ -800,7 +800,8 @@ impl Player {
                                                         let cache_worker = cache_worker.clone();
                                                         let client_worker = client.clone();
                                                         let cb_worker = cb;
-                                                        let url = resolve_audio_url(path_str.as_ref());
+                                                        let url =
+                                                            resolve_audio_url(path_str.as_ref());
 
                                                         rt_worker.spawn(async move {
                                                             match cache_worker.get_or_download_audio(&client_worker, uuid, url).await {

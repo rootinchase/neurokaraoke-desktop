@@ -7,8 +7,8 @@ pub mod radio;
 pub mod search;
 pub mod setlist;
 pub mod settings;
-pub mod uploads;
 pub mod sidebar;
+pub mod uploads;
 
 use crate::api::{Artwork, Playlist, PlaylistDetail, SongDTO};
 use crate::theme::ThemeManager;

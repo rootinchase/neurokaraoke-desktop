@@ -308,5 +308,3 @@ mod tests {
         assert_eq!(fonts.loaded.len(), 1);
     }
 }
-
-

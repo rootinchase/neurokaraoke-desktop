@@ -27,7 +27,10 @@ pub fn resolve_audio_url(audio_url: &str) -> String {
         format!("{}/{}", crate::api::urls::API_URLS.storage, clean_path)
     };
     let url = if url.contains(crate::api::urls::API_URLS.base) {
-        url.replace(crate::api::urls::API_URLS.base, crate::api::urls::API_URLS.storage)
+        url.replace(
+            crate::api::urls::API_URLS.base,
+            crate::api::urls::API_URLS.storage,
+        )
     } else {
         url
     };

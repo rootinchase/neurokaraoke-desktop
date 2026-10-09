@@ -39,9 +39,10 @@ fn compress_fonts() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let bytes = fs::read(&src)?;
-        let mut encoder = flate2::GzBuilder::new()
-            .filename(name)
-            .write(BufWriter::new(fs::File::create(&dst)?), flate2::Compression::best());
+        let mut encoder = flate2::GzBuilder::new().filename(name).write(
+            BufWriter::new(fs::File::create(&dst)?),
+            flate2::Compression::best(),
+        );
         encoder.write_all(&bytes)?;
         encoder.finish()?;
 

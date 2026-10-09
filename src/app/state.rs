@@ -8,7 +8,11 @@ use tokio::runtime::Runtime;
 use uuid::Uuid;
 
 use crate::activity::uploads::UploadsActivity;
-use crate::activity::{ActivityType, SortOption, favorites::FavoritesActivity, home::HomeActivity, playlist::PlaylistActivity, profile::ProfileActivity, queue::QueueActivity, radio::RadioActivity, search, setlist::SetlistActivity, settings::SettingsActivity};
+use crate::activity::{
+    ActivityType, SortOption, favorites::FavoritesActivity, home::HomeActivity,
+    playlist::PlaylistActivity, profile::ProfileActivity, queue::QueueActivity,
+    radio::RadioActivity, search, setlist::SetlistActivity, settings::SettingsActivity,
+};
 use crate::api::{LazySongDatabase, LoadingState};
 use crate::audio::{LoopMode, PlaybackState, Player};
 use crate::config::{Config, SharedConfig};
