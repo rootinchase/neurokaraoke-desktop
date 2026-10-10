@@ -139,7 +139,7 @@ impl Player {
                         }
                     };
                     handle.log_on_drop(false);
-                    let mut mixer = rodio::Player::connect_new(&handle.mixer());
+                    let mut mixer = rodio::Player::connect_new(handle.mixer());
 
                     let init_vol = player_worker.player_state.lock().unwrap().volume;
                     mixer.set_volume(init_vol.powi(3));
@@ -203,10 +203,10 @@ impl Player {
 
                                 // Prefetch cover art
                                 if let Some(cover) = &dto.cover_art {
-                                    let cf = cover.cloudflare_id.as_deref().map(|s| s.as_ref());
+                                    let cf = cover.cloudflare_id.as_deref();
                                     let img_url = get_thumbnail_url(cf, &cover.absolute_path, "crop,gravity=auto");
-                                    if let Ok(art_uuid) = Uuid::parse_str(&cover.id) {
-                                        if !img_url.is_empty() {
+                                    if let Ok(art_uuid) = Uuid::parse_str(&cover.id)
+                                        && !img_url.is_empty() {
                                             let _ = cache_worker
                                                 .get_or_download_image(
                                                     art_uuid,
@@ -215,7 +215,6 @@ impl Player {
                                                 )
                                                 .await;
                                         }
-                                    }
                                 } else if let Some(audio_url) = dto.audio_url.as_ref().or(dto.absolute_path.as_ref()) {
                                     // Uploads have no server-side cover art; skip the derived
                                     // image URL to avoid 404s against the storage host.
@@ -283,10 +282,10 @@ impl Player {
                                     .map(|u| {
                                         indices.iter().filter_map(|&i| u.get(i).cloned()).collect()
                                     })
-                                    .unwrap_or_else(|| vec![]);
+                                    .unwrap_or_default();
 
-                                if let Some(song) = song {
-                                    if let Some(i) = new_pl.iter().position(|s| *s == song) {
+                                if let Some(song) = song
+                                    && let Some(i) = new_pl.iter().position(|s| *s == song) {
                                         if swap {
                                             new_pl.swap(0, i);
                                             if !new_upl.is_empty() {
@@ -300,7 +299,6 @@ impl Player {
                                             }
                                         }
                                     }
-                                }
                                 *playlist = Some(new_pl.clone().into());
                                 ps.playlist = Some(new_pl.into());
                                 ps.url_playlist = if new_upl.is_empty() {
@@ -323,8 +321,8 @@ impl Player {
                                 && !state.paused()
                                 && !state.loading
                             {
-                                if state.song() == Uuid::nil() && mixer.empty() {
-                                    if let Some(url) = &active_radio_url {
+                                if state.song() == Uuid::nil() && mixer.empty()
+                                    && let Some(url) = &active_radio_url {
                                         debug_log!(
                                             "🔄 [Radio Stream] Stream ended or stalled, auto-reconnecting to: {}",
                                             url
@@ -335,15 +333,14 @@ impl Player {
                                         pw.radio_stream(url_clone, Player::play);
                                         break 'block;
                                     }
-                                }
 
                                 let pos = state.position();
                                 let dur = state.duration();
                                 let song_uuid = state.song();
 
-                                if reported_play_song != Some(song_uuid) {
-                                    if pos >= Duration::from_secs(30)
-                                        || (dur > Duration::from_secs(0) && pos >= dur)
+                                if reported_play_song != Some(song_uuid)
+                                    && (pos >= Duration::from_secs(30)
+                                        || (dur > Duration::from_secs(0) && pos >= dur))
                                     {
                                         reported_play_song = Some(song_uuid);
                                         let db_clone = database_worker.clone();
@@ -359,7 +356,6 @@ impl Player {
                                             }
                                         });
                                     }
-                                }
 
                                 if pos >= dur && dur > Duration::from_secs(0) {
                                     debug_log!(
@@ -368,7 +364,7 @@ impl Player {
                                         dur.as_secs(),
                                         state.song
                                     );
-                                    let state = state.clone();
+                                    let state = *state;
                                     drop(lock);
 
                                     let mut playlist_to_use = ordered_playlist.clone();
@@ -634,7 +630,7 @@ impl Player {
                                         .playlist
                                         .as_ref()
                                         .map(|x| x.to_vec())
-                                        .unwrap_or_else(Vec::new);
+                                        .unwrap_or_default();
                                     pl.push(uuid);
                                     ps.playlist = Some(pl.into());
                                 }
@@ -688,15 +684,13 @@ impl Player {
                                                         if url_playlist.len() == playlist.len() {
                                                             if let Some(next_song) =
                                                                 url_playlist.get(next_idx)
-                                                            {
-                                                                if next_song.audio_url.is_some() {
+                                                                && next_song.audio_url.is_some() {
                                                                     next_song_to_play = Some((
                                                                         Some(playlist[next_idx]),
                                                                         Some(next_song.clone()),
                                                                     ));
                                                                     break;
                                                                 }
-                                                            }
                                                         } else {
                                                             next_song_to_play = Some((
                                                                 Some(playlist[next_idx]),
@@ -877,7 +871,7 @@ impl Player {
                                     drop(lock);
 
                                     *player_worker.current_url_metadata.lock().unwrap() =
-                                        Some(song_dto.clone());
+                                        Some(*song_dto.clone());
                                     ctx_worker.request_repaint();
 
                                     if let Some(audio_url) = song_dto
@@ -926,14 +920,12 @@ impl Player {
                                         .as_ref()
                                         .map(|s| s.song());
                                     if let (Some(incoming), Some(current)) = (uuid, current_song_id)
-                                    {
-                                        if incoming != current {
+                                        && incoming != current {
                                             debug_log!(
                                                 "⚠️ [Audio API] Discarding outdated network stream."
                                             );
                                             continue;
                                         }
-                                    }
 
                                     if let Ok(decoder) = DecoderBuilder::new()
                                         .with_data(BufReader::new(file))
@@ -981,7 +973,7 @@ impl Player {
                                         });
 
                                         drop(mixer);
-                                        mixer = rodio::Player::connect_new(&handle.mixer());
+                                        mixer = rodio::Player::connect_new(handle.mixer());
                                         mixer.set_volume(current_vol.powi(3));
 
                                         mixer.append(SafeSource { inner: decoder });
@@ -1071,7 +1063,7 @@ impl Player {
                                                         }
                                                         if let Ok(mut file) =
                                                             std::fs::File::options()
-                                                                .create(true)
+                                                                .create(true).truncate(true)
                                                                 .write(true)
                                                                 .open(&temp_path)
                                                         {
@@ -1171,7 +1163,7 @@ impl Player {
                                         });
 
                                         drop(mixer);
-                                        mixer = rodio::Player::connect_new(&handle.mixer());
+                                        mixer = rodio::Player::connect_new(handle.mixer());
                                         mixer.set_volume(current_vol.powi(3));
                                         mixer.append(SafeSource { inner: decoder });
                                         mixer.play();
@@ -1352,7 +1344,7 @@ impl Player {
         self.sender
             .try_send(PlaybackCommand::UrlPlayback(
                 uuid,
-                song_dto,
+                Box::from(song_dto),
                 Box::new(commands_after_load),
             ))
             .ok();
@@ -1406,18 +1398,14 @@ impl Player {
     pub fn play_song(&self, uuid: Uuid) {
         let player_state = self.player_state.lock().unwrap();
 
-        if let Some(playlist) = &player_state.playlist {
-            if let Some(index) = playlist.iter().position(|&id| id == uuid) {
-                if let Some(url_playlist) = &player_state.url_playlist {
-                    if let Some(song_dto) = url_playlist.get(index) {
-                        if song_dto.audio_url.is_some() {
+        if let Some(playlist) = &player_state.playlist
+            && let Some(index) = playlist.iter().position(|&id| id == uuid)
+                && let Some(url_playlist) = &player_state.url_playlist
+                    && let Some(song_dto) = url_playlist.get(index)
+                        && song_dto.audio_url.is_some() {
                             self.url_playback(Some(uuid), song_dto.clone(), Player::play);
                             return;
                         }
-                    }
-                }
-            }
-        }
 
         self.song(Some(uuid), Player::play);
     }

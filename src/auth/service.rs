@@ -60,7 +60,7 @@ impl AuthService {
             access_token: access_token.into(),
         };
         let res = self.client.post(&url).json(&payload).send().await?;
-        let status = res.status().clone();
+        let status = res.status();
 
         let response_text = res
             .text()

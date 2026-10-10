@@ -110,7 +110,7 @@ impl PlaylistActivity {
         }));
 
         let has_more = Arc::new(Mutex::new(
-            cached_playlists.as_ref().map_or(true, |d| d.len() > 20),
+            cached_playlists.as_ref().is_none_or(|d| d.len() > 20),
         ));
         let loading_more = Arc::new(Mutex::new(false));
         let selected_playlist_id = Arc::new(Mutex::new(None));
@@ -234,11 +234,10 @@ impl PlaylistActivity {
         let all = self.all_playlists.blocking_lock();
         if let Some(playlists) = &*all {
             for playlist in playlists {
-                if let Some(art) = &playlist.media {
-                    if let Some(uri) = cover_art_uri(&self.cache, art) {
+                if let Some(art) = &playlist.media
+                    && let Some(uri) = cover_art_uri(&self.cache, art) {
                         ctx.forget_image(&uri);
                     }
-                }
                 if let Some(mosaic) = &playlist.mosaic_media {
                     for art in mosaic {
                         if let Some(uri) = cover_art_uri(&self.cache, art) {
@@ -896,8 +895,8 @@ impl PlaylistActivity {
                             }
 
                             // Apply sort globally to entire list (all_playlists)
-                            if let Ok(mut all_opt) = self.all_playlists.try_lock() {
-                                if let Some(ref mut all) = *all_opt {
+                            if let Ok(mut all_opt) = self.all_playlists.try_lock()
+                                && let Some(ref mut all) = *all_opt {
                                     sort_items(
                                         all,
                                         current_sort,
@@ -912,14 +911,12 @@ impl PlaylistActivity {
                                                 .map(|s| s.to_string())
                                         },
                                     );
-                                    if let Ok(mut playlists_guard) = self.playlists.try_lock() {
-                                        if let LoadingState::Loaded(list) = &mut *playlists_guard {
+                                    if let Ok(mut playlists_guard) = self.playlists.try_lock()
+                                        && let LoadingState::Loaded(list) = &mut *playlists_guard {
                                             let current_len = list.len().max(20);
                                             *list = all.iter().take(current_len).cloned().collect();
                                         }
-                                    }
                                 }
-                            }
                         }
                     }
                 });
@@ -944,7 +941,7 @@ impl PlaylistActivity {
                                             .to_lowercase()
                                             .contains(&criteria.title.to_lowercase());
                                         let creator_match =
-                                            criteria.creator.as_ref().map_or(true, |q| {
+                                            criteria.creator.as_ref().is_none_or(|q| {
                                                 p.creator.to_lowercase().contains(&q.to_lowercase())
                                             });
                                         name_match && creator_match
@@ -971,7 +968,7 @@ impl PlaylistActivity {
                             );
 
                             let scroll_output = ScrollArea::vertical().show(ui, |ui| {
-                                for (_index, playlist) in sorted_playlists.iter().enumerate() {
+                                for playlist in sorted_playlists.iter() {
                                     spawn_fetch_playlist_details(
                                         &self.rt,
                                         Some(&self.ctx),
@@ -1057,7 +1054,7 @@ impl PlaylistActivity {
 
                                 // Load more button at the bottom of playlists
                                 if playlist_search.is_none()
-                                    || playlist_search.as_ref().map_or(true, |s| s.is_empty())
+                                    || playlist_search.as_ref().is_none_or(|s| s.is_empty())
                                 {
                                     ui.add_space(10.0);
                                     ui.horizontal(|ui| {

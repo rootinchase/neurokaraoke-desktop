@@ -77,28 +77,25 @@ impl RadioActivity {
                         _ => true,
                     };
 
-                    if should_repaint {
-                        if let Some(np) = res.effective_now_playing() {
+                    if should_repaint
+                        && let Some(np) = res.effective_now_playing() {
                             let is_radio_specific = np
                                 .song
                                 .as_ref()
-                                .map_or(true, |s| s.song_id_uuid().is_none());
+                                .is_none_or(|s| s.song_id_uuid().is_none());
 
                             if let Some(old_uuid) = last_radio_art_uuid_clone.lock().await.take() {
                                 cache_clone_for_cleanup.remove_asset(old_uuid, AssetType::Image);
                             }
 
-                            if is_radio_specific {
-                                if let Some(song) = &np.song {
-                                    if let Some(art_url) = &song.art {
+                            if is_radio_specific
+                                && let Some(song) = &np.song
+                                    && let Some(art_url) = &song.art {
                                         let new_uuid =
                                             Uuid::new_v5(&Uuid::NAMESPACE_URL, art_url.as_bytes());
                                         *last_radio_art_uuid_clone.lock().await = Some(new_uuid);
                                     }
-                                }
-                            }
                         }
-                    }
 
                     *guard = LoadingState::Loaded(res);
                     if should_repaint {
@@ -196,15 +193,14 @@ impl RadioActivity {
             let current_guard = current_state.try_lock();
             let azuracast_guard = azuracast_state.try_lock();
 
-            if let Ok(curr) = &current_guard {
-                if matches!(**curr, LoadingState::Loading) {
+            if let Ok(curr) = &current_guard
+                && matches!(**curr, LoadingState::Loading) {
                     drop(current_guard);
                     drop(azuracast_guard);
                     self.fetch_data();
                     ui.label("Loading radio state...");
                     return;
                 }
-            }
 
             ui.horizontal(|ui| {
                 if let Ok(LoadingState::Loaded(az)) = azuracast_guard.as_deref() {
@@ -343,8 +339,8 @@ pub fn render_radio_now_playing(
                                 Vec2::new(120.0, 120.0),
                             );
                         }
-                    } else if let Some(np) = az_np.as_ref() {
-                        if let Some(song) = &np.song {
+                    } else if let Some(np) = az_np.as_ref()
+                        && let Some(song) = &np.song {
                             if let Some(art_url) = &song.art {
                                 let song_id_uuid = song.song_id_uuid();
 
@@ -378,7 +374,7 @@ pub fn render_radio_now_playing(
                                 );
                             }
                         }
-                    }
+
 
                     ui.add_space(16.0);
                     ui.vertical(|ui| {

@@ -218,12 +218,11 @@ pub async fn load_cached_song_list(
     cache_path: &std::path::Path,
     state: &Arc<Mutex<LoadingState<Vec<SongDTO>>>>,
 ) -> bool {
-    if let Ok(data) = tokio::fs::read(cache_path).await {
-        if let Ok(song_list) = from_bytes::<Vec<SongDTO>>(&data) {
+    if let Ok(data) = tokio::fs::read(cache_path).await
+        && let Ok(song_list) = from_bytes::<Vec<SongDTO>>(&data) {
             *state.lock().await = LoadingState::Loaded(song_list);
             return true;
         }
-    }
     false
 }
 
@@ -309,11 +308,10 @@ pub async fn get_playlist_details_cached(
     let cache_path = cache::playlist_cache_dir().join(format!("playlist_detail_{}.ron", id));
 
     let mut cached_detail = None;
-    if let Ok(data) = read(&cache_path).await {
-        if let Ok(detail) = from_bytes::<PlaylistDetail>(&data) {
+    if let Ok(data) = read(&cache_path).await
+        && let Ok(detail) = from_bytes::<PlaylistDetail>(&data) {
             cached_detail = Some(detail);
         }
-    }
 
     match songs.get_playlist_details(id).await {
         Ok(data) => {

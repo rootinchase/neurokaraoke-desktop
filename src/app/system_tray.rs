@@ -154,7 +154,7 @@ impl TrayIconMenu {
         theme: &mut ThemeManager,
         sleep_timer_end: &mut Option<Instant>,
     ) {
-        let is_paused = player.get_playback_state().map_or(true, |s| s.paused());
+        let is_paused = player.get_playback_state().is_none_or(|s| s.paused());
         if self.last_is_paused != Some(is_paused) {
             self.last_is_paused = Some(is_paused);
             if is_paused {

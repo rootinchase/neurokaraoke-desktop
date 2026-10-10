@@ -263,8 +263,9 @@ impl Deref for ThemeManager {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub enum SelectableTheme {
+    #[default]
     Neuro,
     Evil,
     Twins,
@@ -288,8 +289,3 @@ impl SelectableTheme {
     }
 }
 
-impl Default for SelectableTheme {
-    fn default() -> Self {
-        Self::Neuro
-    }
-}

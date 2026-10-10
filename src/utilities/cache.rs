@@ -47,11 +47,10 @@ pub fn playlist_cache_dir() -> PathBuf {
 }
 
 pub fn is_cache_fresh(path: &Path, max_age: Duration) -> bool {
-    if let Ok(metadata) = std::fs::metadata(path) {
-        if let Ok(modified) = metadata.modified() {
+    if let Ok(metadata) = std::fs::metadata(path)
+        && let Ok(modified) = metadata.modified() {
             return modified.elapsed().unwrap_or_default() < max_age;
         }
-    }
     false
 }
 
@@ -79,12 +78,11 @@ impl PersistentMediaCache {
         let key = (id, asset_type);
 
         // 1. Check in-flight status for completed records
-        if let Some(status) = self.in_flight.get(&key) {
-            if let DownloadStatus::Complete(path) = status.value() {
+        if let Some(status) = self.in_flight.get(&key)
+            && let DownloadStatus::Complete(path) = status.value() {
                 touch_file(path);
                 return Some(path.clone());
             }
-        }
 
         // 2. Fallback check for raw files existing on the operating system storage drive
         match asset_type {
@@ -148,13 +146,11 @@ impl PersistentMediaCache {
         let mut entries = read_dir(&dir_path).await?;
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
-            if path.is_file() {
-                if let Some(ext) = path.extension() {
-                    if ext == "tmp" {
+            if path.is_file()
+                && let Some(ext) = path.extension()
+                    && ext == "tmp" {
                         let _ = remove_file(&path).await;
                     }
-                }
-            }
         }
         Ok(())
     }
@@ -168,13 +164,11 @@ impl PersistentMediaCache {
         for entry in std::fs::read_dir(&dir_path)? {
             let entry = entry?;
             let path = entry.path();
-            if path.is_file() {
-                if let Some(ext) = path.extension() {
-                    if ext == "tmp" {
-                        let _ = remove_file(&path);
+            if path.is_file()
+                && let Some(ext) = path.extension()
+                    && ext == "tmp" {
+                        drop(remove_file(&path))
                     }
-                }
-            }
         }
         Ok(())
     }
@@ -480,8 +474,8 @@ impl PersistentMediaCache {
                 if path.extension().and_then(|s| s.to_str()) == Some("tmp") {
                     continue;
                 }
-                if !is_cache_fresh(&path, max_age) {
-                    if remove_file(&path).await.is_ok() {
+                if !is_cache_fresh(&path, max_age)
+                    && remove_file(&path).await.is_ok() {
                         evicted_count += 1;
                         self.in_flight.retain(|_, status| {
                             if let DownloadStatus::Complete(p) = status {
@@ -491,7 +485,6 @@ impl PersistentMediaCache {
                             }
                         });
                     }
-                }
             }
         }
         Ok(evicted_count)
@@ -641,11 +634,10 @@ pub fn get_thumbnail_url(cloudflare_id: Option<&str>, absolute_path: &str, fit: 
         Some(absolute_path.trim())
     };
 
-    if let Some(abs) = clean_abs {
-        if abs.starts_with("http://") || abs.starts_with("https://") {
+    if let Some(abs) = clean_abs
+        && (abs.starts_with("http://") || abs.starts_with("https://")) {
             return abs.to_string();
         }
-    }
 
     if let Some(id) = clean_cf {
         format!(

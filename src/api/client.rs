@@ -536,14 +536,14 @@ impl LazySongDatabase {
                 LoadingState::Loading => LoadingState::Loading,
             }
         } else {
-            self.map.insert(id.clone(), LoadingState::Loading);
+            self.map.insert(*id, LoadingState::Loading);
             let id = *id;
             let client = self.client.clone();
             let map = self.map.clone();
             let db_self = self.clone(); // Clone database handle to share within the task context
 
             tokio::spawn(async move {
-                let url = format!("{}/api/songs/{}", API_URLS.api, id.to_string());
+                let url = format!("{}/api/songs/{}", API_URLS.api, id);
                 let mut req = client.get(url);
                 req = db_self.apply_auth(req).await; // <-- Inject token directly into the thread loop
 

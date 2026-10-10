@@ -72,7 +72,7 @@ impl SetlistActivity {
 
     pub async fn check_and_update_stats(&self, remote_total_count: u64) {
         let mut last_count = self.last_total_count.lock().await;
-        if last_count.map_or(true, |c| c != remote_total_count) {
+        if last_count.is_none_or(|c| c != remote_total_count) {
             debug_log!(
                 "Setlist count mismatch: remote totalCount={}, previous={:?}. Retrieving setlists again...",
                 remote_total_count,
@@ -98,8 +98,8 @@ impl SetlistActivity {
 
             // Try loading from cache first
             let mut has_cached = false;
-            if let Ok(data) = read(&cache_path).await {
-                if let Ok(setlists) = from_bytes::<Vec<Playlist>>(&data) {
+            if let Ok(data) = read(&cache_path).await
+                && let Ok(setlists) = from_bytes::<Vec<Playlist>>(&data) {
                     for setlist in &setlists {
                         spawn_fetch_playlist_details(
                             &rt,
@@ -114,7 +114,6 @@ impl SetlistActivity {
                     has_cached = true;
                     ctx.request_repaint();
                 }
-            }
 
             // Poll setlist stats before updating cached setlists
             match songs.get_setlist_stats().await {
@@ -198,11 +197,10 @@ impl SetlistActivity {
         let setlists = self.setlists.blocking_lock();
         if let LoadingState::Loaded(list) = &*setlists {
             for setlist in list {
-                if let Some(art) = &setlist.media {
-                    if let Some(uri) = cover_art_uri(&self.cache, art) {
+                if let Some(art) = &setlist.media
+                    && let Some(uri) = cover_art_uri(&self.cache, art) {
                         ctx.forget_image(&uri);
                     }
-                }
                 if let Some(mosaic) = &setlist.mosaic_media {
                     for art in mosaic {
                         if let Some(uri) = cover_art_uri(&self.cache, art) {

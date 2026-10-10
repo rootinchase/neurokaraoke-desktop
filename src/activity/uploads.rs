@@ -535,7 +535,7 @@ impl UploadsActivity {
                         .and_then(|ext| ext.to_str())
                         .is_some_and(|ext| {
                             let ext = ext.to_lowercase();
-                            AUDIO_EXTENSIONS.iter().any(|known| *known == ext.as_str())
+                            AUDIO_EXTENSIONS.contains(&ext.as_str())
                         })
                 })
                 .collect()

@@ -22,7 +22,7 @@ pub fn render_sleep_timer_popup(app: &mut App, ctx: &Context, pos: Pos2) -> Inne
     Area::new(Id::new("sleep_timer_area"))
         .fixed_pos(pos)
         .show(ctx, |ui| {
-            Frame::window(&ui.style()).show(ui, |ui| {
+            Frame::window(ui.style()).show(ui, |ui| {
                 ui.set_min_width(150.0);
                 ui.heading("Sleep Timer");
 
@@ -46,13 +46,12 @@ pub fn render_sleep_timer_popup(app: &mut App, ctx: &Context, pos: Pos2) -> Inne
                     ui.data_mut(|d| d.insert_temp(custom_id, custom_text.clone()));
                 }
 
-                if ui.button("Set Custom").clicked() {
-                    if let Ok(minutes) = custom_text.parse::<u64>() {
+                if ui.button("Set Custom").clicked()
+                    && let Ok(minutes) = custom_text.parse::<u64>() {
                         app.sleep_timer_end =
                             Some(Instant::now() + Duration::from_secs(minutes * 60));
                         app.show_timer_menu = false;
                     }
-                }
 
                 ui.add_space(5.0);
                 ui.label("Shut off at (HH:MM):");
@@ -71,8 +70,8 @@ pub fn render_sleep_timer_popup(app: &mut App, ctx: &Context, pos: Pos2) -> Inne
                     let is_am = input.contains("am");
                     let time_clean = input.replace("am", "").replace("pm", "").trim().to_string();
 
-                    if let Some((h_str, m_str)) = time_clean.split_once(':') {
-                        if let (Ok(h_raw), Ok(m)) = (h_str.parse::<u32>(), m_str.parse::<u32>()) {
+                    if let Some((h_str, m_str)) = time_clean.split_once(':')
+                        && let (Ok(h_raw), Ok(m)) = (h_str.parse::<u32>(), m_str.parse::<u32>()) {
                             let mut h = h_raw;
 
                             if is_pm && h < 12 {
@@ -101,17 +100,15 @@ pub fn render_sleep_timer_popup(app: &mut App, ctx: &Context, pos: Pos2) -> Inne
                                 app.show_timer_menu = false;
                             }
                         }
-                    }
                 }
 
                 ui.separator();
 
-                if app.sleep_timer_end.is_some() {
-                    if ui.button("Cancel Timer").clicked() {
+                if app.sleep_timer_end.is_some()
+                    && ui.button("Cancel Timer").clicked() {
                         app.sleep_timer_end = None;
                         app.show_timer_menu = false;
                     }
-                }
 
                 ui.separator();
 
@@ -135,9 +132,9 @@ fn resolve_current_song(
 
     let song = if is_radio {
         let mut s = None;
-        if let Ok(az_guard) = app.radio_activity.azuracast_state.try_lock() {
-            if let LoadingState::Loaded(az) = &*az_guard {
-                if let Some(np) = az.effective_now_playing() {
+        if let Ok(az_guard) = app.radio_activity.azuracast_state.try_lock()
+            && let LoadingState::Loaded(az) = &*az_guard
+                && let Some(np) = az.effective_now_playing() {
                     az_elapsed = np.elapsed_secs();
                     az_duration = np.duration_secs();
                     if let Some(az_song) = &np.song {
@@ -177,12 +174,10 @@ fn resolve_current_song(
                         });
                     }
                 }
-            }
-        }
-        if s.is_none() {
-            if let Ok(guard) = app.radio_activity.current_state.try_lock() {
-                if let LoadingState::Loaded(curr) = &*guard {
-                    if let Some(cur_song) = &curr.current {
+        if s.is_none()
+            && let Ok(guard) = app.radio_activity.current_state.try_lock()
+                && let LoadingState::Loaded(curr) = &*guard
+                    && let Some(cur_song) = &curr.current {
                         s = Some(Song {
                             id: Uuid::nil(),
                             title: cur_song.title.clone(),
@@ -195,9 +190,6 @@ fn resolve_current_song(
                             duration: cur_song.duration,
                         });
                     }
-                }
-            }
-        }
         if s.is_none() {
             s = Some(Song {
                 id: Uuid::nil(),
@@ -219,9 +211,9 @@ fn resolve_current_song(
         };
 
         // Fallback to URL-based metadata if database lookup failed
-        if s.is_none() {
-            if let Ok(meta) = app.player.current_url_metadata.lock() {
-                if let Some(meta) = &*meta
+        if s.is_none()
+            && let Ok(meta) = app.player.current_url_metadata.lock()
+                && let Some(meta) = &*meta
                     && meta.id == state.song()
                 {
                     s = Some(Song {
@@ -236,8 +228,6 @@ fn resolve_current_song(
                         duration: None,
                     });
                 }
-            }
-        }
         s
     };
 
@@ -253,24 +243,19 @@ fn current_artwork_refs(
 ) -> (Option<Arc<str>>, Option<Arc<str>>) {
     let mut current_img_uuid: Option<Arc<str>> = None;
     let mut current_abs_path: Option<Arc<str>> = None;
-    if let Some(s) = song {
-        if let Some(cover_art) = &s.cover_art {
+    if let Some(s) = song
+        && let Some(cover_art) = &s.cover_art {
             current_img_uuid = cover_art.cloudflare_id.clone();
             current_abs_path = Some(cover_art.absolute_path.clone());
         }
-    }
-    if current_img_uuid.is_none() {
-        if let Ok(meta) = app.player.current_url_metadata.lock() {
-            if let Some(meta) = &*meta
+    if current_img_uuid.is_none()
+        && let Ok(meta) = app.player.current_url_metadata.lock()
+            && let Some(meta) = &*meta
                 && meta.id == state.song()
-            {
-                if let Some(art) = &meta.cover_art {
+                && let Some(art) = &meta.cover_art {
                     current_img_uuid = art.cloudflare_id.clone();
                     current_abs_path = Some(art.absolute_path.clone());
                 }
-            }
-        }
-    }
     (current_img_uuid, current_abs_path)
 }
 
@@ -661,8 +646,8 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                                     ui.set_cursor_icon(CursorIcon::PointingHand);
                                 }
 
-                                if resp.dragged() || resp.clicked() {
-                                    if let Some(pos) = ui.pointer_latest_pos() {
+                                if (resp.dragged() || resp.clicked())
+                                    && let Some(pos) = ui.pointer_latest_pos() {
                                         let p = ((rect.bottom() - pos.y) / rect.height())
                                             .clamp(0.0, 1.0);
                                         if (app.config.volume - p).abs() > f32::EPSILON {
@@ -675,10 +660,9 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                                             ui.ctx().request_repaint();
                                         }
                                     }
-                                }
 
-                                if resp.hovered() || resp.dragged() {
-                                    if let Some(pos) = ui.pointer_latest_pos() {
+                                if (resp.hovered() || resp.dragged())
+                                    && let Some(pos) = ui.pointer_latest_pos() {
                                         Popup::new(
                                             ui.id().with("volume_tooltip"),
                                             ui.ctx().clone(),
@@ -704,7 +688,6 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                                             );
                                         });
                                     }
-                                }
 
                                 // Draw background track
                                 let track_rect =
@@ -729,8 +712,8 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                                 // Favorite button - conditional on song
                                 // NOTE: This block is intentionally restricted to songs.
                                 // Do not allow radio or other media types here, as they cannot be favorited.
-                                if !is_radio {
-                                    if let Some(state) = app.player.get_playback_state() {
+                                if !is_radio
+                                    && let Some(state) = app.player.get_playback_state() {
                                         let current_song_uuid = state.song();
                                         let is_favorite =
                                             app.favorites_activity.is_favorite(&current_song_uuid);
@@ -762,7 +745,6 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                                         }
                                         ui.add_space(10.0);
                                     }
-                                }
 
                                 // Always visible buttons
                                 let is_timer_active = app.sleep_timer_end.is_some();

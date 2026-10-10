@@ -204,11 +204,10 @@ impl ProfileActivity {
             .and_then(|data| data.avatar_url.as_ref())
             .map(|url| url.to_string());
 
-        if let Some(url) = url {
-            if matches!(self.state.avatar_state, AvatarState::None) {
+        if let Some(url) = url
+            && matches!(self.state.avatar_state, AvatarState::None) {
                 self.resolve_avatar_uri(ctx, rt, &url);
             }
-        }
     }
 
     pub fn resolve_avatar_uri(
@@ -497,20 +496,17 @@ impl ProfileActivity {
                                                 .show(ui, |ui| {
                                                     let mut badges_to_download = Vec::new();
                                                     for badge in &self.state.badges {
-                                                        if badge.unlocked {
-                                                            if !self
+                                                        if badge.unlocked
+                                                            && !self
                                                                 .state
                                                                 .badge_images
                                                                 .contains_key(&badge.id)
-                                                            {
-                                                                if let Some(media) = &badge.media {
+                                                                && let Some(media) = &badge.media {
                                                                     badges_to_download.push((
                                                                         badge.id.clone(),
                                                                         media.cloudflare_id.clone(),
                                                                     ));
                                                                 }
-                                                            }
-                                                        }
                                                     }
 
                                                     for (badge_id, cloudflare_id) in

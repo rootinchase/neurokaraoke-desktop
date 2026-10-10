@@ -32,11 +32,10 @@ fn compress_fonts() -> Result<(), Box<dyn std::error::Error>> {
         let dst = fonts_dir.join(format!("{name}.gz"));
 
         // Cache: reuse the existing archive when it is newer than the source.
-        if let (Ok(src_meta), Ok(dst_meta)) = (fs::metadata(&src), fs::metadata(&dst)) {
-            if dst_meta.modified()? > src_meta.modified()? {
+        if let (Ok(src_meta), Ok(dst_meta)) = (fs::metadata(&src), fs::metadata(&dst))
+            && dst_meta.modified()? > src_meta.modified()? {
                 continue;
             }
-        }
 
         let bytes = fs::read(&src)?;
         let mut encoder = flate2::GzBuilder::new().filename(name).write(
@@ -69,7 +68,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // 2. Convert major, minor, patch, and revision (0) into the required u64 bit pattern
         // This replaces the winresource::v4!() macro with its underlying raw calculation
-        let numeric_version = (major << 48) | (minor << 32) | (patch << 16) | 0;
+        let numeric_version = (major << 48) | (minor << 32) | (patch << 16);
 
         let mut res = winresource::WindowsResource::new();
         res.set_icon("./assets/icon.ico")

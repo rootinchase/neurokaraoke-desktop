@@ -23,19 +23,18 @@ impl eframe::App for App {
         let ctx = ui.ctx();
 
         self._tray_icon.poll_events(
-            &ctx,
+            ctx,
             &self.player,
             &mut self.config,
             &mut self.theme,
             &mut self.sleep_timer_end,
         );
 
-        if let Some(end) = self.sleep_timer_end {
-            if Instant::now() >= end {
+        if let Some(end) = self.sleep_timer_end
+            && Instant::now() >= end {
                 self.player.pause();
                 self.sleep_timer_end = None;
             }
-        }
 
         if let Some(msg) = self.profile_activity.poll_messages() {
             match msg {
@@ -275,9 +274,9 @@ impl eframe::App for App {
                     LoadingState::Loaded(s) => Some(s),
                     _ => None,
                 };
-                if song.is_none() {
-                    if let Ok(meta) = self.player.current_url_metadata.lock() {
-                        if let Some(meta) = &*meta
+                if song.is_none()
+                    && let Ok(meta) = self.player.current_url_metadata.lock()
+                        && let Some(meta) = &*meta
                             && meta.id == state.song()
                         {
                             song = Some(Song {
@@ -292,8 +291,6 @@ impl eframe::App for App {
                                 duration: None,
                             });
                         }
-                    }
-                }
                 if let Some(s) = song {
                     let artwork_url = s
                         .cover_art
@@ -338,7 +335,7 @@ impl eframe::App for App {
                         album: self
                             .player
                             .get_playlist_name()
-                            .unwrap_or_else(|| "".to_string()),
+                            .unwrap_or_default(),
                         artwork_url,
                     };
                     self.integration.update_metadata(track);

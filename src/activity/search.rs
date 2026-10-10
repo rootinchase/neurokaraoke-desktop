@@ -74,12 +74,12 @@ impl SearchActivity {
                             .title
                             .to_lowercase()
                             .contains(&criteria.title.to_lowercase());
-                        let original_match = criteria.original.as_ref().map_or(true, |q| {
+                        let original_match = criteria.original.as_ref().is_none_or(|q| {
                             s.original_artists
                                 .iter()
                                 .any(|a| a.to_lowercase().contains(&q.to_lowercase()))
                         });
-                        let cover_match = criteria.cover.as_ref().map_or(true, |q| {
+                        let cover_match = criteria.cover.as_ref().is_none_or(|q| {
                             s.cover_artists
                                 .iter()
                                 .any(|a| a.to_lowercase().contains(&q.to_lowercase()))

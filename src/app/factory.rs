@@ -111,8 +111,8 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
             let limits_cache_path = cache::cache_dir().join("limits.ron");
 
             // 1. Try loading cached profile and limits immediately as offline fallback
-            if let Ok(data) = tokio::fs::read(&profile_cache_path).await {
-                if let Ok(profile_response) = ron::de::from_bytes::<ProfileResponse>(&data) {
+            if let Ok(data) = tokio::fs::read(&profile_cache_path).await
+                && let Ok(profile_response) = ron::de::from_bytes::<ProfileResponse>(&data) {
                     let _ = startup_tx
                         .send(ProfileMessage::ProfileHeaderLoaded(
                             profile_response.profile,
@@ -122,14 +122,12 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
                         .send(ProfileMessage::BadgesLoaded(profile_response.badges))
                         .await;
                 }
-            }
-            if let Ok(data) = tokio::fs::read(&limits_cache_path).await {
-                if let Ok(limits) = ron::de::from_bytes::<UserLimits>(&data) {
+            if let Ok(data) = tokio::fs::read(&limits_cache_path).await
+                && let Ok(limits) = ron::de::from_bytes::<UserLimits>(&data) {
                     let _ = startup_tx
                         .send(ProfileMessage::UserLimitsLoaded(limits))
                         .await;
                 }
-            }
 
             // 2. Try fetching fresh profile and limits from network
             match songs_clone.get_profile(&stored_token).await {
@@ -214,7 +212,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
                 .unwrap_or(true)
             {
                 last_update.lock().unwrap().replace(Instant::now());
-                if let Ok(_) = s.load_all(|_| ()).await {
+                if s.load_all(|_| ()).await.is_ok() {
                     let write_res = tokio::fs::write(
                         cache::cache_dir().join("songs.ron"),
                         ron::ser::to_string_pretty(&s, Default::default()).unwrap(),

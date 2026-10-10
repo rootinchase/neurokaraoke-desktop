@@ -118,8 +118,8 @@ impl FavoritesActivity {
             let songs_cache_path = cache_dir().join("favorites_songs.ron");
 
             let mut has_cached_playlists = false;
-            if let Ok(data) = read(&playlists_cache_path).await {
-                if let Ok(playlists) = from_bytes::<Vec<Playlist>>(&data) {
+            if let Ok(data) = read(&playlists_cache_path).await
+                && let Ok(playlists) = from_bytes::<Vec<Playlist>>(&data) {
                     for playlist in &playlists {
                         spawn_fetch_playlist_details(
                             &rt,
@@ -139,7 +139,6 @@ impl FavoritesActivity {
                     *p.lock().await = LoadingState::Loaded(playlists);
                     has_cached_playlists = true;
                 }
-            }
 
             let has_cached_songs = load_cached_song_list(&songs_cache_path, &s).await;
 
@@ -222,11 +221,10 @@ impl FavoritesActivity {
         let playlists = self.playlists.blocking_lock();
         if let LoadingState::Loaded(list) = &*playlists {
             for playlist in list {
-                if let Some(art) = &playlist.media {
-                    if let Some(uri) = cover_art_uri(&self.cache, art) {
+                if let Some(art) = &playlist.media
+                    && let Some(uri) = cover_art_uri(&self.cache, art) {
                         ctx.forget_image(&uri);
                     }
-                }
                 if let Some(mosaic) = &playlist.mosaic_media {
                     for art in mosaic {
                         if let Some(uri) = cover_art_uri(&self.cache, art) {
@@ -241,11 +239,10 @@ impl FavoritesActivity {
         let songs = self.songs.blocking_lock();
         if let LoadingState::Loaded(list) = &*songs {
             for song in list {
-                if let Some(art) = &song.cover_art {
-                    if let Some(uri) = cover_art_uri(&self.cache, art) {
+                if let Some(art) = &song.cover_art
+                    && let Some(uri) = cover_art_uri(&self.cache, art) {
                         ctx.forget_image(&uri);
                     }
-                }
             }
         }
         drop(songs);

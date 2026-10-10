@@ -125,13 +125,12 @@ impl HomeActivity {
         tokio::spawn(async move {
             let cache_path = cache_dir().join("home_recent_setlist.ron");
             let mut has_cached = false;
-            if let Ok(data) = read(&cache_path).await {
-                if let Ok(cached) = from_bytes::<CachedSetlist>(&data) {
+            if let Ok(data) = read(&cache_path).await
+                && let Ok(cached) = from_bytes::<CachedSetlist>(&data) {
                     *setlist_name.lock().await = cached.name;
                     *songs_state.lock().await = LoadingState::Loaded(cached.songs);
                     has_cached = true;
                 }
-            }
 
             match songs.get_official_setlists(2026).await {
                 Ok(data) => {
@@ -368,7 +367,7 @@ impl HomeActivity {
                                                     &art,
                                                     Vec2::new(150.0, 150.0),
                                                 );
-                                            } else {
+                                            } else if song.is_none() {
                                                 ui.allocate_exact_size(
                                                     Vec2::new(150.0, 150.0),
                                                     Sense::hover(),

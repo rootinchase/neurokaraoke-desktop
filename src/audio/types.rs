@@ -44,7 +44,7 @@ pub enum PlaybackCommand {
     Song(Option<Uuid>, Box<dyn FnOnce(&Player) + Send + 'static>),
     UrlPlayback(
         Option<Uuid>,
-        SongDTO,
+        Box<SongDTO>,
         Box<dyn FnOnce(&Player) + Send + 'static>,
     ),
     RadioStream(String, Box<dyn FnOnce(&Player) + Send + 'static>),

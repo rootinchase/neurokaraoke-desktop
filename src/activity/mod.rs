@@ -121,21 +121,20 @@ pub fn resolve_and_render_art(
         return;
     }
 
-    let art_uuid_str = cloudflare_id.map(|s| s).unwrap_or(&cover_art.id);
+    let art_uuid_str = cloudflare_id.unwrap_or(&cover_art.id);
 
     let art_uuid = Uuid::parse_str(art_uuid_str)
         .unwrap_or_else(|_| Uuid::new_v5(&Uuid::NAMESPACE_URL, art_uuid_str.as_bytes()));
 
     // FIXED: Use the new helper method to safely query the persistent cache setup
-    if let Some(path) = cache.get_cached_path(art_uuid, cache::AssetType::Image) {
-        if let Ok(bytes) = read(&path) {
+    if let Some(path) = cache.get_cached_path(art_uuid, cache::AssetType::Image)
+        && let Ok(bytes) = read(&path) {
             ui.add(
                 Image::from_bytes(format!("bytes://{}", path.display()), bytes)
                     .fit_to_exact_size(size),
             );
             return;
         }
-    }
 
     let cache_clone = cache.clone();
     let _client_clone = client.clone();
@@ -200,7 +199,6 @@ pub fn render_mosaic(
     match valid_covers.len() {
         1 => {
             resolve_and_render_art(ui, cache, ctx, rt, client, valid_covers[0], size);
-            return;
         }
         2 => {
             Grid::new(format!("{} songs mosaic", id))
@@ -212,7 +210,6 @@ pub fn render_mosaic(
                         ui.end_row();
                     }
                 });
-            return;
         }
         3 => {
             let third_horizontal = vec2(size[0], size[1] / 3.0);
@@ -225,11 +222,9 @@ pub fn render_mosaic(
                         ui.end_row();
                     }
                 });
-            return;
         }
         _ => {
             render_grid_2x2(ui, cache, ctx, rt, client, id, &valid_covers, size);
-            return;
         }
     }
 }
@@ -365,7 +360,7 @@ fn detect_and_collapse_repetition(title: &str) -> String {
     let len_pi = pi[n - 1];
     if len_pi > 0 {
         let k = n - len_pi;
-        if (n % k == 0 || n % k < k) && n / k >= 2 && k >= 3 {
+        if (n.is_multiple_of(k) || n % k < k) && n / k >= 2 && k >= 3 {
             let unit: String = chars[..k].iter().collect();
             return format!("{}...", unit.trim());
         }
@@ -487,7 +482,7 @@ pub fn render_playlist_art_advanced(
     songs: &[SongDTO],
     size: Vec2,
 ) {
-    let media_valid = playlist.media.as_ref().map_or(false, |art| {
+    let media_valid = playlist.media.as_ref().is_some_and(|art| {
         let cloudflare_id = art
             .cloudflare_id
             .as_deref()
@@ -497,19 +492,18 @@ pub fn render_playlist_art_advanced(
         !url.is_empty()
     });
 
-    if media_valid {
-        if let Some(art) = &playlist.media {
+    if media_valid
+        && let Some(art) = &playlist.media {
             resolve_and_render_art(ui, cache, ctx, rt, client, art, size);
             return;
         }
-    }
 
     let mosaic_valid = playlist
         .mosaic_media
         .as_ref()
-        .map_or(false, |m| !m.is_empty());
-    if mosaic_valid {
-        if let Some(mosaic) = &playlist.mosaic_media {
+        .is_some_and(|m| !m.is_empty());
+    if mosaic_valid
+        && let Some(mosaic) = &playlist.mosaic_media {
             let valid_mosaic: Vec<&Artwork> = mosaic.iter().collect();
             if !valid_mosaic.is_empty() {
                 render_mosaic_covers(
@@ -525,7 +519,6 @@ pub fn render_playlist_art_advanced(
                 return;
             }
         }
-    }
 
     let valid_song_covers: Vec<&Artwork> =
         songs.iter().filter_map(|s| s.cover_art.as_ref()).collect();
