@@ -25,6 +25,19 @@ use std::sync::Arc;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
 
+/// Computes the egui `bytes://` texture URI that `resolve_and_render_art`
+/// registers for a given artwork. Returns `None` when the artwork has no cached
+/// image file on disk (in which case no texture was ever registered for it), so
+/// callers can release the matching texture with `Context::forget_image`.
+pub fn cover_art_uri(cache: &PersistentMediaCache, art: &Artwork) -> Option<String> {
+    let cloudflare_id = art.cloudflare_id.as_deref().filter(|s| !s.is_empty());
+    let art_uuid_str = cloudflare_id.unwrap_or(&art.id);
+    let art_uuid = Uuid::parse_str(art_uuid_str)
+        .unwrap_or_else(|_| Uuid::new_v5(&Uuid::NAMESPACE_URL, art_uuid_str.as_bytes()));
+    let path = cache.get_cached_path(art_uuid, cache::AssetType::Image)?;
+    Some(format!("bytes://{}", path.display()))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ActivityType {
     Home,

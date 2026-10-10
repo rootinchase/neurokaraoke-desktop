@@ -189,6 +189,44 @@ impl SetlistActivity {
         self.load_setlists(year);
     }
 
+    /// Clears all setlist data and releases every cover-art texture egui registered for the
+    /// rendered setlists. Scrolling the setlist list registers a `bytes://` texture per cover
+    /// in egui's texture store; clearing the setlist data alone does not drop those textures,
+    /// so we free them explicitly via `ctx.forget_image`. `current_year` and `available_years`
+    /// are kept so `refetch` reloads the same year.
+    pub fn clear_sync(&self, ctx: &Context) {
+        let setlists = self.setlists.blocking_lock();
+        if let LoadingState::Loaded(list) = &*setlists {
+            for setlist in list {
+                if let Some(art) = &setlist.media {
+                    if let Some(uri) = cover_art_uri(&self.cache, art) {
+                        ctx.forget_image(&uri);
+                    }
+                }
+                if let Some(mosaic) = &setlist.mosaic_media {
+                    for art in mosaic {
+                        if let Some(uri) = cover_art_uri(&self.cache, art) {
+                            ctx.forget_image(&uri);
+                        }
+                    }
+                }
+            }
+        }
+        drop(setlists);
+
+        *self.setlists.blocking_lock() = LoadingState::Loading;
+        self.setlist_details.clear();
+        *self._selected_setlist.blocking_lock() = None;
+        *self.last_total_count.blocking_lock() = None;
+        debug_log!("🧹 [Setlist Activity] Cleared memory and cover textures on navigation away.");
+    }
+
+    /// Reloads the setlists for the current year after `clear_sync` freed them.
+    pub fn refetch(&self) {
+        let year = *self.current_year.blocking_lock();
+        self.load_setlists(year);
+    }
+
     pub fn render(
         &self,
         ui: &mut Ui,

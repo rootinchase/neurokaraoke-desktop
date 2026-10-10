@@ -1,12 +1,13 @@
 use crate::api::API_URLS;
-use crate::api::{AuthContext, Badge, ProfileHeader, UserLimits};
+use crate::api::{AuthContext, Badge, LazySongDatabase, ProfileHeader, UserLimits};
 use crate::auth::{AuthService, auth_ui::render_login_form};
 use crate::debug_log;
 use crate::theme::ThemeManager;
 use crate::utilities::cache::{AssetType, PersistentMediaCache};
-use eframe::egui::{self, Frame, RichText, Ui, Vec2, include_image};
+use eframe::egui::{self, Context, Frame, RichText, Ui, Vec2, include_image};
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::runtime::Runtime;
 use uuid::Uuid;
 
 pub enum ProfileMessage {
@@ -108,6 +109,45 @@ impl ProfileActivity {
 
     pub fn is_logged_in(&self) -> bool {
         self.state.profile_data.is_some()
+    }
+
+    /// Frees the profile-page data (badges, badge images, user limits, and the
+    /// login form inputs) so the loaded payloads are dropped when the user
+    /// navigates away from Profile. The sidebar avatar (`profile_data` /
+    /// `avatar_state`) is kept because the sidebar renders it on every page.
+    pub fn clear(&mut self) {
+        self.state.badges.clear();
+        self.state.badge_images.clear();
+        self.state.user_limits = None;
+        self.state.username_input.clear();
+        self.state.password_input.clear();
+    }
+
+    /// Re-fetches the badges and user limits from the server, sending them as
+    /// messages so the profile page repopulates after `clear()`.
+    pub fn refetch(&self, songs: &LazySongDatabase, rt: &Runtime, ctx: Context) {
+        let tx = self.tx.clone();
+        let songs = songs.clone();
+        rt.spawn(async move {
+            let token = songs.shared_config.auth_token.read().unwrap().clone();
+            if let Some(token) = token {
+                match songs.get_profile(&token).await {
+                    Ok(profile_response) => {
+                        let _ = tx
+                            .send(ProfileMessage::BadgesLoaded(profile_response.badges))
+                            .await;
+                    }
+                    Err(e) => debug_log!("❌ Failed to refetch profile badges: {}", e),
+                }
+                match songs.get_user_limits().await {
+                    Ok(limits) => {
+                        let _ = tx.send(ProfileMessage::UserLimitsLoaded(limits)).await;
+                    }
+                    Err(e) => debug_log!("❌ Failed to refetch user limits: {}", e),
+                }
+            }
+            ctx.request_repaint();
+        });
     }
 
     pub fn resolve_badge_image(

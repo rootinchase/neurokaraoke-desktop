@@ -1,5 +1,6 @@
 use crate::activity::{
-    SortOption, render_duration_label, render_playlist_art_advanced, render_playlist_box, search,
+    SortOption, cover_art_uri, render_duration_label, render_playlist_art_advanced,
+    render_playlist_box, search,
 };
 use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongDTO};
 use crate::app::fonts;
@@ -217,6 +218,97 @@ impl PlaylistActivity {
         *self.show_more_menu.lock().await = false;
         *self.more_menu_pos.lock().await = None;
         debug_log!("🧹 [Playlist Activity] Resetting memory tables back to pristine state.");
+    }
+
+    /// Frees the playlist data (the loaded playlist lists, all-playlists cache,
+    /// selected playlist, the `playlist_details` DashMap, and the search/menu
+    /// state) so the `Vec<Playlist>`/`Vec<SongDTO>` payloads are dropped when the
+    /// user navigates away. Uses `blocking_lock()` so it can be called from the
+    /// UI thread. The shared `favorite_playlists` set is kept.
+    ///
+    /// Also releases every cover-art texture egui registered for the rendered
+    /// playlists. Scrolling a large playlist list registers a `bytes://` texture
+    /// per cover in egui's texture store; clearing the playlist data alone does
+    /// not drop those textures, so we free them explicitly via `ctx.forget_image`.
+    pub fn clear_sync(&self, ctx: &Context) {
+        let all = self.all_playlists.blocking_lock();
+        if let Some(playlists) = &*all {
+            for playlist in playlists {
+                if let Some(art) = &playlist.media {
+                    if let Some(uri) = cover_art_uri(&self.cache, art) {
+                        ctx.forget_image(&uri);
+                    }
+                }
+                if let Some(mosaic) = &playlist.mosaic_media {
+                    for art in mosaic {
+                        if let Some(uri) = cover_art_uri(&self.cache, art) {
+                            ctx.forget_image(&uri);
+                        }
+                    }
+                }
+            }
+        }
+        drop(all);
+
+        *self.playlists.blocking_lock() = LoadingState::Loading;
+        *self.all_playlists.blocking_lock() = None;
+        *self.selected_playlist.blocking_lock() = None;
+        *self.selected_playlist_id.blocking_lock() = None;
+        *self.track_search.blocking_lock() = String::new();
+        *self.has_more.blocking_lock() = true;
+        *self.loading_more.blocking_lock() = false;
+        *self.show_more_menu.blocking_lock() = false;
+        *self.more_menu_pos.blocking_lock() = None;
+        self.playlist_details.clear();
+        debug_log!("🧹 [Playlist Activity] Cleared memory and cover textures on navigation away.");
+    }
+
+    /// Re-fetches the playlist list from the server, repopulating the loaded
+    /// playlists after `clear_sync()`. Mirrors the fetch performed in `new()`.
+    pub fn refetch(&self) {
+        let cache_file = if self.is_personal {
+            "my_playlists.ron"
+        } else {
+            "playlists.ron"
+        };
+        let cache_path = playlist_cache_dir().join(cache_file);
+        let p = self.playlists.clone();
+        let ap = self.all_playlists.clone();
+        let hm = self.has_more.clone();
+        let songs = self.songs.clone();
+        let ctx = self.ctx.clone();
+        let is_personal = self.is_personal;
+        spawn(async move {
+            let result = if is_personal {
+                songs.get_user_playlists().await
+            } else {
+                songs.get_public_playlists(None, false, 0, 500).await
+            };
+            match result {
+                Ok(data) => {
+                    fonts::scan_playlists(&data);
+                    *ap.lock().await = Some(data.clone());
+                    let initial: Vec<_> = data.iter().take(20).cloned().collect();
+                    *p.lock().await = LoadingState::Loaded(initial);
+                    *hm.lock().await = data.len() > 20;
+                    if let Some(parent) = cache_path.parent() {
+                        let _ = tokio::fs::create_dir_all(parent).await;
+                    }
+                    let _ = write(
+                        cache_path,
+                        ser::to_string_pretty(&data, Default::default()).unwrap(),
+                    )
+                    .await;
+                }
+                Err(err) => {
+                    let mut p_lock = p.lock().await;
+                    if matches!(*p_lock, LoadingState::Loading) {
+                        *p_lock = LoadingState::Failed(Arc::new(err));
+                    }
+                }
+            }
+            ctx.request_repaint();
+        });
     }
 
     pub fn load_more(&self) {

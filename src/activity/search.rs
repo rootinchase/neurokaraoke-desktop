@@ -41,6 +41,16 @@ impl SearchActivity {
         }
     }
 
+    /// Frees the search state (the query text, sort options, and tracked song)
+    /// so the data held by the search activity is dropped when the user
+    /// navigates away. The next time Search is opened it starts fresh.
+    pub fn clear(&mut self) {
+        self.search.clear();
+        self.current_search_sort = SearchSortOption::Name;
+        self.current_search_sort_desc = false;
+        self._current_song_uuid = None;
+    }
+
     pub fn render(
         &mut self,
         ui: &mut Ui,

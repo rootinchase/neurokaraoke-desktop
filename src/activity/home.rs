@@ -180,6 +180,18 @@ impl HomeActivity {
         });
     }
 
+    /// Frees the loaded home data (suggested, trending, and setlist song lists)
+    /// by resetting every loading state back to `Loading` and clearing the
+    /// setlist name. Called when the user navigates away from Home so the
+    /// `Vec<SongDTO>` payloads held in memory are dropped. The next time Home
+    /// is opened the data is re-fetched.
+    pub fn clear(&self) {
+        *self.suggested_songs.blocking_lock() = LoadingState::Loading;
+        *self.trending_songs.blocking_lock() = LoadingState::Loading;
+        *self.setlist_songs.blocking_lock() = LoadingState::Loading;
+        *self.setlist_name.blocking_lock() = None;
+    }
+
     fn resolve_and_render_art(&self, ui: &mut Ui, cover_art: &Artwork, size: Vec2) {
         resolve_and_render_art(
             ui,

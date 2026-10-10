@@ -542,7 +542,7 @@ impl PersistentMediaCache {
 
         let mut evicted_count = 0;
         if total_size > max_size_bytes {
-            files.sort_by(|a, b| a.modified.cmp(&b.modified));
+            files.sort_by_key(|a| a.modified);
 
             for file in files {
                 if total_size <= max_size_bytes {

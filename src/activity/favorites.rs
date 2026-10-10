@@ -1,5 +1,5 @@
 use crate::activity::profile::ProfileActivity;
-use crate::activity::{render_mosaic, render_playlist_art, render_playlist_box};
+use crate::activity::{cover_art_uri, render_mosaic, render_playlist_art, render_playlist_box};
 use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongDTO};
 use crate::debug_log;
 use crate::theme::ThemeManager;
@@ -211,6 +211,56 @@ impl FavoritesActivity {
         self.favorite_songs.write().await.clear();
 
         debug_log!("🧹 [Favorites Activity] UI data tracks flushed to default baseline states.");
+    }
+
+    /// Clears the loaded favorite lists and releases every cover-art texture egui registered
+    /// for the rendered favorites. Scrolling the favorites list registers a `bytes://` texture
+    /// per playlist cover and per song-cover mosaic tile in egui's texture store; clearing the
+    /// lists alone does not drop those textures. `favorite_songs`/`favorite_playlists` are kept
+    /// because the player UI and playlist detail view read them on every page.
+    pub fn clear_sync(&self, ctx: &Context) {
+        let playlists = self.playlists.blocking_lock();
+        if let LoadingState::Loaded(list) = &*playlists {
+            for playlist in list {
+                if let Some(art) = &playlist.media {
+                    if let Some(uri) = cover_art_uri(&self.cache, art) {
+                        ctx.forget_image(&uri);
+                    }
+                }
+                if let Some(mosaic) = &playlist.mosaic_media {
+                    for art in mosaic {
+                        if let Some(uri) = cover_art_uri(&self.cache, art) {
+                            ctx.forget_image(&uri);
+                        }
+                    }
+                }
+            }
+        }
+        drop(playlists);
+
+        let songs = self.songs.blocking_lock();
+        if let LoadingState::Loaded(list) = &*songs {
+            for song in list {
+                if let Some(art) = &song.cover_art {
+                    if let Some(uri) = cover_art_uri(&self.cache, art) {
+                        ctx.forget_image(&uri);
+                    }
+                }
+            }
+        }
+        drop(songs);
+
+        *self.playlists.blocking_lock() = LoadingState::Loading;
+        *self.songs.blocking_lock() = LoadingState::Loading;
+        self.playlist_details.clear();
+        *self._selected_playlist.blocking_lock() = None;
+        self.is_fetching.store(false, Ordering::SeqCst);
+        debug_log!("🧹 [Favorites Activity] Cleared memory and cover textures on navigation away.");
+    }
+
+    /// Reloads the favorite playlists and songs after `clear_sync` freed them.
+    pub fn refetch(&self) {
+        self.fetch_favorites();
     }
 
     pub fn render(

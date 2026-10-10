@@ -124,7 +124,25 @@ impl UploadsActivity {
         });
     }
 
-    /// Opens the system file picker off the UI thread. `rfd` blocks the calling
+    /// Releases the loaded uploads list, quota, and transient UI state when the user navigates
+    /// away from Uploads. Uploads renders no cover art, so there are no textures to free.
+    /// `refetch` reloads the list and quota on reopening.
+    pub fn clear(&mut self) {
+        *self.songs.blocking_lock() = LoadingState::Loading;
+        *self.limits.blocking_lock() = None;
+        self.current_sort = SortOption::Date;
+        self.current_sort_desc = true;
+        self.show_url_panel = false;
+        self.url_input.clear();
+        self.pending.clear();
+        *self.feedback.blocking_lock() = UploadFeedback::Idle;
+        debug_log!("🧹 [Uploads Activity] Cleared memory on navigation away.");
+    }
+
+    /// Reloads the uploads list and quota after `clear` freed them.
+    pub fn refetch(&self) {
+        self.fetch_uploads();
+    }
     /// thread, so the dialog runs on the tokio blocking pool; the chosen paths land
     /// in `picked`, which `render` drains on the next frame.
     fn open_file_picker(&self) {

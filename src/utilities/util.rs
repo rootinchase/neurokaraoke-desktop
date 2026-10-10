@@ -60,30 +60,30 @@ pub fn sort_items<T>(
     match current_sort {
         SortOption::Name => {
             if *current_sort_desc {
-                items.sort_by(|a, b| get_name(b).to_lowercase().cmp(&get_name(a).to_lowercase()))
+                items.sort_by_key(|a| std::cmp::Reverse(get_name(a).to_lowercase()))
             } else {
-                items.sort_by(|a, b| get_name(a).to_lowercase().cmp(&get_name(b).to_lowercase()))
+                items.sort_by_key(|a| get_name(a).to_lowercase())
             }
         }
         SortOption::Songs => {
             if *current_sort_desc {
-                items.sort_by(|a, b| get_song_count(b).cmp(&get_song_count(a)))
+                items.sort_by_key(|a| std::cmp::Reverse(get_song_count(a)))
             } else {
-                items.sort_by(|a, b| get_song_count(a).cmp(&get_song_count(b)))
+                items.sort_by_key(|a| get_song_count(a))
             }
         }
         SortOption::Plays => {
             if *current_sort_desc {
-                items.sort_by(|a, b| get_play_count(b).cmp(&get_play_count(a)))
+                items.sort_by_key(|a| std::cmp::Reverse(get_play_count(a)))
             } else {
-                items.sort_by(|a, b| get_play_count(a).cmp(&get_play_count(b)))
+                items.sort_by_key(|a| get_play_count(a))
             }
         }
         SortOption::Date => {
             if *current_sort_desc {
-                items.sort_by(|a, b| get_date(b).cmp(&get_date(a)))
+                items.sort_by_key(|a| std::cmp::Reverse(get_date(a)))
             } else {
-                items.sort_by(|a, b| get_date(a).cmp(&get_date(b)))
+                items.sort_by_key(|a| get_date(a))
             }
         }
     }

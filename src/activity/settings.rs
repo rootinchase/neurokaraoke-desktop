@@ -37,6 +37,18 @@ impl SettingsActivity {
         self.storage_info = Some((total, free, our_usage, other_usage));
     }
 
+    /// Drops the cached storage figures and clear-cache status when the user navigates away
+    /// from Settings. `refetch` re-reads the storage figures on reopening.
+    pub fn clear(&mut self) {
+        self.storage_info = None;
+        self.clear_cache_status = None;
+    }
+
+    /// Re-reads the storage figures after `clear` dropped them.
+    pub fn refetch(&mut self) {
+        self.refresh_storage();
+    }
+
     pub fn render(
         &mut self,
         ui: &mut Ui,

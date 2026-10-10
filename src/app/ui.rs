@@ -195,6 +195,7 @@ impl eframe::App for App {
 
         // sidebar
         let mut temp_theme = self.config.theme;
+        let prev_activity = self.activity;
         activity::sidebar::render_sidebar(
             ui,
             &mut self.config,
@@ -207,6 +208,64 @@ impl eframe::App for App {
         if self.config.theme != temp_theme {
             self.config.theme = temp_theme;
             self.theme.set(self.config.theme.as_theme());
+        }
+
+        // Free memory when leaving Home: drop the loaded song lists so they no
+        // longer sit in RAM. Re-fetch them the next time Home is opened.
+        if self.activity != prev_activity {
+            if prev_activity == ActivityType::Home {
+                self.home_activity.clear();
+            }
+            if prev_activity == ActivityType::Search {
+                self.search_activity.clear();
+            }
+            if prev_activity == ActivityType::Profile {
+                self.profile_activity.clear();
+            }
+            if prev_activity == ActivityType::Playlists {
+                self.playlist_activity.clear_sync(ui.ctx());
+            }
+            if prev_activity == ActivityType::MyPlaylists {
+                self.my_playlist_activity.clear_sync(ui.ctx());
+            }
+            if prev_activity == ActivityType::Setlists {
+                self.setlist_activity.clear_sync(ui.ctx());
+            }
+            if prev_activity == ActivityType::Favorites {
+                self.favorites_activity.clear_sync(ui.ctx());
+            }
+            if prev_activity == ActivityType::Uploads {
+                self.uploads_activity.clear();
+            }
+            if prev_activity == ActivityType::Settings {
+                self.settings_activity.clear();
+            }
+            if self.activity == ActivityType::Home {
+                self.home_activity.fetch_suggested();
+                self.home_activity.fetch_trending();
+                self.home_activity.fetch_recent_setlist();
+            }
+            if self.activity == ActivityType::Profile {
+                self.profile_activity.refetch(&self.songs, &self.rt, ui.ctx().clone());
+            }
+            if self.activity == ActivityType::Playlists {
+                self.playlist_activity.refetch();
+            }
+            if self.activity == ActivityType::MyPlaylists {
+                self.my_playlist_activity.refetch();
+            }
+            if self.activity == ActivityType::Setlists {
+                self.setlist_activity.refetch();
+            }
+            if self.activity == ActivityType::Favorites {
+                self.favorites_activity.refetch();
+            }
+            if self.activity == ActivityType::Uploads {
+                self.uploads_activity.refetch();
+            }
+            if self.activity == ActivityType::Settings {
+                self.settings_activity.refetch();
+            }
         }
 
         if let Some(state) = self.player.get_playback_state() {
