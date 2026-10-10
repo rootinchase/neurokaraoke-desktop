@@ -457,6 +457,7 @@ impl App {
         } else if self.activity == ActivityType::Playlists {
             let mut player1 = self.player.clone();
             let mut player2 = self.player.clone();
+            let mut player3 = self.player.clone();
             self.playlist_activity.render(
                 ui,
                 &mut Some(&mut self.playlist_search),
@@ -464,6 +465,9 @@ impl App {
                 &mut self.current_playlist_sort_desc,
                 move |detail| {
                     play_playlist(&mut player1, &detail.songs, &detail.name);
+                },
+                move |detail| {
+                    shuffle_playlist(&mut player3, &detail.songs, &detail.name);
                 },
                 move |songs, song_id| {
                     play_song(&mut player2, songs, song_id, "Favorites");
@@ -474,6 +478,7 @@ impl App {
         } else if self.activity == ActivityType::MyPlaylists {
             let mut player1 = self.player.clone();
             let mut player2 = self.player.clone();
+            let mut player3 = self.player.clone();
             let username = self
                 .config
                 .auth
@@ -486,6 +491,9 @@ impl App {
                 &mut self.current_playlist_sort_desc,
                 move |detail| {
                     play_playlist(&mut player1, &detail.songs, &detail.name);
+                },
+                move |detail| {
+                    shuffle_playlist(&mut player3, &detail.songs, &detail.name);
                 },
                 move |songs, song_id| {
                     play_song(&mut player2, songs, song_id, "Favorites");
@@ -567,6 +575,28 @@ fn play_playlist(player: &mut Player, songs: &[SongDTO], name: &str) {
         Some(songs_vec.clone().into()),
         Some(name.to_string()),
     );
+    let _ = persistence::clear_app_state();
+
+    if let Some(first_song) = songs_vec.first() {
+        player.url_playback(Some(first_song.id), first_song.clone(), Player::play);
+    }
+}
+
+/// Shuffles a playlist into the player queue in random order, then starts
+/// playback from a random song (the first entry of the shuffled queue).
+fn shuffle_playlist(player: &mut Player, songs: &[SongDTO], name: &str) {
+    debug_log!("Shuffling playlist '{}' ({} songs).", name, songs.len());
+    let mut songs_vec = songs.to_vec();
+    songs_vec.shuffle(&mut rand::rng());
+    let pl: Vec<Uuid> = songs_vec.iter().map(|s| s.id).collect();
+
+    player.clear_playlist();
+    player.playlists(
+        Some(pl.clone().into()),
+        Some(songs_vec.clone().into()),
+        Some(name.to_string()),
+    );
+
     let _ = persistence::clear_app_state();
 
     if let Some(first_song) = songs_vec.first() {

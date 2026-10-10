@@ -1,5 +1,5 @@
 use crate::activity::SortOption;
-use crate::api::{LazySongDatabase, PlaylistDetail, SongDTO};
+use crate::api::{LazySongDatabase, PlaylistDetail, SongDTO, LoadingState};
 use crate::config::config_dir;
 use crate::utilities::cache;
 use chrono::Utc;
@@ -116,6 +116,42 @@ pub fn format_duration(seconds: u64) -> String {
     format!("{}:{:02}", seconds / 60, seconds % 60)
 }
 
+/// Formats a total playlist duration in seconds as a human-friendly string such as
+/// `3h 27 min` (when there is at least one hour) or `42 min` (under an hour).
+pub fn format_total_duration(seconds: u64) -> String {
+    let hours = seconds / 3600;
+    let minutes = (seconds % 3600) / 60;
+    if hours > 0 {
+        format!("{}h {} min", hours, minutes)
+    } else {
+        format!("{} min", minutes)
+    }
+}
+
+/// Formats a song/playlist play count the way the web app shows it: a compact
+/// value with one decimal — `1.1k` for thousands, `39.9k`, `3.0M` for millions,
+/// and a plain integer below 1,000.
+pub fn format_play_count(count: u64) -> String {
+    if count >= 1_000_000 {
+        format!("{:.1}M", count as f64 / 1_000_000.0)
+    } else if count >= 1_000 {
+        format!("{:.1}k", count as f64 / 1_000.0)
+    } else {
+        format!("{}", count)
+    }
+}
+
+/// Formats an ISO-8601 timestamp (e.g. `2026-04-14T00:00:00`) as a short
+/// `Date Added` label such as `Apr 14 2026`. Falls back to the raw string on parse failure.
+pub fn format_added_date(iso: &str) -> String {
+    let dt = match chrono::NaiveDateTime::parse_from_str(iso, "%Y-%m-%dT%H:%M:%S%.f") {
+        Ok(dt) => dt,
+        Err(_) => return iso.to_string(),
+    };
+    use chrono::Datelike;
+    format!("{} {} {}", dt.format("%b"), dt.day(), dt.year())
+}
+
 /// Redacts a username for logging. Long names keep their first two and last two
 /// characters so someone who already knows the username can confirm it matches, while
 /// outsiders cannot reconstruct it. Short names are masked down to the first character
@@ -147,24 +183,24 @@ pub fn spawn_fetch_playlist_details(
     rt: &tokio::runtime::Runtime,
     ctx: Option<&eframe::egui::Context>,
     db: &LazySongDatabase,
-    details: &Arc<dashmap::DashMap<Uuid, crate::api::LoadingState<PlaylistDetail>>>,
+    details: &Arc<dashmap::DashMap<Uuid, LoadingState<PlaylistDetail>>>,
     playlist_id: Uuid,
     playlist_name: Arc<str>,
 ) {
     if !details.contains_key(&playlist_id) {
-        details.insert(playlist_id, crate::api::LoadingState::Loading);
+        details.insert(playlist_id, LoadingState::Loading);
         let p_songs = db.clone();
         let p_details = details.clone();
         let ctx = ctx.cloned();
         rt.spawn(async move {
             match get_playlist_details_cached(playlist_id, &p_songs).await {
                 Ok(detail) => {
-                    p_details.insert(playlist_id, crate::api::LoadingState::Loaded(detail));
+                    p_details.insert(playlist_id, LoadingState::Loaded(detail));
                 }
                 Err(_) => {
                     p_details.insert(
                         playlist_id,
-                        crate::api::LoadingState::Loaded(PlaylistDetail {
+                        LoadingState::Loaded(PlaylistDetail {
                             name: playlist_name,
                             songs: vec![],
                         }),
@@ -180,11 +216,11 @@ pub fn spawn_fetch_playlist_details(
 
 pub async fn load_cached_song_list(
     cache_path: &std::path::Path,
-    state: &Arc<tokio::sync::Mutex<crate::api::LoadingState<Vec<SongDTO>>>>,
+    state: &Arc<Mutex<LoadingState<Vec<SongDTO>>>>,
 ) -> bool {
     if let Ok(data) = tokio::fs::read(cache_path).await {
         if let Ok(song_list) = from_bytes::<Vec<SongDTO>>(&data) {
-            *state.lock().await = crate::api::LoadingState::Loaded(song_list);
+            *state.lock().await = LoadingState::Loaded(song_list);
             return true;
         }
     }
@@ -310,6 +346,33 @@ mod tests {
         assert_eq!(format_duration(0), "0:00");
         assert_eq!(format_duration(65), "1:05");
         assert_eq!(format_duration(600), "10:00");
+    }
+
+    #[test]
+    fn test_format_total_duration() {
+        assert_eq!(format_total_duration(0), "0 min");
+        assert_eq!(format_total_duration(42 * 60), "42 min");
+        assert_eq!(format_total_duration(3 * 3600 + 27 * 60), "3h 27 min");
+        assert_eq!(format_total_duration(3600), "1h 0 min");
+    }
+
+    #[test]
+    fn test_format_play_count() {
+        assert_eq!(format_play_count(0), "0");
+        assert_eq!(format_play_count(1100), "1.1k");
+        assert_eq!(format_play_count(39900), "39.9k");
+        assert_eq!(format_play_count(105727), "105.7k");
+        assert_eq!(format_play_count(900000), "900.0k");
+        assert_eq!(format_play_count(3000000), "3.0M");
+        assert_eq!(format_play_count(4800000), "4.8M");
+    }
+
+    #[test]
+    fn test_format_added_date() {
+        assert_eq!(format_added_date("2026-04-14T00:00:00"), "Apr 14 2026");
+        assert_eq!(format_added_date("2026-12-01T12:30:00"), "Dec 1 2026");
+        // Unparseable input falls back to the raw string.
+        assert_eq!(format_added_date("not-a-date"), "not-a-date");
     }
 
     #[test]

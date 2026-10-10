@@ -303,6 +303,29 @@ impl LazySongDatabase {
         Ok(())
     }
 
+    /// Toggles a playlist favorite, `POST /api/favorites/toggle?itemId={id}&type=3`.
+    /// The server answers `200` with a bare JSON boolean (`true` when the playlist
+    /// is now favorited, `false` when it was removed).
+    pub async fn toggle_playlist_favorite(&self, playlist_id: Uuid) -> anyhow::Result<bool> {
+        debug_log!("Toggling playlist favorite: {}", playlist_id);
+        let url = format!(
+            "{}/api/favorites/toggle?itemId={}&type=3",
+            API_URLS.api, playlist_id
+        );
+        let request = self.client.post(url).header("content-length", "0");
+        let request = self.apply_auth(request).await;
+
+        let response = request.send().await?;
+        if !response.status().is_success() {
+            return Err(anyhow!(
+                "Failed to toggle playlist favorite: {}",
+                response.status()
+            ));
+        }
+        let is_favorite: bool = response.json().await?;
+        Ok(is_favorite)
+    }
+
     pub async fn report_play_count(&self, song_id: Uuid) -> anyhow::Result<()> {
         if song_id == uuid!("00000000-0000-0000-0000-000000000000") {
             return Ok(());

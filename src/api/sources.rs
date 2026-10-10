@@ -8,7 +8,7 @@ pub const ERR_UNSUPPORTED_PLATFORM: &str =
     "Unsupported platform. Only YouTube, Bilibili and Discord attachments are supported.";
 pub const ERR_INVALID_YOUTUBE_URL: &str = "Invalid YouTube URL. Must be a video or playlist.";
 
-/// A recognised upstream source for `POST /api/user/song/download-from-url`.
+/// A recognized upstream source for `POST /api/user/song/download-from-url`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SourceKind {
     YouTubeVideo { video_id: String },

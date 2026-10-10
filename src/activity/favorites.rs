@@ -32,6 +32,9 @@ pub struct FavoritesActivity {
     pub _selected_playlist: Arc<Mutex<Option<PlaylistDetail>>>,
     pub is_fetching: Arc<AtomicBool>,
     pub favorite_songs: Arc<RwLock<HashSet<Uuid>>>,
+    /// Playlist ids the user has favorited, shared with `PlaylistActivity` so the
+    /// playlist detail view can show and toggle the favorite state.
+    pub favorite_playlists: Arc<Mutex<HashSet<Uuid>>>,
 }
 
 impl FavoritesActivity {
@@ -41,6 +44,7 @@ impl FavoritesActivity {
         rt: Arc<Runtime>,
         client: Client,
         songs: LazySongDatabase,
+        favorite_playlists: Arc<Mutex<HashSet<Uuid>>>,
     ) -> Self {
         Self {
             ctx,
@@ -54,6 +58,7 @@ impl FavoritesActivity {
             _selected_playlist: Arc::new(Mutex::new(None)),
             is_fetching: Arc::new(AtomicBool::new(false)),
             favorite_songs: Arc::new(RwLock::new(HashSet::new())),
+            favorite_playlists,
         }
     }
 
@@ -103,6 +108,7 @@ impl FavoritesActivity {
         let is_fetching = self.is_fetching.clone();
         let details = self.playlist_details.clone();
         let rt = self.rt.clone();
+        let fp = self.favorite_playlists.clone();
 
         *p.blocking_lock() = LoadingState::Loading;
         *s.blocking_lock() = LoadingState::Loading;
@@ -123,6 +129,12 @@ impl FavoritesActivity {
                             playlist.id,
                             playlist.name.clone(),
                         );
+                    }
+                    {
+                        let mut set = fp.lock().await;
+                        for pl in &playlists {
+                            set.insert(pl.id);
+                        }
                     }
                     *p.lock().await = LoadingState::Loaded(playlists);
                     has_cached_playlists = true;
@@ -152,6 +164,13 @@ impl FavoritesActivity {
                             playlist.id,
                             playlist.name.clone(),
                         );
+                    }
+                    {
+                        let mut set = fp.lock().await;
+                        set.clear();
+                        for pl in &playlists {
+                            set.insert(pl.id);
+                        }
                     }
                     *p.lock().await = LoadingState::Loaded(playlists);
                 }

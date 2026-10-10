@@ -24,10 +24,12 @@ use crate::utilities::{
 use dashmap::DashMap;
 use eframe::egui;
 use egui_extras;
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::Mutex as TokioMutex;
 use uuid::Uuid;
 
 macro_rules! build_font_defs {
@@ -245,6 +247,11 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
 
     let tray_icon = TrayIconMenu::new(ctx);
 
+    // Shared set of favorited playlist ids, populated by `FavoritesActivity` and
+    // read by the playlist detail view to show/toggle the ♡ button.
+    let favorite_playlists: Arc<TokioMutex<HashSet<Uuid>>> =
+        Arc::new(TokioMutex::new(HashSet::new()));
+
     let app = App {
         cache: cache.clone(),
         songs: songs.clone(),
@@ -286,6 +293,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
             ctx.clone(),
             rt.clone(),
             client.clone(),
+            favorite_playlists.clone(),
         ),
         my_playlist_activity: PlaylistActivity::new(
             songs.clone(),
@@ -294,6 +302,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
             ctx.clone(),
             rt.clone(),
             client.clone(),
+            favorite_playlists.clone(),
         ),
         setlist_activity: {
             let setlist_activity = SetlistActivity::new(
@@ -350,6 +359,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
             rt.clone(),
             client.clone(),
             songs.clone(),
+            favorite_playlists.clone(),
         ),
         uploads_activity: UploadsActivity::new(ctx.clone(), songs.clone()),
         queue_activity: QueueActivity::new(songs.clone()),

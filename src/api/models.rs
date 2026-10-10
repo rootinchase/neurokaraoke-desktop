@@ -414,6 +414,7 @@ impl UploadSong {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UploadSongResult {
+    #[allow(dead_code)]
     pub success: bool,
     pub song_id: Uuid,
     pub title: String,
