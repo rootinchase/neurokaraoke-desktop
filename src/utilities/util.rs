@@ -13,6 +13,7 @@ use std::io::Write;
 use std::panic::catch_unwind;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::fs::{read, write};
 use tokio::runtime::Handle;
 use tokio::sync::Mutex;
@@ -44,6 +45,13 @@ pub fn create_reqwest_client() -> Client {
             "/",
             env!("CARGO_PKG_VERSION")
         ))
+        // Without a connect timeout a stalled endpoint hangs the request
+        // forever, leaving `in_flight` entries stuck in `InFlight` state and
+        // every task blocked on their `Notify` parked indefinitely. The shared
+        // client is also used for audio streaming, so the full-request timeout
+        // is applied per-request in `execute_download` (small image payloads)
+        // rather than globally here.
+        .connect_timeout(Duration::from_secs(10))
         .build()
         .unwrap_or_else(|_| Client::new())
 }

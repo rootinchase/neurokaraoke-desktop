@@ -60,7 +60,7 @@ mod defaults {
     /// beyond this are evicted least-recently-used first, and entries whose disk
     /// file has been evicted are dropped.
     pub fn art_path_max_entries() -> usize {
-        1000
+        100
     }
     /// Cap on the in-memory `in_flight` asset map in `PersistentMediaCache`.
     /// This map grows with every downloaded asset (audio, thumbnail, full image)
@@ -68,7 +68,7 @@ mod defaults {
     /// this are evicted least-recently-used first; dropped entries re-resolve
     /// from disk on the next access.
     pub fn in_flight_max_entries() -> usize {
-        1500
+        15
     }
 }
 

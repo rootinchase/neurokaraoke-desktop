@@ -154,9 +154,12 @@ impl PersistentMediaCache {
 
     /// Evicts the in-memory `in_flight` map down to `max_entries`. First drops
     /// complete entries whose disk file has been removed, then, beyond the cap,
-    /// drops the least-recently-used complete entries. In-flight downloads are
-    /// never evicted. The disk cache is the source of truth, so a dropped entry
-    /// is re-resolved (and re-downloaded if needed) on the next access.
+    /// drops the least-recently-used entries, including in-flight ones. When an
+    /// in-flight entry is dropped its `Notify` is fired so tasks blocked on it
+    /// wake up, loop, re-check disk, and re-download if needed — otherwise
+    /// stalled downloads would park their waiters forever. The disk cache is
+    /// the source of truth, so a dropped entry is re-resolved (and re-downloaded
+    /// if needed) on the next access.
     pub fn evict_in_flight(&self, max_entries: usize) {
         // Drop complete entries whose disk file no longer exists.
         self.in_flight.retain(|key, status| {
@@ -191,10 +194,28 @@ impl PersistentMediaCache {
             if to_remove == 0 {
                 break;
             }
-            self.in_flight.remove(&key);
+            // Waking the notify of an evicted in-flight entry releases every
+            // task blocked on it; they loop, see the entry is gone, and
+            // re-check disk / re-download on the next access.
+            if let Some((_, status)) = self.in_flight.remove(&key)
+                && let DownloadStatus::InFlight(notify) = status
+            {
+                notify.notify_waiters();
+            }
             self.in_flight_last_used.remove(&key);
             to_remove -= 1;
         }
+    }
+
+    /// Returns `true` when a download for this asset is currently in flight.
+    /// UI renderers call this to avoid spawning a duplicate download task on
+    /// every frame for artwork that is already being fetched (spawning per
+    /// frame for stalled/missing art accumulates blocked tasks unboundedly).
+    pub fn has_in_flight(&self, id: Uuid, asset_type: AssetType) -> bool {
+        self.in_flight
+            .get(&(id, asset_type))
+            .map(|s| matches!(s.value(), DownloadStatus::InFlight(_)))
+            .unwrap_or(false)
     }
 
     /// Scans the cache assets directory, ensures it exists, and purges all incomplete `.tmp` files.
@@ -332,7 +353,10 @@ impl PersistentMediaCache {
         }
 
         debug_log!("🚀 [Cache] Fetching from network: {}", url);
-        let response = self.client.get(&url).send().await?;
+        // Per-request timeout: image payloads are small, so a stalled
+        // response must fail fast and release the in-flight entry plus its
+        // blocked waiters instead of hanging the download task forever.
+        let response = self.client.get(&url).timeout(Duration::from_secs(30)).send().await?;
         let status = response.status();
         if !status.is_success() {
             debug_log!("⚠️ [Cache] Network returned status: {}", status);
@@ -835,6 +859,73 @@ mod tests {
             assert_eq!(cache.in_flight_len(), 1);
 
             let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+        });
+    }
+
+    #[test]
+    fn test_evict_in_flight_wakes_blocked_waiters() {
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            let client = create_reqwest_client();
+            let cache = PersistentMediaCache::new(client, 4);
+
+            // A stalled download parks its entry as InFlight with a Notify
+            // that its waiters block on.
+            let id = Uuid::new_v4();
+            let key = (id, AssetType::Image);
+            let notify = Arc::new(Notify::new());
+            cache.in_flight.insert(key, DownloadStatus::InFlight(notify.clone()));
+            cache.touch_in_flight(key);
+
+            // A waiter blocks on the Notify, mimicking `get_or_download_image`
+            // callers parked on a stalled download.
+            let notify_waiter = notify.clone();
+            let waiter = tokio::spawn(async move {
+                tokio::time::timeout(Duration::from_secs(2), notify_waiter.notified())
+                    .await
+                    .is_ok()
+            });
+
+            // `notify_waiters()` only wakes already-registered waiters, so let
+            // the waiter task reach `notified()` before evicting.
+            tokio::time::sleep(Duration::from_millis(50)).await;
+
+            // Evicting past the cap must drop the in-flight entry AND wake its
+            // waiters, so the blocked task is released instead of parked forever.
+            cache.evict_in_flight(0);
+            assert_eq!(cache.in_flight_len(), 0);
+            assert!(!cache.in_flight_last_used.contains_key(&key));
+            assert!(waiter.await.unwrap());
+        });
+    }
+
+    #[test]
+    fn test_has_in_flight_detects_inflight() {
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            let client = create_reqwest_client();
+            let cache = PersistentMediaCache::new(client, 4);
+            let id = Uuid::new_v4();
+            let key = (id, AssetType::Image);
+
+            // No entry -> not in flight.
+            assert!(!cache.has_in_flight(id, AssetType::Image));
+
+            // InFlight entry -> in flight, so renderers skip duplicate spawns.
+            cache
+                .in_flight
+                .insert(key, DownloadStatus::InFlight(Arc::new(Notify::new())));
+            assert!(cache.has_in_flight(id, AssetType::Image));
+
+            // Complete entry -> not in flight; a re-download may be spawned.
+            cache.in_flight.insert(
+                key,
+                DownloadStatus::Complete(std::path::PathBuf::from("/tmp/x.webp")),
+            );
+            assert!(!cache.has_in_flight(id, AssetType::Image));
+
+            // Other asset types are tracked independently.
+            assert!(!cache.has_in_flight(id, AssetType::FullImage));
         });
     }
 }

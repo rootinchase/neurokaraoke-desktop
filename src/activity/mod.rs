@@ -158,6 +158,15 @@ pub fn resolve_and_render_art(
             return;
         }
 
+    // Skip spawning a new download task when one is already in flight for
+    // this artwork. Without this guard, every frame spawns a task for
+    // missing/stalled art, and tasks blocked on a stalled download's Notify
+    // accumulate unboundedly.
+    if cache.has_in_flight(art_uuid, cache::AssetType::Image) {
+        render_fallback_art(ui, size);
+        return;
+    }
+
     let cache_clone = cache.clone();
     let _client_clone = client.clone();
     let ctx_clone = ctx.clone();
