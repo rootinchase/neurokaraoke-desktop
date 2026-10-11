@@ -379,7 +379,10 @@ impl PlaylistActivity {
                             e
                         );
                         if let Ok(file_data) = tokio::fs::read(&cache_path).await {
-                            if let Ok(cached_data) = de::from_bytes::<Vec<Playlist>>(&file_data) {
+                            if let Ok(mut cached_data) = de::from_bytes::<Vec<Playlist>>(&file_data) {
+                                for p in &mut cached_data {
+                                    songs.intern_playlist(p);
+                                }
                                 *all_opt = Some(cached_data.clone());
                                 cached_data
                             } else {

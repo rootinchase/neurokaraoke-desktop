@@ -270,7 +270,7 @@ impl App {
                 let cloudflare_id = if let Some(id) = self.current_song_uuid {
                     if let LoadingState::Loaded(song) = self.songs.get(&id, |s| s.cover_art.clone())
                     {
-                        song.and_then(|art| art.cloudflare_id.map(|cid| cid.to_string()))
+                        song.and_then(|art| art.cloudflare_id.as_ref().map(|cid| cid.to_string()))
                     } else {
                         None
                     }

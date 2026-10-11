@@ -95,7 +95,7 @@ impl UploadsActivity {
 
         tokio::spawn(async move {
             let cache_path = cache_dir().join("uploads.ron");
-            let has_cached = load_cached_song_list(&cache_path, &s).await;
+            let has_cached = load_cached_song_list(&cache_path, &s, &db).await;
 
             match db.get_user_uploads().await {
                 Ok(list) => {

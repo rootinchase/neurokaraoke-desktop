@@ -168,7 +168,7 @@ fn resolve_current_song(
                                 .clone()
                                 .map(|a| Arc::from([a.into()]))
                                 .unwrap_or_else(|| Arc::from([])),
-                            cover_art: Some(art),
+                            cover_art: Some(Arc::new(art)),
                             play_count: None,
                             duration: np.duration,
                         });
@@ -198,7 +198,7 @@ fn resolve_current_song(
                 opus: None,
                 cover_artists: Arc::from([]),
                 original_artists: Arc::from([]),
-                cover_art: Some(Artwork::default_art()),
+                cover_art: Some(Arc::new(Artwork::default_art())),
                 play_count: None,
                 duration: None,
             });

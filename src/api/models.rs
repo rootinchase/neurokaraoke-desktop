@@ -23,9 +23,9 @@ pub struct Playlist {
     #[serde(default, alias = "createdBy")]
     pub creator: Arc<str>,
 
-    pub media: Option<Artwork>,
+    pub media: Option<Arc<Artwork>>,
     #[serde_as(as = "Option<Vec<serde_with::DefaultOnNull>>")]
-    pub mosaic_media: Option<Vec<Artwork>>,
+    pub mosaic_media: Option<Vec<Arc<Artwork>>>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 
@@ -85,7 +85,7 @@ pub struct SongDTO {
         default = "default_cover_art",
         deserialize_with = "deserialize_cover_art"
     )]
-    pub cover_art: Option<Artwork>,
+    pub cover_art: Option<Arc<Artwork>>,
     #[serde(default, deserialize_with = "deserialize_artists")]
     pub original_artists: Arc<[Arc<str>]>,
     #[serde(default, deserialize_with = "deserialize_artists")]
@@ -117,16 +117,16 @@ pub struct Artist {
     pub user_id: Option<Uuid>,
 }
 
-pub fn default_cover_art() -> Option<Artwork> {
-    Some(Artwork::default_art())
+pub fn default_cover_art() -> Option<Arc<Artwork>> {
+    Some(Arc::new(Artwork::default_art()))
 }
 
-pub fn deserialize_cover_art<'de, D>(deserializer: D) -> Result<Option<Artwork>, D::Error>
+pub fn deserialize_cover_art<'de, D>(deserializer: D) -> Result<Option<Arc<Artwork>>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     let opt = Option::<Artwork>::deserialize(deserializer)?;
-    Ok(Some(opt.unwrap_or_else(Artwork::default_art)))
+    Ok(Some(Arc::new(opt.unwrap_or_else(Artwork::default_art))))
 }
 
 #[serde_as]
@@ -190,7 +190,7 @@ pub struct Song {
         default = "default_cover_art",
         deserialize_with = "deserialize_cover_art"
     )]
-    pub cover_art: Option<Artwork>,
+    pub cover_art: Option<Arc<Artwork>>,
     #[serde(rename = "playCount", default)]
     pub play_count: Option<u64>,
     #[serde(rename = "duration", default)]
@@ -392,6 +392,11 @@ pub struct LazySongDatabase {
     pub last_used: Arc<DashMap<Uuid, u64>>,
     /// Monotonic access counter shared across all clones of the database.
     pub counter: Arc<AtomicU64>,
+    /// Interned cover-art objects keyed by artwork id. Songs, playlist media,
+    /// and mosaic covers that share the same artwork id share one `Arc<Artwork>`,
+    /// so cover-art metadata is stored once per unique artwork instead of once
+    /// per song/playlist.
+    pub artwork_cache: Arc<DashMap<String, Arc<Artwork>>>,
 }
 
 /// Payload for `POST /api/user/song/download-from-url` on the IDK host. The server

@@ -125,28 +125,32 @@ impl FavoritesActivity {
 
             let mut has_cached_playlists = false;
             if let Ok(data) = read(&playlists_cache_path).await
-                && let Ok(playlists) = from_bytes::<Vec<Playlist>>(&data) {
-                    for playlist in &playlists {
-                        spawn_fetch_playlist_details(
-                            &rt,
-                            None,
-                            &db,
-                            &details,
-                            playlist.id,
-                            playlist.name.clone(),
-                        );
-                    }
-                    {
-                        let mut set = fp.lock().await;
-                        for pl in &playlists {
-                            set.insert(pl.id);
-                        }
-                    }
-                    *p.lock().await = LoadingState::Loaded(playlists);
-                    has_cached_playlists = true;
+                && let Ok(mut playlists) = from_bytes::<Vec<Playlist>>(&data)
+            {
+                for p in &mut playlists {
+                    db.intern_playlist(p);
                 }
+                for playlist in &playlists {
+                    spawn_fetch_playlist_details(
+                        &rt,
+                        None,
+                        &db,
+                        &details,
+                        playlist.id,
+                        playlist.name.clone(),
+                    );
+                }
+                {
+                    let mut set = fp.lock().await;
+                    for pl in &playlists {
+                        set.insert(pl.id);
+                    }
+                }
+                *p.lock().await = LoadingState::Loaded(playlists);
+                has_cached_playlists = true;
+            }
 
-            let has_cached_songs = load_cached_song_list(&songs_cache_path, &s).await;
+            let has_cached_songs = load_cached_song_list(&songs_cache_path, &s, &db).await;
 
             // Fetch playlists
             match db.fetch_favorite_playlists().await {

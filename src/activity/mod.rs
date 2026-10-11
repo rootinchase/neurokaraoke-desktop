@@ -217,7 +217,7 @@ pub fn render_mosaic(
     let size = Vec2::new(150.0, 150.0);
     let valid_covers: Vec<&Artwork> = songs_list
         .iter()
-        .filter_map(|s| s.cover_art.as_ref())
+        .filter_map(|s| s.cover_art.as_deref())
         .collect();
 
     if valid_covers.is_empty() {
@@ -535,7 +535,7 @@ pub fn render_playlist_art_advanced(
         .is_some_and(|m| !m.is_empty());
     if mosaic_valid
         && let Some(mosaic) = &playlist.mosaic_media {
-            let valid_mosaic: Vec<&Artwork> = mosaic.iter().collect();
+            let valid_mosaic: Vec<&Artwork> = mosaic.iter().map(|a| a.as_ref()).collect();
             if !valid_mosaic.is_empty() {
                 render_mosaic_covers(
                     ui,
@@ -552,7 +552,7 @@ pub fn render_playlist_art_advanced(
         }
 
     let valid_song_covers: Vec<&Artwork> =
-        songs.iter().filter_map(|s| s.cover_art.as_ref()).collect();
+        songs.iter().filter_map(|s| s.cover_art.as_deref()).collect();
     if !valid_song_covers.is_empty() {
         render_mosaic_covers(
             ui,

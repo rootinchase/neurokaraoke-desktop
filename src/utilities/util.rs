@@ -225,12 +225,17 @@ pub fn spawn_fetch_playlist_details(
 pub async fn load_cached_song_list(
     cache_path: &std::path::Path,
     state: &Arc<Mutex<LoadingState<Vec<SongDTO>>>>,
+    songs: &LazySongDatabase,
 ) -> bool {
     if let Ok(data) = tokio::fs::read(cache_path).await
-        && let Ok(song_list) = from_bytes::<Vec<SongDTO>>(&data) {
-            *state.lock().await = LoadingState::Loaded(song_list);
-            return true;
+        && let Ok(mut song_list) = from_bytes::<Vec<SongDTO>>(&data)
+    {
+        for dto in &mut song_list {
+            songs.intern_song_dto(dto);
         }
+        *state.lock().await = LoadingState::Loaded(song_list);
+        return true;
+    }
     false
 }
 
@@ -343,9 +348,11 @@ pub async fn get_playlist_details_cached(
 
     let mut cached_detail = None;
     if let Ok(data) = read(&cache_path).await
-        && let Ok(detail) = from_bytes::<PlaylistDetail>(&data) {
-            cached_detail = Some(detail);
-        }
+        && let Ok(mut detail) = from_bytes::<PlaylistDetail>(&data)
+    {
+        songs.intern_playlist_detail(&mut detail);
+        cached_detail = Some(detail);
+    }
 
     match songs.get_playlist_details(id).await {
         Ok(data) => {

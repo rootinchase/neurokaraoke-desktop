@@ -66,7 +66,7 @@ impl HomeActivity {
 
         tokio::spawn(async move {
             let cache_path = cache_dir().join("home_suggested.ron");
-            let has_cached = load_cached_song_list(&cache_path, &songs_state).await;
+            let has_cached = load_cached_song_list(&cache_path, &songs_state, &songs).await;
 
             match songs.get_suggested(20).await {
                 Ok(data) => {
@@ -95,7 +95,7 @@ impl HomeActivity {
 
         tokio::spawn(async move {
             let cache_path = cache_dir().join("home_trending.ron");
-            let has_cached = load_cached_song_list(&cache_path, &songs_state).await;
+            let has_cached = load_cached_song_list(&cache_path, &songs_state, &songs).await;
 
             match songs.get_trending(TrendingTimes::Week).await {
                 Ok(data) => {
@@ -127,11 +127,15 @@ impl HomeActivity {
             let cache_path = cache_dir().join("home_recent_setlist.ron");
             let mut has_cached = false;
             if let Ok(data) = read(&cache_path).await
-                && let Ok(cached) = from_bytes::<CachedSetlist>(&data) {
-                    *setlist_name.lock().await = cached.name;
-                    *songs_state.lock().await = LoadingState::Loaded(cached.songs);
-                    has_cached = true;
+                && let Ok(mut cached) = from_bytes::<CachedSetlist>(&data)
+            {
+                for dto in &mut cached.songs {
+                    songs.intern_song_dto(dto);
                 }
+                *setlist_name.lock().await = cached.name;
+                *songs_state.lock().await = LoadingState::Loaded(cached.songs);
+                has_cached = true;
+            }
 
             match songs.get_official_setlists(2026).await {
                 Ok(data) => {

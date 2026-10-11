@@ -1,6 +1,6 @@
 use crate::api::sources::classify_source_url;
 use crate::api::{
-    API_URLS, AzuraCastNowPlayingResponse, FavoriteEntry, FavoriteItem, FileUpload,
+    API_URLS, Artwork, AzuraCastNowPlayingResponse, FavoriteEntry, FavoriteItem, FileUpload,
     GameHubScheduledInfo, LazySongDatabase, LoadingState, Playlist, PlaylistDetail,
     ProfileResponse, RadioCurrentStateResponse, SetlistStats, Song, SongDTO, TrendingTimes,
     UploadSong, UploadSongResult, UserLimits,
@@ -35,6 +35,44 @@ impl LazySongDatabase {
             shared_config,
             last_used: Arc::new(DashMap::new()),
             counter: Arc::new(AtomicU64::new(0)),
+            artwork_cache: Arc::new(DashMap::new()),
+        }
+    }
+
+    /// Interns a deserialized cover-art object by its artwork id, returning the
+    /// shared `Arc<Artwork>` for that id. Songs, playlist media, and mosaic covers
+    /// that reference the same artwork id share one allocation, so cover-art
+    /// metadata is stored once per unique artwork.
+    pub fn intern_artwork(&self, art: Option<Arc<Artwork>>) -> Option<Arc<Artwork>> {
+        let art = art?;
+        let id = art.id.clone();
+        if let Some(existing) = self.artwork_cache.get(&id) {
+            return Some(existing.clone());
+        }
+        self.artwork_cache.insert(id, art.clone());
+        Some(art)
+    }
+
+    pub fn intern_song(&self, song: &mut Song) {
+        song.cover_art = self.intern_artwork(song.cover_art.take());
+    }
+
+    pub fn intern_song_dto(&self, dto: &mut SongDTO) {
+        dto.cover_art = self.intern_artwork(dto.cover_art.take());
+    }
+
+    pub fn intern_playlist(&self, p: &mut Playlist) {
+        p.media = self.intern_artwork(p.media.take());
+        p.mosaic_media = p.mosaic_media.take().map(|v| {
+            v.into_iter()
+                .filter_map(|a| self.intern_artwork(Some(a)))
+                .collect()
+        });
+    }
+
+    pub fn intern_playlist_detail(&self, d: &mut PlaylistDetail) {
+        for dto in &mut d.songs {
+            self.intern_song_dto(dto);
         }
     }
 
@@ -134,7 +172,11 @@ impl LazySongDatabase {
 
         let items: Vec<FavoriteItem> = response.json().await?;
 
-        let playlists: Vec<Playlist> = items.into_iter().filter_map(|item| item.playlist).collect();
+        let mut playlists: Vec<Playlist> =
+            items.into_iter().filter_map(|item| item.playlist).collect();
+        for p in &mut playlists {
+            self.intern_playlist(p);
+        }
 
         fonts::scan_playlists(&playlists);
         Ok(playlists)
@@ -181,7 +223,10 @@ impl LazySongDatabase {
         }
 
         let json: Value = response.json().await?;
-        let playlists: Vec<Playlist> = serde_json::from_value(json)?;
+        let mut playlists: Vec<Playlist> = serde_json::from_value(json)?;
+        for p in &mut playlists {
+            self.intern_playlist(p);
+        }
         fonts::scan_playlists(&playlists);
         Ok(playlists)
     }
@@ -198,7 +243,10 @@ impl LazySongDatabase {
         }
 
         let json: Value = response.json().await?;
-        let playlists: Vec<Playlist> = serde_json::from_value(json)?;
+        let mut playlists: Vec<Playlist> = serde_json::from_value(json)?;
+        for p in &mut playlists {
+            self.intern_playlist(p);
+        }
         fonts::scan_playlists(&playlists);
         Ok(playlists)
     }
@@ -217,7 +265,10 @@ impl LazySongDatabase {
         }
 
         let json: Value = response.json().await?;
-        let playlists: Vec<Playlist> = serde_json::from_value(json)?;
+        let mut playlists: Vec<Playlist> = serde_json::from_value(json)?;
+        for p in &mut playlists {
+            self.intern_playlist(p);
+        }
         Ok(playlists)
     }
 
@@ -433,8 +484,9 @@ impl LazySongDatabase {
         for v in items {
             match serde_json::from_value::<FavoriteEntry>(v.clone()) {
                 Ok(fav_entry) => {
-                    if let Some(song) = fav_entry.song {
+                    if let Some(mut song) = fav_entry.song {
                         if song.is_valid() {
+                            self.intern_song_dto(&mut song);
                             songs.push(song);
                         } else {
                             debug_log!(
@@ -495,10 +547,12 @@ impl LazySongDatabase {
                 .unwrap_or(v.clone());
 
             match serde_json::from_value::<SongDTO>(song_value.clone()) {
-                Ok(dto) => {
+                Ok(mut dto) => {
                     if dto.is_valid() {
+                        self.intern_song_dto(&mut dto);
                         // Populate the lazy song DB so artwork/audio/playback resolve.
-                        if let Ok(song) = serde_json::from_value::<Song>(song_value) {
+                        if let Ok(mut song) = serde_json::from_value::<Song>(song_value) {
+                            self.intern_song(&mut song);
                             self.map.insert(dto.id, LoadingState::Loaded(song));
                         }
                         songs.push(dto);
@@ -531,7 +585,8 @@ impl LazySongDatabase {
         }
 
         let json: Value = response.json().await?;
-        let detail: PlaylistDetail = serde_json::from_value(json)?;
+        let mut detail: PlaylistDetail = serde_json::from_value(json)?;
+        self.intern_playlist_detail(&mut detail);
         fonts::scan_playlist_detail(&detail);
         // debug_log!("Deserialized PlaylistDetail: {:?}", detail);
 
@@ -551,7 +606,10 @@ impl LazySongDatabase {
             ));
         }
 
-        let songs: Vec<SongDTO> = response.json().await?;
+        let mut songs: Vec<SongDTO> = response.json().await?;
+        for dto in &mut songs {
+            self.intern_song_dto(dto);
+        }
         fonts::scan_song_dtos(&songs);
         Ok(songs)
     }
@@ -570,7 +628,10 @@ impl LazySongDatabase {
             ));
         }
 
-        let songs: Vec<SongDTO> = response.json().await?;
+        let mut songs: Vec<SongDTO> = response.json().await?;
+        for dto in &mut songs {
+            self.intern_song_dto(dto);
+        }
         fonts::scan_song_dtos(&songs);
         Ok(songs)
     }
@@ -606,7 +667,10 @@ impl LazySongDatabase {
                 .await
                 .map_err(Arc::new)
                 {
-                    Ok(song) => LoadingState::Loaded(song),
+                    Ok(mut song) => {
+                        db_self.intern_song(&mut song);
+                        LoadingState::Loaded(song)
+                    }
                     Err(err) => LoadingState::Failed(err),
                 };
                 if let LoadingState::Loaded(song) = &state {
@@ -671,7 +735,8 @@ impl LazySongDatabase {
                     .ok_or_else(|| anyhow!("song missing id???"))?,
             )?;
             match serde_json::from_value::<Song>(value) {
-                Ok(song) => {
+                Ok(mut song) => {
+                    self.intern_song(&mut song);
                     fonts::scan_song(&song);
                     result.push(LoadingState::Loaded(f(&song)));
                     self.map.insert(id, LoadingState::Loaded(song));
@@ -701,9 +766,16 @@ impl LazySongDatabase {
                 response.status()
             ));
         }
-        let data: RadioCurrentStateResponse = response.json().await?;
-        if let Some(current) = &data.current {
+        let mut data: RadioCurrentStateResponse = response.json().await?;
+        if let Some(current) = &mut data.current {
+            self.intern_song_dto(current);
             fonts::scan_song_dto(current);
+        }
+        for dto in &mut data.upcoming {
+            self.intern_song_dto(dto);
+        }
+        for dto in &mut data.history {
+            self.intern_song_dto(dto);
         }
         fonts::scan_song_dtos(&data.upcoming);
         fonts::scan_song_dtos(&data.history);
@@ -891,5 +963,177 @@ mod tests {
         db.evict_to_fit(1, &[]);
         assert!(db.map.contains_key(&loading));
         assert!(!db.map.contains_key(&loaded));
+    }
+
+    fn artwork(id: &str) -> Arc<Artwork> {
+        Arc::new(Artwork {
+            id: id.to_string(),
+            file_name: Arc::from(""),
+            cloudflare_id: Some(Arc::from(id)),
+            absolute_path: Arc::from(""),
+            artist: None,
+            is_sensitive: false,
+        })
+    }
+
+    fn dto(id: Uuid, art_id: &str) -> SongDTO {
+        SongDTO {
+            id,
+            title: "".into(),
+            opus: None,
+            audio_url: None,
+            absolute_path: None,
+            oss: None,
+            cover_art: Some(artwork(art_id)),
+            original_artists: Arc::from(Vec::<Arc<str>>::new()),
+            cover_artists: Arc::from(Vec::<Arc<str>>::new()),
+            play_count: None,
+            stream_date: None,
+            duration: None,
+            user_uploaded: false,
+        }
+    }
+
+    fn playlist(media_id: &str, mosaic_ids: Vec<&str>) -> Playlist {
+        Playlist {
+            id: Uuid::new_v4(),
+            name: "".into(),
+            creator: "".into(),
+            media: Some(artwork(media_id)),
+            mosaic_media: Some(mosaic_ids.into_iter().map(artwork).collect()),
+            created_at: None,
+            updated_at: None,
+            description: "".into(),
+            song_count: 0,
+            play_count: 0,
+            favorite_count: None,
+            playlist_type: None,
+            editable: false,
+            deletable: false,
+            is_public: false,
+            is_set_list: false,
+            set_list_date: None,
+        }
+    }
+
+    #[test]
+    fn intern_artwork_shares_one_arc_per_id() {
+        let db = make_db();
+        let first = db.intern_artwork(Some(artwork("art-1"))).unwrap();
+        let second = db.intern_artwork(Some(artwork("art-1"))).unwrap();
+        // Same artwork id -> the exact same Arc allocation.
+        assert!(Arc::ptr_eq(&first, &second));
+        // Only one entry cached for that id.
+        assert_eq!(db.artwork_cache.len(), 1);
+    }
+
+    #[test]
+    fn intern_artwork_keeps_distinct_ids_separate() {
+        let db = make_db();
+        let a = db.intern_artwork(Some(artwork("art-1"))).unwrap();
+        let b = db.intern_artwork(Some(artwork("art-2"))).unwrap();
+        assert!(!Arc::ptr_eq(&a, &b));
+        assert_eq!(db.artwork_cache.len(), 2);
+    }
+
+    #[test]
+    fn intern_artwork_none_stays_none() {
+        let db = make_db();
+        assert!(db.intern_artwork(None).is_none());
+        assert_eq!(db.artwork_cache.len(), 0);
+    }
+
+    #[test]
+    fn intern_song_dto_shares_artwork_across_dtos() {
+        let db = make_db();
+        let mut a = dto(Uuid::new_v4(), "shared");
+        let mut b = dto(Uuid::new_v4(), "shared");
+        db.intern_song_dto(&mut a);
+        db.intern_song_dto(&mut b);
+        assert!(Arc::ptr_eq(
+            a.cover_art.as_ref().unwrap(),
+            b.cover_art.as_ref().unwrap()
+        ));
+        assert_eq!(db.artwork_cache.len(), 1);
+    }
+
+    #[test]
+    fn intern_song_shares_artwork_with_dto() {
+        let db = make_db();
+        let mut dto = dto(Uuid::new_v4(), "shared");
+        let mut song = song(Uuid::new_v4());
+        song.cover_art = Some(artwork("shared"));
+        db.intern_song_dto(&mut dto);
+        db.intern_song(&mut song);
+        assert!(Arc::ptr_eq(
+            dto.cover_art.as_ref().unwrap(),
+            song.cover_art.as_ref().unwrap()
+        ));
+        assert_eq!(db.artwork_cache.len(), 1);
+    }
+
+    #[test]
+    fn intern_playlist_interns_media_and_mosaic() {
+        let db = make_db();
+        // Seed the cache with the shared artwork via a DTO.
+        let mut dto = dto(Uuid::new_v4(), "media");
+        db.intern_song_dto(&mut dto);
+
+        let mut p = playlist("media", vec!["media", "mosaic"]);
+        db.intern_playlist(&mut p);
+
+        // media shares the DTO's Arc.
+        assert!(Arc::ptr_eq(
+            p.media.as_ref().unwrap(),
+            dto.cover_art.as_ref().unwrap()
+        ));
+        // mosaic[0] shares the same Arc as media; mosaic[1] is its own.
+        let mosaic = p.mosaic_media.as_ref().unwrap();
+        assert_eq!(mosaic.len(), 2);
+        assert!(Arc::ptr_eq(&mosaic[0], p.media.as_ref().unwrap()));
+        assert!(!Arc::ptr_eq(&mosaic[1], p.media.as_ref().unwrap()));
+        // Two unique ids cached: "media" and "mosaic".
+        assert_eq!(db.artwork_cache.len(), 2);
+    }
+
+    #[test]
+    fn intern_playlist_detail_shares_artwork() {
+        let db = make_db();
+        let mut seed = dto(Uuid::new_v4(), "shared");
+        db.intern_song_dto(&mut seed);
+
+        let mut detail = PlaylistDetail {
+            name: "".into(),
+            songs: vec![dto(Uuid::new_v4(), "shared"), dto(Uuid::new_v4(), "other")],
+        };
+        db.intern_playlist_detail(&mut detail);
+
+        assert!(Arc::ptr_eq(
+            detail.songs[0].cover_art.as_ref().unwrap(),
+            seed.cover_art.as_ref().unwrap()
+        ));
+        assert!(!Arc::ptr_eq(
+            detail.songs[0].cover_art.as_ref().unwrap(),
+            detail.songs[1].cover_art.as_ref().unwrap()
+        ));
+        assert_eq!(db.artwork_cache.len(), 2);
+    }
+
+    #[test]
+    fn default_cover_art_interns_to_one_arc() {
+        let db = make_db();
+        // Songs with no cover art deserialize to the default artwork, which has a
+        // fixed id, so every default cover shares one interned Arc.
+        let mut a = dto(Uuid::new_v4(), "x");
+        a.cover_art = crate::api::models::default_cover_art();
+        let mut b = dto(Uuid::new_v4(), "y");
+        b.cover_art = crate::api::models::default_cover_art();
+        db.intern_song_dto(&mut a);
+        db.intern_song_dto(&mut b);
+        assert!(Arc::ptr_eq(
+            a.cover_art.as_ref().unwrap(),
+            b.cover_art.as_ref().unwrap()
+        ));
+        assert_eq!(db.artwork_cache.len(), 1);
     }
 }
