@@ -226,6 +226,32 @@ pub async fn load_cached_song_list(
     false
 }
 
+/// Reads the current resident set size (VmRSS) from `/proc/self/status` on
+/// Linux. Returns `None` on platforms where this is unavailable. Used to
+/// profile the dominant memory allocations (egui texture store, song map,
+/// artwork path cache) before and after navigation.
+pub fn current_rss_mb() -> Option<f64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    for line in status.lines() {
+        if let Some(rest) = line.strip_prefix("VmRSS:") {
+            let kb: f64 = rest.split_whitespace().next()?.parse().ok()?;
+            return Some(kb / 1024.0);
+        }
+    }
+    None
+}
+
+/// Logs the current RSS when `DEBUG_MEMORY` is set, so the user can profile
+/// memory growth at key points (startup, navigation, eviction) without
+/// affecting normal runs.
+pub fn log_memory(tag: &str) {
+    if std::env::var("DEBUG_MEMORY").is_ok()
+        && let Some(rss) = current_rss_mb()
+        {
+            crate::debug_log!("[mem] {tag}: RSS {:.1} MB", rss);
+        }
+}
+
 pub fn write_debug_log(msg: &str) {
     let log_path = catch_unwind(|| config_dir().join("debug.log")).unwrap_or_else(|_| {
         if let Some(dir) = dirs::config_dir() {

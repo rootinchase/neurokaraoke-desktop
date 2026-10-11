@@ -152,8 +152,8 @@ impl ProfileActivity {
 
     pub fn resolve_badge_image(
         &mut self,
-        ctx: &egui::Context,
-        rt: &tokio::runtime::Runtime,
+        ctx: &Context,
+        rt: &Runtime,
         badge_id: &str,
         image_path: &str,
     ) {
@@ -196,7 +196,7 @@ impl ProfileActivity {
         });
     }
 
-    pub fn try_load_avatar(&mut self, ctx: &egui::Context, rt: &tokio::runtime::Runtime) {
+    pub fn try_load_avatar(&mut self, ctx: &Context, rt: &Runtime) {
         let url = self
             .state
             .profile_data
@@ -212,8 +212,8 @@ impl ProfileActivity {
 
     pub fn resolve_avatar_uri(
         &mut self,
-        ctx: &egui::Context,
-        rt: &tokio::runtime::Runtime,
+        ctx: &Context,
+        rt: &Runtime,
         avatar_url: &str,
     ) {
         if matches!(self.state.avatar_state, AvatarState::Downloading) {
@@ -261,7 +261,7 @@ impl ProfileActivity {
         theme: &ThemeManager,
         current_auth: &Option<AuthContext>,
         auth_service: &AuthService,
-        rt: &Arc<tokio::runtime::Runtime>,
+        rt: &Arc<Runtime>,
     ) {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])

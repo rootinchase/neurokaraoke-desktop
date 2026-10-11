@@ -1,5 +1,6 @@
 use crate::activity::{
-    build_playlist_table, render_duration_label, render_fallback_art, resolve_and_render_art,
+    build_playlist_table, cover_art_uri, render_duration_label, render_fallback_art,
+    resolve_and_render_art,
 };
 use crate::api::{Artwork, LazySongDatabase, LoadingState, SongDTO, TrendingTimes};
 use crate::theme::ThemeManager;
@@ -184,7 +185,29 @@ impl HomeActivity {
     /// setlist name. Called when the user navigates away from Home so the
     /// `Vec<SongDTO>` payloads held in memory are dropped. The next time Home
     /// is opened the data is re-fetched.
-    pub fn clear(&self) {
+    /// Releases the cover-art textures registered for Home's loaded song lists
+    /// (via `Context::forget_image`), then drops the lists. Textures are the
+    /// largest per-song memory cost, so freeing them on navigation away is the
+    /// main memory win. The next time Home is opened the lists re-fetch and the
+    /// textures re-register.
+    pub fn clear_sync(&self, ctx: &Context) {
+        for list in [
+            &self.suggested_songs,
+            &self.trending_songs,
+            &self.setlist_songs,
+        ] {
+            let guard = list.blocking_lock();
+            if let LoadingState::Loaded(songs) = &*guard {
+                for song in songs {
+                    if let Some(art) = &song.cover_art
+                        && let Some(uri) = cover_art_uri(&self.cache, art)
+                    {
+                        ctx.forget_image(&uri);
+                    }
+                }
+            }
+            drop(guard);
+        }
         *self.suggested_songs.blocking_lock() = LoadingState::Loading;
         *self.trending_songs.blocking_lock() = LoadingState::Loading;
         *self.setlist_songs.blocking_lock() = LoadingState::Loading;

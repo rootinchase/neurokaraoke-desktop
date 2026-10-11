@@ -7,7 +7,7 @@ use crate::activity::{
 use chrono::{Timelike, Utc};
 
 use crate::api::{LazySongDatabase, ProfileResponse, UserLimits};
-use crate::app::state::App;
+use crate::app::state::{evict_art_paths, App};
 use crate::app::system_tray::TrayIconMenu;
 use crate::audio::Player;
 use crate::config::Config;
@@ -20,11 +20,13 @@ use crate::utilities::{
     integration,
     persistence::handle_signals,
     util::create_reqwest_client,
+    util::log_memory,
 };
 use dashmap::DashMap;
 use eframe::egui;
 use egui_extras;
 use std::collections::HashSet;
+use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::runtime::Runtime;
@@ -182,9 +184,33 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
         handle_signals(signal_player, signal_config).await;
     });
 
+    // Shared set of favorited playlist ids, populated by `FavoritesActivity` and
+    // read by the playlist detail view to show/toggle the ♡ button.
+    let favorite_playlists: Arc<TokioMutex<HashSet<Uuid>>> =
+        Arc::new(TokioMutex::new(HashSet::new()));
+
+    let favorites_activity = FavoritesActivity::new(
+        ctx.clone(),
+        cache.clone(),
+        rt.clone(),
+        client.clone(),
+        songs.clone(),
+        favorite_playlists.clone(),
+    );
+
+    // In-memory artwork reference cache and its LRU access-order tracker, shared
+    // between the App and the background eviction loop.
+    let cached_art_paths: Arc<DashMap<Arc<str>, String>> = Arc::new(DashMap::new());
+    let art_last_used: Arc<DashMap<Arc<str>, u64>> = Arc::new(DashMap::new());
+    let art_counter: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
+
     let s = songs.clone();
     let cc = config.cache.clone();
     let cache_clone = cache.clone();
+    let player_for_evict = player.clone();
+    let favs_for_evict = favorites_activity.clone();
+    let cached_art_paths_for_evict = cached_art_paths.clone();
+    let art_last_used_for_evict = art_last_used.clone();
     let last_update: Arc<Mutex<Option<Instant>>> = Arc::default();
 
     rt.spawn(async move {
@@ -202,6 +228,45 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
             let _ = cache_clone
                 .evict(Duration::from_secs(expiration), size_limit_bytes)
                 .await;
+
+            // In-memory LRU eviction for the song database and artwork cache.
+            let (song_map_max, art_path_max, in_flight_max) = {
+                let guard = cc.lock().await;
+                (
+                    guard.song_map_max_entries,
+                    guard.art_path_max_entries,
+                    guard.in_flight_max_entries,
+                )
+            };
+
+            let mut pinned: Vec<Uuid> = Vec::new();
+            if let Some(state) = player_for_evict.get_playback_state() {
+                pinned.push(state.song());
+            }
+            if let Some(pl) = player_for_evict.get_playlist() {
+                pinned.extend(pl.iter().copied());
+            }
+            if let Some(upl) = player_for_evict.get_url_playlist() {
+                pinned.extend(upl.iter().map(|d| d.id));
+            }
+            let favs = favs_for_evict.favorite_songs.read().await;
+            pinned.extend(favs.iter().copied());
+            drop(favs);
+
+            s.evict_to_fit(song_map_max, &pinned);
+            evict_art_paths(
+                &cached_art_paths_for_evict,
+                &art_last_used_for_evict,
+                art_path_max,
+            );
+            cache_clone.evict_in_flight(in_flight_max);
+            debug_log!(
+                "[mem] song_map={} art_paths={} in_flight={}",
+                s.map.len(),
+                cached_art_paths_for_evict.len(),
+                cache_clone.in_flight_len()
+            );
+            log_memory("background eviction");
 
             let d = Duration::from_secs(expiration);
 
@@ -244,11 +309,6 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
     );
 
     let tray_icon = TrayIconMenu::new(ctx);
-
-    // Shared set of favorited playlist ids, populated by `FavoritesActivity` and
-    // read by the playlist detail view to show/toggle the ♡ button.
-    let favorite_playlists: Arc<TokioMutex<HashSet<Uuid>>> =
-        Arc::new(TokioMutex::new(HashSet::new()));
 
     let app = App {
         cache: cache.clone(),
@@ -351,14 +411,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
 
             setlist_activity
         },
-        favorites_activity: FavoritesActivity::new(
-            ctx.clone(),
-            cache.clone(),
-            rt.clone(),
-            client.clone(),
-            songs.clone(),
-            favorite_playlists.clone(),
-        ),
+        favorites_activity,
         uploads_activity: UploadsActivity::new(ctx.clone(), songs.clone()),
         queue_activity: QueueActivity::new(songs.clone()),
         profile_activity,
@@ -376,8 +429,10 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
         config,
         shared_config,
 
-        cached_art_paths: Arc::new(DashMap::new()),
+        cached_art_paths: cached_art_paths.clone(),
         active_art_downloads: Arc::new(dashmap::DashSet::new()),
+        art_last_used: art_last_used.clone(),
+        art_counter: art_counter.clone(),
 
         cached_avatar_path: None,
         sleep_timer_end: None,
@@ -405,5 +460,6 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
         app.uploads_activity.fetch_uploads();
     }
 
+    log_memory("startup");
     app
 }

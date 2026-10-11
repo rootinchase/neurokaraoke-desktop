@@ -38,6 +38,28 @@ pub fn cover_art_uri(cache: &PersistentMediaCache, art: &Artwork) -> Option<Stri
     Some(format!("bytes://{}", path.display()))
 }
 
+/// Computes the virtualized grid slice `[start..end]` for a scroll offset,
+/// shared by the playlist/setlist grid renderers.
+///
+/// `start` is derived from the persisted scroll offset and is clamped to `len`:
+/// the list can shrink (search filter, sort, load-more reset) while a stale
+/// deep offset from rapid scrolling is still stored in `last_scroll_y`. Without
+/// the clamp, `start > len` makes `end = min(start + visible, len) < start`
+/// and slicing panics with "range start index N out of range for slice of
+/// length M".
+pub fn visible_range(
+    offset_y: f64,
+    viewport_height: f32,
+    box_height: f32,
+    len: usize,
+) -> (usize, usize) {
+    let start = (offset_y / box_height as f64) as usize;
+    let start = start.min(len);
+    let visible = (viewport_height / box_height).ceil() as usize + 2;
+    let end = (start + visible).min(len);
+    (start, end)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ActivityType {
     Home,
@@ -558,3 +580,45 @@ pub fn render_playlist_art(
 ) {
     render_playlist_art_advanced(ui, cache, ctx, rt, client, playlist, &[], size);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::visible_range;
+
+    const BOX: f32 = 260.0;
+
+    #[test]
+    fn test_visible_range_top_of_list() {
+        // Offset 0 with a viewport fitting ~3 boxes -> start 0, end 3 + 2 = 5.
+        assert_eq!(visible_range(0.0, 780.0, BOX, 20), (0, 5));
+    }
+
+    #[test]
+    fn test_visible_range_mid_list() {
+        // Scrolled to box 10 -> start 10, end min(10 + 5, 20) = 15.
+        assert_eq!(visible_range(2600.0, 780.0, BOX, 20), (10, 15));
+    }
+
+    #[test]
+    fn test_visible_range_deep_offset_shrunk_list() {
+        // Regression for the "range start index 42 out of range for slice of
+        // length 20" crash: rapid scrolling stores a deep offset, then the
+        // list shrinks (search filter/sort). start must clamp to len so the
+        // slice is empty, not a panic.
+        assert_eq!(visible_range(10920.0, 780.0, BOX, 20), (20, 20));
+    }
+
+    #[test]
+    fn test_visible_range_empty_list() {
+        assert_eq!(visible_range(5000.0, 780.0, BOX, 0), (0, 0));
+    }
+
+    #[test]
+    fn test_visible_range_end_never_exceeds_len() {
+        // start + visible beyond len clamps end to len.
+        let (start, end) = visible_range(4940.0, 780.0, BOX, 20);
+        assert!(start <= end && end <= 20);
+        assert_eq!((start, end), (19, 20));
+    }
+}
+

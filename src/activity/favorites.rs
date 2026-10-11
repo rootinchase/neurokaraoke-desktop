@@ -35,6 +35,11 @@ pub struct FavoritesActivity {
     /// Playlist ids the user has favorited, shared with `PlaylistActivity` so the
     /// playlist detail view can show and toggle the favorite state.
     pub favorite_playlists: Arc<Mutex<HashSet<Uuid>>>,
+    /// Last vertical scroll offset of the favorites grid, used to virtualize the
+    /// grid so only visible playlist boxes render cover-art textures. This keeps
+    /// egui's texture store bounded (each 512x512 cover is ~1 MB) instead of
+    /// registering a texture for every loaded playlist.
+    pub last_scroll_y: Arc<Mutex<f64>>,
 }
 
 impl FavoritesActivity {
@@ -59,6 +64,7 @@ impl FavoritesActivity {
             is_fetching: Arc::new(AtomicBool::new(false)),
             favorite_songs: Arc::new(RwLock::new(HashSet::new())),
             favorite_playlists,
+            last_scroll_y: Arc::new(Mutex::new(0.0)),
         }
     }
 
@@ -252,6 +258,7 @@ impl FavoritesActivity {
         self.playlist_details.clear();
         *self._selected_playlist.blocking_lock() = None;
         self.is_fetching.store(false, Ordering::SeqCst);
+        *self.last_scroll_y.blocking_lock() = 0.0;
         debug_log!("🧹 [Favorites Activity] Cleared memory and cover textures on navigation away.");
     }
 

@@ -15,8 +15,10 @@ use reqwest::multipart::{Form, Part};
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use serde_json::{Value, json};
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use uuid::{Uuid, uuid};
 
 impl LazySongDatabase {
@@ -31,6 +33,51 @@ impl LazySongDatabase {
             map,
             guest_id,
             shared_config,
+            last_used: Arc::new(DashMap::new()),
+            counter: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    /// Records a monotonic access timestamp for a song id, used by the in-memory
+    /// LRU eviction (`evict_to_fit`).
+    fn mark_used(&self, id: Uuid) {
+        let t = self.counter.fetch_add(1, Ordering::Relaxed);
+        self.last_used.insert(id, t);
+    }
+
+    /// Evicts the least-recently-used `Loaded` songs from `map` down to
+    /// `max_entries`, skipping any id in `pinned` (the current song, the player
+    /// queue, and favorites) and any `Loading`/`Failed` entry. Songs removed here
+    /// re-fetch on demand via `get()`, so correctness is preserved; only search
+    /// breadth shrinks to recently-viewed songs.
+    pub fn evict_to_fit(&self, max_entries: usize, pinned: &[Uuid]) {
+        if self.map.len() <= max_entries {
+            return;
+        }
+        let pinned_set: HashSet<Uuid> = pinned.iter().copied().collect();
+        let mut candidates: Vec<(Uuid, u64)> = self
+            .map
+            .iter()
+            .filter(|e| matches!(e.value(), LoadingState::Loaded(_)))
+            .filter(|e| !pinned_set.contains(e.key()))
+            .map(|e| {
+                let t = self
+                    .last_used
+                    .get(e.key())
+                    .map(|v| *v.value())
+                    .unwrap_or(0);
+                (*e.key(), t)
+            })
+            .collect();
+        candidates.sort_by_key(|(_, t)| *t);
+        let mut to_remove = self.map.len().saturating_sub(max_entries);
+        for (id, _) in candidates {
+            if to_remove == 0 {
+                break;
+            }
+            self.map.remove(&id);
+            self.last_used.remove(&id);
+            to_remove -= 1;
         }
     }
 
@@ -238,7 +285,7 @@ impl LazySongDatabase {
     /// The body is a `multipart/form-data` form with exactly three parts, in this
     /// order: the `File` part (typed by extension, e.g. `audio/mpeg` for `.mp3`),
     /// then `Title` and `Artist` text parts typed `text/plain; charset=utf-8`. The
-    /// server transcodes the upload to m4a, stores it as `user-audio/{guid}.m4a`,
+    /// server transcodes the upload to m4a, stores it as `user-audio/{GUID}.m4a`,
     /// strips a leading `"<Artist> - "` prefix from the submitted title, and answers
     /// `200` with an empty body — so there is no payload to parse here.
     pub async fn upload_song_file(&self, upload: FileUpload) -> anyhow::Result<()> {
@@ -530,6 +577,7 @@ impl LazySongDatabase {
 
     pub fn get<T>(&self, id: &Uuid, f: impl FnOnce(&Song) -> T) -> LoadingState<T> {
         if let Some(r) = self.map.get(id) {
+            self.mark_used(*id);
             match &*r {
                 LoadingState::Loaded(song) => LoadingState::Loaded(f(song)),
                 LoadingState::Failed(err) => LoadingState::Failed(err.clone()),
@@ -537,9 +585,12 @@ impl LazySongDatabase {
             }
         } else {
             self.map.insert(*id, LoadingState::Loading);
+            self.mark_used(*id);
             let id = *id;
             let client = self.client.clone();
             let map = self.map.clone();
+            let last_used = self.last_used.clone();
+            let counter = self.counter.clone();
             let db_self = self.clone(); // Clone database handle to share within the task context
 
             tokio::spawn(async move {
@@ -562,6 +613,8 @@ impl LazySongDatabase {
                     fonts::scan_song(song);
                 }
                 map.insert(id, state);
+                let t = counter.fetch_add(1, Ordering::Relaxed);
+                last_used.insert(id, t);
             });
             LoadingState::Loading
         }
@@ -622,11 +675,13 @@ impl LazySongDatabase {
                     fonts::scan_song(&song);
                     result.push(LoadingState::Loaded(f(&song)));
                     self.map.insert(id, LoadingState::Loaded(song));
+                    self.mark_used(id);
                 }
                 Err(err) => {
                     let e = Arc::new(anyhow!(err));
                     result.push(LoadingState::Failed(e.clone()));
                     self.map.insert(id, LoadingState::Failed(e));
+                    self.mark_used(id);
                 }
             }
         }
@@ -750,4 +805,91 @@ fn text_part(value: &str) -> Part {
     Part::text(value.to_owned())
         .mime_str("text/plain; charset=utf-8")
         .expect("static content type always parses")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::SharedConfig;
+    use std::sync::RwLock;
+    use std::sync::atomic::{AtomicBool, AtomicU32};
+
+    fn make_db() -> LazySongDatabase {
+        let shared = SharedConfig {
+            _volume: Arc::new(AtomicU32::new(0)),
+            shuffle: Arc::new(AtomicBool::new(false)),
+            loop_mode: Arc::new(AtomicU32::new(0)),
+            auth_token: Arc::new(RwLock::new(None)),
+        };
+        LazySongDatabase::new(
+            Client::new(),
+            Arc::new(DashMap::new()),
+            "guest".into(),
+            shared,
+        )
+    }
+
+    fn song(id: Uuid) -> Song {
+        Song {
+            id,
+            title: "".into(),
+            absolute_path: None,
+            opus: None,
+            cover_artists: Arc::from(Vec::<Arc<str>>::new()),
+            original_artists: Arc::from(Vec::<Arc<str>>::new()),
+            cover_art: None,
+            play_count: None,
+            duration: None,
+        }
+    }
+
+    #[test]
+    fn evict_to_fit_respects_lru_and_pins() {
+        let db = make_db();
+        let ids: Vec<Uuid> = (0..5).map(|_| Uuid::new_v4()).collect();
+        // Insert in access order: ids[0] is oldest, ids[4] is newest.
+        for id in &ids {
+            db.map.insert(*id, LoadingState::Loaded(song(*id)));
+            db.mark_used(*id);
+        }
+        // ids[1] is pinned (e.g. the current song).
+        let pinned = [ids[1]];
+        db.evict_to_fit(3, &pinned);
+
+        // Cap is 3, 5 entries -> evict 2 least-recently-used non-pinned: ids[0], ids[2].
+        assert_eq!(db.map.len(), 3);
+        assert!(db.map.contains_key(&ids[1])); // pinned kept
+        assert!(db.map.contains_key(&ids[3])); // more recent kept
+        assert!(db.map.contains_key(&ids[4])); // most recent kept
+        assert!(!db.map.contains_key(&ids[0])); // oldest evicted
+        assert!(!db.map.contains_key(&ids[2])); // second oldest evicted
+        // last_used entries are removed for evicted ids.
+        assert!(!db.last_used.contains_key(&ids[0]));
+        assert!(!db.last_used.contains_key(&ids[2]));
+    }
+
+    #[test]
+    fn evict_to_fit_is_noop_under_cap() {
+        let db = make_db();
+        let id = Uuid::new_v4();
+        db.map.insert(id, LoadingState::Loaded(song(id)));
+        db.mark_used(id);
+        db.evict_to_fit(10, &[]);
+        assert_eq!(db.map.len(), 1);
+    }
+
+    #[test]
+    fn evict_skips_loading_entries() {
+        let db = make_db();
+        let loaded = Uuid::new_v4();
+        let loading = Uuid::new_v4();
+        db.map.insert(loaded, LoadingState::Loaded(song(loaded)));
+        db.mark_used(loaded);
+        db.map.insert(loading, LoadingState::Loading);
+        db.mark_used(loading);
+        // Cap 1: only the Loaded entry is a candidate; Loading is skipped.
+        db.evict_to_fit(1, &[]);
+        assert!(db.map.contains_key(&loading));
+        assert!(!db.map.contains_key(&loaded));
+    }
 }

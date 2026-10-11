@@ -3,6 +3,7 @@ use dashmap::DashMap;
 use eframe::egui;
 use reqwest::Client;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
@@ -62,6 +63,11 @@ pub struct App {
     // Image caching
     pub cached_art_paths: Arc<DashMap<Arc<str>, String>>,
     pub active_art_downloads: Arc<dashmap::DashSet<Arc<str>>>,
+    /// Access-order tracker for the in-memory LRU eviction of `cached_art_paths`:
+    /// maps each artwork key to the monotonic counter value of its last access.
+    pub art_last_used: Arc<DashMap<Arc<str>, u64>>,
+    /// Monotonic access counter shared across all clones of the artwork cache.
+    pub art_counter: Arc<AtomicU64>,
 
     pub config: Config,
     pub shared_config: SharedConfig,
@@ -89,6 +95,8 @@ impl App {
 
         // 1. Check hot in-memory UI reference cache
         if let Some(path_str) = self.cached_art_paths.get::<Arc<str>>(&key_str) {
+            let t = self.art_counter.fetch_add(1, Ordering::Relaxed);
+            self.art_last_used.insert(key_str.clone(), t);
             return Some(path_str.value().clone());
         }
 
@@ -104,6 +112,8 @@ impl App {
             let path_str = path.to_string_lossy().into_owned();
             self.cached_art_paths
                 .insert(key_str.clone(), path_str.clone());
+            let t = self.art_counter.fetch_add(1, Ordering::Relaxed);
+            self.art_last_used.insert(key_str.clone(), t);
             return Some(path_str);
         }
 
@@ -112,6 +122,8 @@ impl App {
             let cache = self.cache.clone();
             let cached_paths = self.cached_art_paths.clone();
             let active_downloads = self.active_art_downloads.clone();
+            let art_last_used = self.art_last_used.clone();
+            let art_counter = self.art_counter.clone();
             let ctx_clone = ctx.clone();
 
             let url = cache::get_thumbnail_url(
@@ -136,6 +148,8 @@ impl App {
                     Ok(path) => {
                         let path_str = path.to_string_lossy().into_owned();
                         cached_paths.insert(key_str.clone(), path_str.clone());
+                        let t = art_counter.fetch_add(1, Ordering::Relaxed);
+                        art_last_used.insert(key_str.clone(), t);
                     }
                     Err(e) => {
                         debug_log!(
@@ -170,6 +184,8 @@ impl App {
 
         // 1. Check hot in-memory UI reference cache
         if let Some(path_str) = self.cached_art_paths.get::<Arc<str>>(&key_str) {
+            let t = self.art_counter.fetch_add(1, Ordering::Relaxed);
+            self.art_last_used.insert(key_str.clone(), t);
             return Some(path_str.value().clone());
         }
 
@@ -184,6 +200,8 @@ impl App {
             let path_str = path.to_string_lossy().into_owned();
             self.cached_art_paths
                 .insert(key_str.clone(), path_str.clone());
+            let t = self.art_counter.fetch_add(1, Ordering::Relaxed);
+            self.art_last_used.insert(key_str.clone(), t);
             return Some(path_str);
         }
 
@@ -192,6 +210,8 @@ impl App {
             let cache = self.cache.clone();
             let cached_paths = self.cached_art_paths.clone();
             let active_downloads = self.active_art_downloads.clone();
+            let art_last_used = self.art_last_used.clone();
+            let art_counter = self.art_counter.clone();
             let ctx_clone = ctx.clone();
 
             let url = cache::get_full_image_url(cloudflare_id.as_deref(), &absolute_path);
@@ -214,6 +234,8 @@ impl App {
                     Ok(path) => {
                         let path_str = path.to_string_lossy().into_owned();
                         cached_paths.insert(key_str.clone(), path_str.clone());
+                        let t = art_counter.fetch_add(1, Ordering::Relaxed);
+                        art_last_used.insert(key_str.clone(), t);
                     }
                     Err(e) => {
                         debug_log!(
@@ -287,5 +309,49 @@ impl App {
             self.integration
                 .update_playback(&state, repeat, shuffle, volume, discord_payload);
         }
+    }
+}
+
+/// Evicts the in-memory artwork reference cache (`cached_art_paths`) down to
+/// `max_entries`. First drops references whose disk file has been evicted from
+/// the persistent cache, then, beyond the cap, drops the least-recently-used
+/// entries. The disk cache is the source of truth, so a dropped reference is
+/// re-resolved on the next render.
+pub fn evict_art_paths(
+    cached: &DashMap<Arc<str>, String>,
+    last_used: &DashMap<Arc<str>, u64>,
+    max_entries: usize,
+) {
+    // Drop references whose disk file no longer exists.
+    cached.retain(|key, path| {
+        let exists = std::fs::metadata(path.as_str()).is_ok();
+        if !exists {
+            last_used.remove(key);
+        }
+        exists
+    });
+
+    if cached.len() <= max_entries {
+        return;
+    }
+    let mut candidates: Vec<(Arc<str>, u64)> = cached
+        .iter()
+        .map(|e| {
+            let t = last_used
+                .get(e.key())
+                .map(|v| *v.value())
+                .unwrap_or(0);
+            (e.key().clone(), t)
+        })
+        .collect();
+    candidates.sort_by_key(|(_, t)| *t);
+    let mut to_remove = cached.len() - max_entries;
+    for (key, _) in candidates {
+        if to_remove == 0 {
+            break;
+        }
+        cached.remove(&key);
+        last_used.remove(&key);
+        to_remove -= 1;
     }
 }

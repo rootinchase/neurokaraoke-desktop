@@ -644,7 +644,7 @@ mod tests {
         // Live upload of the small ringtone captured in raw_requests/ringtone.har.
         // Run with: cargo test -- --ignored test_upload_song_file_to_server
         // The server answers 200 with an empty body; the new song appears in
-        // GET /api/user/songs as `user-audio/{guid}.m4a`.
+        // GET /api/user/songs as `user-audio/{GUID}.m4a`.
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             let path = std::env::var("NEUROKARAOKE_UPLOAD_FILE")
@@ -669,7 +669,7 @@ mod tests {
             let config = crate::config::Config::default();
             let shared_config = config.to_shared();
 
-            // `config_dir()` is only initialised at app startup, so the test cannot
+            // `config_dir()` is only initialized at app startup, so the test cannot
             // read the real config. Supply the token the web app used instead.
             if let Ok(token) = std::env::var("NEUROKARAOKE_TOKEN") {
                 *shared_config.auth_token.write().unwrap() = Some(Arc::from(token.as_str()));

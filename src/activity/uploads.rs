@@ -770,7 +770,7 @@ fn is_wayland() -> bool {
 
 /// Opens the system file picker, filtered to the audio extensions the server accepts
 /// (see `audio_content_type`). Returns the selected paths; empty if the dialog was
-/// cancelled.
+/// canceled.
 fn pick_audio_files() -> Vec<PathBuf> {
     FileDialog::new()
         .set_title("Select audio files")

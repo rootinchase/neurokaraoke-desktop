@@ -31,6 +31,11 @@ pub struct SetlistActivity {
     pub ctx: Context,
     pub rt: Arc<Runtime>,
     pub client: Client,
+    /// Last vertical scroll offset of the setlist grid, used to virtualize the
+    /// grid so only visible setlist boxes render cover-art textures. This keeps
+    /// egui's texture store bounded (each 512x512 cover is ~1 MB) instead of
+    /// registering a texture for every loaded setlist.
+    pub last_scroll_y: Arc<Mutex<f64>>,
 }
 
 impl SetlistActivity {
@@ -63,6 +68,7 @@ impl SetlistActivity {
             ctx,
             rt,
             client,
+            last_scroll_y: Arc::new(Mutex::new(0.0)),
         };
 
         activity.load_setlists(year);
@@ -216,6 +222,7 @@ impl SetlistActivity {
         self.setlist_details.clear();
         *self._selected_setlist.blocking_lock() = None;
         *self.last_total_count.blocking_lock() = None;
+        *self.last_scroll_y.blocking_lock() = 0.0;
         debug_log!("🧹 [Setlist Activity] Cleared memory and cover textures on navigation away.");
     }
 
@@ -257,8 +264,17 @@ impl SetlistActivity {
             match setlists_lock {
                 Ok(setlists) => match &*setlists {
                     LoadingState::Loaded(setlists) => {
-                        ScrollArea::vertical().show(ui, |ui| {
-                            for setlist in setlists {
+                        let viewport_height = ui.available_height();
+                        let len = setlists.len();
+                        let box_height = 260.0f32;
+                        let offset_y = *self.last_scroll_y.blocking_lock();
+                        // Clamp start to len: a stale deep scroll offset
+                        // combined with a shrunk list would otherwise panic
+                        // when slicing with start > len.
+                        let (start, end) = visible_range(offset_y, viewport_height, box_height, len);
+                        let scroll_output = ScrollArea::vertical().show(ui, |ui| {
+                            ui.add_space(start as f32 * box_height);
+                            for setlist in setlists[start..end].iter() {
                                 if let Some(detail_state) = self.setlist_details.get(&setlist.id) {
                                     match &*detail_state {
                                         LoadingState::Loaded(detail) => {
@@ -302,7 +318,9 @@ impl SetlistActivity {
                                     }
                                 }
                             }
+                            ui.add_space((len - end) as f32 * box_height);
                         });
+                        *self.last_scroll_y.blocking_lock() = scroll_output.state.offset.y as f64;
                     }
                     LoadingState::Loading => {
                         ui.label("Loading...");

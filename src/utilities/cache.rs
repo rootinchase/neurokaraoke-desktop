@@ -5,6 +5,7 @@ use dashmap::DashMap;
 use reqwest::Client;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
+use std::sync::atomic::AtomicU64;
 use std::time::{Duration, SystemTime};
 use tokio::fs::{File, metadata, read_dir, remove_file, rename}; // Added read_dir
 use tokio::io::AsyncWriteExt;
@@ -58,6 +59,12 @@ pub struct PersistentMediaCache {
     client: Client,
     network_gate: Arc<Semaphore>,
     in_flight: DashMap<(Uuid, AssetType), DownloadStatus>,
+    /// Access-order tracker for LRU eviction of `in_flight`: maps each asset key
+    /// to the monotonic counter value of its last access. Bumped on every
+    /// `get_cached_path` hit and `get_or_download_image` insert.
+    in_flight_last_used: DashMap<(Uuid, AssetType), u64>,
+    /// Monotonic access counter shared across all clones of the cache.
+    in_flight_counter: Arc<AtomicU64>,
 }
 
 impl PersistentMediaCache {
@@ -66,6 +73,8 @@ impl PersistentMediaCache {
             client,
             network_gate: Arc::new(Semaphore::new(max_concurrent_downloads)),
             in_flight: DashMap::new(),
+            in_flight_last_used: DashMap::new(),
+            in_flight_counter: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -80,6 +89,7 @@ impl PersistentMediaCache {
         // 1. Check in-flight status for completed records
         if let Some(status) = self.in_flight.get(&key)
             && let DownloadStatus::Complete(path) = status.value() {
+                self.touch_in_flight(key);
                 touch_file(path);
                 return Some(path.clone());
             }
@@ -125,6 +135,65 @@ impl PersistentMediaCache {
             if path.exists() {
                 let _ = std::fs::remove_file(&path);
             }
+        }
+    }
+
+    /// Number of entries currently held in the in-flight/complete asset map.
+    /// Used for memory profiling: this map grows with every downloaded asset
+    /// and is the artwork path cache that the LRU sweep must keep bounded.
+    pub fn in_flight_len(&self) -> usize {
+        self.in_flight.len()
+    }
+
+    /// Records a monotonic access timestamp for an asset key so LRU eviction
+    /// can identify the least-recently-used entries.
+    fn touch_in_flight(&self, key: (Uuid, AssetType)) {
+        let t = self.in_flight_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.in_flight_last_used.insert(key, t);
+    }
+
+    /// Evicts the in-memory `in_flight` map down to `max_entries`. First drops
+    /// complete entries whose disk file has been removed, then, beyond the cap,
+    /// drops the least-recently-used complete entries. In-flight downloads are
+    /// never evicted. The disk cache is the source of truth, so a dropped entry
+    /// is re-resolved (and re-downloaded if needed) on the next access.
+    pub fn evict_in_flight(&self, max_entries: usize) {
+        // Drop complete entries whose disk file no longer exists.
+        self.in_flight.retain(|key, status| {
+            let keep = match status {
+                DownloadStatus::Complete(path) => std::fs::metadata(path).is_ok(),
+                DownloadStatus::InFlight(_) => true,
+            };
+            if !keep {
+                self.in_flight_last_used.remove(key);
+            }
+            keep
+        });
+
+        if self.in_flight.len() <= max_entries {
+            return;
+        }
+        let mut candidates: Vec<((Uuid, AssetType), u64)> = self
+            .in_flight
+            .iter()
+            .map(|e| {
+                let t = self
+                    .in_flight_last_used
+                    .get(e.key())
+                    .map(|v| *v.value())
+                    .unwrap_or(0);
+                (*e.key(), t)
+            })
+            .collect();
+        candidates.sort_by_key(|(_, t)| *t);
+        let mut to_remove = self.in_flight.len() - max_entries;
+        for (key, _) in candidates {
+            if to_remove == 0 {
+                break;
+            }
+            self.in_flight.remove(&key);
+            self.in_flight_last_used.remove(&key);
+            to_remove -= 1;
         }
     }
 
@@ -191,6 +260,7 @@ impl PersistentMediaCache {
                 match status.value() {
                     DownloadStatus::Complete(path) => {
                         debug_log!("✅ [Cache] Found in-flight Complete for: {}", cloudflare_id);
+                        self.touch_in_flight(key);
                         return Ok(path.clone());
                     }
                     DownloadStatus::InFlight(notify) => {
@@ -212,6 +282,7 @@ impl PersistentMediaCache {
                 debug_log!("💿 [Cache] Found persisted file for: {}", cloudflare_id);
                 self.in_flight
                     .insert(key, DownloadStatus::Complete(potential_path.clone()));
+                self.touch_in_flight(key);
                 return Ok(potential_path);
             }
 
@@ -237,12 +308,14 @@ impl PersistentMediaCache {
                     debug_log!("🎉 [Cache] Successfully downloaded: {}", cloudflare_id);
                     self.in_flight
                         .insert(key, DownloadStatus::Complete(saved_path.clone()));
+                    self.touch_in_flight(key);
                     notify.notify_waiters();
                     Ok(saved_path)
                 }
                 Err(e) => {
                     debug_log!("❌ [Cache] Download failed for {}: {}", cloudflare_id, e);
                     self.in_flight.remove(&key);
+                    self.in_flight_last_used.remove(&key);
                     notify.notify_waiters();
                     Err(e)
                 }
@@ -578,52 +651,6 @@ impl PersistentMediaCache {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::utilities::util::create_reqwest_client;
-    use std::env::temp_dir;
-    use std::fs::File;
-    use std::time::SystemTime;
-    use tokio::fs::{create_dir_all, write};
-    use tokio::runtime::Runtime;
-
-    #[test]
-    fn test_cache_eviction_async() {
-        let rt = Runtime::new().unwrap();
-        rt.block_on(async {
-            let temp_dir = temp_dir().join(format!("neurokaraoke_test_cache_{}", Uuid::new_v4()));
-            let dir = temp_dir.join("assets");
-            let _ = create_dir_all(&dir).await;
-
-            let file1 = dir.join("test_old.bin");
-            let file2 = dir.join("test_new.bin");
-
-            write(&file1, b"old file content").await.unwrap();
-            write(&file2, b"new file content").await.unwrap();
-
-            let old_time = SystemTime::now() - Duration::from_secs(7200);
-            let _ = File::options()
-                .write(true)
-                .open(&file1)
-                .and_then(|f| f.set_modified(old_time));
-
-            let client = create_reqwest_client();
-            let cache = PersistentMediaCache::new(client, 4);
-
-            let evicted = cache
-                .evict_in(&dir, Duration::from_secs(3600), 1)
-                .await
-                .unwrap();
-            assert!(evicted >= 1);
-            assert!(!file1.exists());
-
-            // Clean up isolated test temp directory
-            let _ = tokio::fs::remove_dir_all(&temp_dir).await;
-        });
-    }
-}
-
 pub fn get_thumbnail_url(cloudflare_id: Option<&str>, absolute_path: &str, fit: &str) -> String {
     let clean_cf = cloudflare_id
         .filter(|s| !s.is_empty() && *s != "null")
@@ -636,8 +663,8 @@ pub fn get_thumbnail_url(cloudflare_id: Option<&str>, absolute_path: &str, fit: 
 
     if let Some(abs) = clean_abs
         && (abs.starts_with("http://") || abs.starts_with("https://")) {
-            return abs.to_string();
-        }
+        return abs.to_string();
+    }
 
     if let Some(id) = clean_cf {
         format!(
@@ -718,5 +745,96 @@ pub fn get_full_image_url(cloudflare_id: Option<&str>, absolute_path: &str) -> S
 pub fn touch_file(path: &Path) {
     if let Ok(file) = std::fs::File::options().write(true).open(path) {
         let _ = file.set_modified(SystemTime::now());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utilities::util::create_reqwest_client;
+    use std::env::temp_dir;
+    use std::fs::File;
+    use std::time::SystemTime;
+    use tokio::fs::{create_dir_all, write};
+    use tokio::runtime::Runtime;
+
+    #[test]
+    fn test_cache_eviction_async() {
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            let temp_dir = temp_dir().join(format!("neurokaraoke_test_cache_{}", Uuid::new_v4()));
+            let dir = temp_dir.join("assets");
+            let _ = create_dir_all(&dir).await;
+
+            let file1 = dir.join("test_old.bin");
+            let file2 = dir.join("test_new.bin");
+
+            write(&file1, b"old file content").await.unwrap();
+            write(&file2, b"new file content").await.unwrap();
+
+            let old_time = SystemTime::now() - Duration::from_secs(7200);
+            let _ = File::options()
+                .write(true)
+                .open(&file1)
+                .and_then(|f| f.set_modified(old_time));
+
+            let client = create_reqwest_client();
+            let cache = PersistentMediaCache::new(client, 4);
+
+            let evicted = cache
+                .evict_in(&dir, Duration::from_secs(3600), 1)
+                .await
+                .unwrap();
+            assert!(evicted >= 1);
+            assert!(!file1.exists());
+
+            // Clean up isolated test temp directory
+            let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+        });
+    }
+
+    #[test]
+    fn test_evict_in_flight_respects_lru() {
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            let temp_dir =
+                temp_dir().join(format!("neurokaraoke_test_inflight_{}", Uuid::new_v4()));
+            let dir = temp_dir.join("assets");
+            let _ = create_dir_all(&dir).await;
+
+            let client = create_reqwest_client();
+            let cache = PersistentMediaCache::new(client, 4);
+
+            // Insert three complete entries, each backed by a real disk file,
+            // in access order: id1 first, id2 second, id3 last.
+            let ids: Vec<Uuid> = vec![Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
+            for id in &ids {
+                let path = dir.join(format!("{}.webp", id));
+                write(&path, b"art bytes").await.unwrap();
+                cache
+                    .in_flight
+                    .insert((*id, AssetType::Image), DownloadStatus::Complete(path.clone()));
+                cache.touch_in_flight((*id, AssetType::Image));
+            }
+            assert_eq!(cache.in_flight_len(), 3);
+
+            // Evict down to 2: the least-recently-used (id1) must be dropped.
+            cache.evict_in_flight(2);
+            assert_eq!(cache.in_flight_len(), 2);
+            assert!(!cache.in_flight.contains_key(&(ids[0], AssetType::Image)));
+            assert!(cache.in_flight.contains_key(&(ids[1], AssetType::Image)));
+            assert!(cache.in_flight.contains_key(&(ids[2], AssetType::Image)));
+
+            // Evicting under the cap is a no-op.
+            cache.evict_in_flight(10);
+            assert_eq!(cache.in_flight_len(), 2);
+
+            // Entries whose disk file is gone are dropped even under the cap.
+            let _ = tokio::fs::remove_file(dir.join(format!("{}.webp", ids[2]))).await;
+            cache.evict_in_flight(10);
+            assert_eq!(cache.in_flight_len(), 1);
+
+            let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+        });
     }
 }

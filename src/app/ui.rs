@@ -7,6 +7,7 @@ use crate::audio::Player;
 use crate::auth::AuthService;
 use crate::debug_log;
 use crate::utilities::cache::PersistentMediaCache;
+use crate::utilities::util::log_memory;
 use crate::utilities::{cache, persistence};
 use rand::prelude::SliceRandom;
 use std::sync::Arc;
@@ -212,8 +213,9 @@ impl eframe::App for App {
         // Free memory when leaving Home: drop the loaded song lists so they no
         // longer sit in RAM. Re-fetch them the next time Home is opened.
         if self.activity != prev_activity {
+            log_memory(&format!("leaving {}", prev_activity.as_str()));
             if prev_activity == ActivityType::Home {
-                self.home_activity.clear();
+                self.home_activity.clear_sync(ui.ctx());
             }
             if prev_activity == ActivityType::Search {
                 self.search_activity.clear();
@@ -238,6 +240,9 @@ impl eframe::App for App {
             }
             if prev_activity == ActivityType::Settings {
                 self.settings_activity.clear();
+            }
+            if prev_activity == ActivityType::Radio {
+                self.radio_activity.clear_sync(ui.ctx());
             }
             if self.activity == ActivityType::Home {
                 self.home_activity.fetch_suggested();
@@ -265,6 +270,10 @@ impl eframe::App for App {
             if self.activity == ActivityType::Settings {
                 self.settings_activity.refetch();
             }
+            if self.activity == ActivityType::Radio {
+                self.radio_activity.fetch_data();
+            }
+            log_memory(&format!("entered {}", self.activity.as_str()));
         }
 
         if let Some(state) = self.player.get_playback_state() {

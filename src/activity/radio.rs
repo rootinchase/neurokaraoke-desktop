@@ -1,4 +1,4 @@
-use crate::activity::resolve_and_render_art;
+use crate::activity::{cover_art_uri, resolve_and_render_art};
 use crate::api::{
     Artwork, AzuraCastNowPlayingResponse, AzuraCastTrackInfo, GameHubScheduledInfo,
     LazySongDatabase, LoadingState, RadioCurrentStateResponse, SongDTO,
@@ -155,6 +155,44 @@ impl RadioActivity {
 
             ctx.request_repaint();
         });
+    }
+
+    /// Releases the cover-art texture registered for the currently displayed
+    /// radio track (the socket current song and the AzuraCast now-playing art),
+    /// then resets the loading states. Called when the user navigates away from
+    /// Radio so the egui texture held for the now-playing cover is freed. The
+    /// background poller re-fetches and re-registers the texture on the next tick.
+    pub fn clear_sync(&self, ctx: &Context) {
+        {
+            let curr_guard = self.current_state.blocking_lock();
+            if let LoadingState::Loaded(curr) = &*curr_guard
+                && let Some(song) = curr.current.as_ref()
+                    && let Some(art) = &song.cover_art
+                        && let Some(uri) = cover_art_uri(&self.cache, art) {
+                            ctx.forget_image(&uri);
+                        }
+        }
+
+        {
+            let az_guard = self.azuracast_state.blocking_lock();
+            if let LoadingState::Loaded(az) = &*az_guard
+                && let Some(np) = az.effective_now_playing()
+                    && let Some(song) = &np.song
+                        && let Some(art_url) = &song.art {
+                            let song_id_uuid = song.song_id_uuid();
+                            let art_uuid = song_id_uuid.unwrap_or_else(|| {
+                                Uuid::new_v5(&Uuid::NAMESPACE_URL, art_url.as_bytes())
+                            });
+                            let art_obj = Artwork::from_url(art_uuid, art_url);
+                            if let Some(uri) = cover_art_uri(&self.cache, &art_obj) {
+                                ctx.forget_image(&uri);
+                            }
+                        }
+        }
+
+        *self.current_state.blocking_lock() = LoadingState::Loading;
+        *self.azuracast_state.blocking_lock() = LoadingState::Loading;
+        *self.gamehub_schedule.blocking_lock() = LoadingState::Loading;
     }
 
     pub fn render(&self, ui: &mut Ui, theme: &ThemeManager, config: &mut Config) {

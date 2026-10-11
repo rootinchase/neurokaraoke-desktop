@@ -8,6 +8,7 @@ use serde_with::{DefaultOnNull, serde_as};
 use std::fmt::Formatter;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use uuid::Uuid;
 
 #[serde_as]
@@ -385,6 +386,12 @@ pub struct LazySongDatabase {
     pub guest_id: Arc<str>,
     /// Shared runtime configuration to read the token state dynamically
     pub shared_config: SharedConfig,
+    /// Access-order tracker for the in-memory LRU eviction of `map`: maps each
+    /// song id to the monotonic counter value of its last access. Bumped on every
+    /// `get()` hit/insert and `load()` insert.
+    pub last_used: Arc<DashMap<Uuid, u64>>,
+    /// Monotonic access counter shared across all clones of the database.
+    pub counter: Arc<AtomicU64>,
 }
 
 /// Payload for `POST /api/user/song/download-from-url` on the IDK host. The server

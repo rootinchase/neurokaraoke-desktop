@@ -50,6 +50,26 @@ mod defaults {
     pub fn playlist_cache_ttl_secs() -> u64 {
         12 * 60 * 60
     }
+    /// Cap on the in-memory `LazySongDatabase` song map. Entries beyond this are
+    /// evicted least-recently-used first, keeping pinned songs (current, queue,
+    /// favorites). Songs not in the map re-fetch on demand via `get()`.
+    pub fn song_map_max_entries() -> usize {
+        2000
+    }
+    /// Cap on the in-memory `cached_art_paths` artwork reference map. Entries
+    /// beyond this are evicted least-recently-used first, and entries whose disk
+    /// file has been evicted are dropped.
+    pub fn art_path_max_entries() -> usize {
+        1000
+    }
+    /// Cap on the in-memory `in_flight` asset map in `PersistentMediaCache`.
+    /// This map grows with every downloaded asset (audio, thumbnail, full image)
+    /// and is the artwork path cache that must be kept bounded. Entries beyond
+    /// this are evicted least-recently-used first; dropped entries re-resolve
+    /// from disk on the next access.
+    pub fn in_flight_max_entries() -> usize {
+        1500
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,6 +84,12 @@ pub struct CacheConfig {
     pub song_database_update_interval_secs: u64,
     #[serde(default = "defaults::playlist_cache_ttl_secs")]
     pub playlist_cache_ttl_secs: u64,
+    #[serde(default = "defaults::song_map_max_entries")]
+    pub song_map_max_entries: usize,
+    #[serde(default = "defaults::art_path_max_entries")]
+    pub art_path_max_entries: usize,
+    #[serde(default = "defaults::in_flight_max_entries")]
+    pub in_flight_max_entries: usize,
 }
 
 impl Default for CacheConfig {
@@ -74,6 +100,9 @@ impl Default for CacheConfig {
             cache_size_limit_mb: defaults::cache_size_limit_mb(),
             song_database_update_interval_secs: defaults::song_database_update_interval_secs(),
             playlist_cache_ttl_secs: defaults::playlist_cache_ttl_secs(),
+            song_map_max_entries: defaults::song_map_max_entries(),
+            art_path_max_entries: defaults::art_path_max_entries(),
+            in_flight_max_entries: defaults::in_flight_max_entries(),
         }
     }
 }

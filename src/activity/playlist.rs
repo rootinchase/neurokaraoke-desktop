@@ -1,6 +1,6 @@
 use crate::activity::{
     SortOption, cover_art_uri, render_duration_label, render_playlist_art_advanced,
-    render_playlist_box, search,
+    render_playlist_box, search, visible_range,
 };
 use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongDTO};
 use crate::app::fonts;
@@ -53,6 +53,11 @@ pub struct PlaylistActivity {
     /// Playlist ids the user has favorited, shared with `FavoritesActivity` so the
     /// detail view can show and toggle the favorite state.
     pub favorite_playlists: Arc<Mutex<HashSet<Uuid>>>,
+    /// Last vertical scroll offset of the playlist grid, used to virtualize the
+    /// grid so only visible playlist boxes render cover-art textures. This keeps
+    /// egui's texture store bounded (each 512x512 cover is ~1 MB) instead of
+    /// registering a texture for every loaded playlist.
+    pub last_scroll_y: Arc<Mutex<f64>>,
 }
 
 /// An action chosen from the playlist detail "more" (kebab) popup. The caller
@@ -176,6 +181,7 @@ impl PlaylistActivity {
             show_more_menu,
             more_menu_pos,
             favorite_playlists,
+            last_scroll_y: Arc::new(Mutex::new(0.0)),
         }
     }
 
@@ -258,6 +264,7 @@ impl PlaylistActivity {
         *self.loading_more.blocking_lock() = false;
         *self.show_more_menu.blocking_lock() = false;
         *self.more_menu_pos.blocking_lock() = None;
+        *self.last_scroll_y.blocking_lock() = 0.0;
         self.playlist_details.clear();
         debug_log!("🧹 [Playlist Activity] Cleared memory and cover textures on navigation away.");
     }
@@ -967,8 +974,18 @@ impl PlaylistActivity {
                                 },
                             );
 
+                            let viewport_height = ui.available_height();
+                            let len = sorted_playlists.len();
+                            let box_height = 260.0f32;
+                            let offset_y = *self.last_scroll_y.blocking_lock();
+                            // Clamp start to len: a stale deep scroll offset
+                            // combined with a shrunk list (search filter, sort,
+                            // load-more reset) would otherwise panic when
+                            // slicing with start > len.
+                            let (start, end) = visible_range(offset_y, viewport_height, box_height, len);
                             let scroll_output = ScrollArea::vertical().show(ui, |ui| {
-                                for playlist in sorted_playlists.iter() {
+                                ui.add_space(start as f32 * box_height);
+                                for playlist in sorted_playlists[start..end].iter() {
                                     spawn_fetch_playlist_details(
                                         &self.rt,
                                         Some(&self.ctx),
@@ -1051,6 +1068,7 @@ impl PlaylistActivity {
                                         }
                                     }
                                 }
+                                ui.add_space((len - end) as f32 * box_height);
 
                                 // Load more button at the bottom of playlists
                                 if playlist_search.is_none()
@@ -1080,6 +1098,7 @@ impl PlaylistActivity {
                             });
 
                             let offset_y = scroll_output.state.offset.y;
+                            *self.last_scroll_y.blocking_lock() = offset_y as f64;
                             let content_height = scroll_output.content_size.y;
                             let viewport_height = scroll_output.inner_rect.height();
                             let has_more = *self.has_more.blocking_lock();

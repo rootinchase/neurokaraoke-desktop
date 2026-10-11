@@ -1,8 +1,10 @@
 use crate::api::SongDTO;
 use serde::{Deserialize, Serialize};
+use std::fs::File;
 use std::sync::atomic::AtomicU32;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy)]
@@ -50,10 +52,10 @@ pub enum PlaybackCommand {
     RadioStream(String, Box<dyn FnOnce(&Player) + Send + 'static>),
     SongReady(
         Option<Uuid>,
-        std::fs::File,
+        File,
         Option<Box<dyn FnOnce(&Player) + Send + 'static>>,
     ),
-    RadioStreamReady(std::fs::File, Box<dyn FnOnce(&Player) + Send + 'static>),
+    RadioStreamReady(File, Box<dyn FnOnce(&Player) + Send + 'static>),
     Seek(Duration),
     Shutdown,
     NextSong,
@@ -65,6 +67,6 @@ pub struct Player {
     pub(crate) refs: Option<Arc<AtomicU32>>,
     pub(crate) state: Arc<Mutex<Option<PlaybackState>>>,
     pub(crate) player_state: Arc<Mutex<PlayerState>>,
-    pub(crate) sender: tokio::sync::mpsc::Sender<PlaybackCommand>,
+    pub(crate) sender: mpsc::Sender<PlaybackCommand>,
     pub(crate) current_url_metadata: Arc<Mutex<Option<SongDTO>>>,
 }
