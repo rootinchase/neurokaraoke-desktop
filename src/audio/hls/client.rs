@@ -449,6 +449,11 @@ mod tests {
 
     /// A real MPEG-TS segment fetched from the Neuro Karaoke hifi tier.
     const SEG: &[u8] = include_bytes!("../../../raw_json/hls/current.ts");
+    /// Real segments from the lofi (~50 kbps) and midfi (~98 kbps) ABR tiers. All three
+    /// tiers are AAC-LC 44100 Hz stereo on audio PID 256, with a PID 257 `timed_id3`
+    /// data stream that the demuxer must ignore.
+    const LOFI: &[u8] = include_bytes!("../../../raw_json/hls/current_lofi.ts");
+    const MIDFI: &[u8] = include_bytes!("../../../raw_json/hls/current_midfi.ts");
 
     /// Demuxed ADTS must match ffmpeg's reference extraction byte-for-byte, and symphonia
     /// must decode every frame. Reference:
@@ -499,6 +504,155 @@ mod tests {
         assert_eq!(total, 172 * 1024, "expected 1024 samples per frame");
         assert_eq!(params.sample_rate, Some(44100));
         assert_eq!(params.channels.map(|c| c.count()), Some(2));
+    }
+    /// Counts complete ADTS frames by walking `buf` with `adts_frame_len`.
+    fn count_frames(buf: &[u8]) -> usize {
+        let mut i = 0;
+        let mut n = 0;
+        while i < buf.len() {
+            match adts_frame_len(&buf[i..]) {
+                Some(fl) if i + fl <= buf.len() => {
+                    i += fl;
+                    n += 1;
+                }
+                Some(_) => break,
+                None => i += 1,
+            }
+        }
+        n
+    }
+
+    /// Every ABR tier must demux to exactly the ADTS ffmpeg extracts from the same segment.
+    /// All three tiers are AAC-LC 44100 Hz stereo on audio PID 256 (stream type `0x0f`), so
+    /// `find_audio_pid` resolves each one. References
+    /// (`ffmpeg -i seg.ts -map 0:a -dn -c:a copy out.aac`): lofi 25124 bytes, midfi 49073,
+    /// hifi 97111 — 172 frames each (~4 s at 1024 samples/frame).
+    #[test]
+    fn all_tiers_demux_to_ffmpeg_reference() {
+        let tiers: [(&str, &[u8], usize, [u8; 7]); 3] = [
+            (
+                "lofi",
+                LOFI,
+                25124,
+                [0xff, 0xf1, 0x50, 0x80, 0x12, 0x9f, 0xfc],
+            ),
+            (
+                "midfi",
+                MIDFI,
+                49073,
+                [0xff, 0xf1, 0x50, 0x80, 0x22, 0x7f, 0xfc],
+            ),
+            (
+                "hifi",
+                SEG,
+                97111,
+                [0xff, 0xf1, 0x50, 0x80, 0x45, 0xbf, 0xfc],
+            ),
+        ];
+        for (name, seg, want_len, want_hdr) in tiers {
+            let adts = demux_ts(seg);
+            assert_eq!(
+                adts.len(),
+                want_len,
+                "{name}: ADTS length differs from ffmpeg"
+            );
+            assert_eq!(
+                &adts[..7],
+                &want_hdr[..],
+                "{name}: first ADTS header differs from ffmpeg"
+            );
+            assert_eq!(count_frames(&adts), 172, "{name}: ADTS frame count");
+            let (samples, ch, sr) =
+                decode_adts(&adts).unwrap_or_else(|e| panic!("{name}: decode failed: {e}"));
+            assert_eq!(sr.get(), 44100, "{name}: sample rate");
+            assert_eq!(ch.get(), 2, "{name}: channels");
+            assert_eq!(
+                samples.len(),
+                172 * 1024 * 2,
+                "{name}: decoded sample count"
+            );
+        }
+    }
+
+    /// An ABR tier switch is a `reset` followed by a segment from a different elementary
+    /// stream. The demuxer must re-resolve the PID for the new tier and produce the same
+    /// bytes as an independent demux of that tier.
+    #[test]
+    fn tier_switch_re_resolves_audio_pid() {
+        let mut d = TsDemuxer::new();
+        let lofi = d.feed(LOFI);
+        assert_eq!(lofi.len(), 25124, "lofi tier demux");
+        d.reset();
+        assert_eq!(d.audio_pid, None, "reset must drop the cached PID");
+        assert!(
+            d.carry.is_empty(),
+            "reset must drop the carried partial frame"
+        );
+        let hifi = d.feed(SEG);
+        assert_eq!(hifi.len(), 97111, "hifi segment after a tier switch");
+        assert_eq!(
+            hifi,
+            demux_ts(SEG),
+            "tier switch must not corrupt the new tier"
+        );
+    }
+
+    /// Simulates the live ABR session the way `hls_worker` drives it: start at lofi, record
+    /// download rates, let the selector climb, reset the demuxer on the switch, and feed the
+    /// new tier. This is the path a high-bandwidth client takes on segment 2, and the only
+    /// way to exercise the switch without a live stream.
+    #[test]
+    fn abr_session_climbs_tiers_and_stays_continuous() {
+        use crate::audio::hls::bandwidth::{BandwidthEstimator, TierSelector};
+
+        // Master playlist bandwidths, ascending, matching raw_json/hls/live.m3u8.
+        let bandwidths = [52_800u64, 105_600, 211_200];
+        let mut estimator = BandwidthEstimator::new();
+        let mut selector = TierSelector::new(0);
+        let mut demuxer = TsDemuxer::new();
+        let mut adts = Vec::new();
+
+        // Segment 1 on lofi: a fast download clears the hifi ceiling, but hysteresis
+        // (UP_STREAK = 2) keeps the selector on lofi for this segment.
+        estimator.record(LOFI.len() as u64, 0.2);
+        let current = selector.select(estimator.estimate().unwrap(), &bandwidths);
+        assert_eq!(current, 0, "segment 1 must stay on lofi (streak 1)");
+        adts.extend(demuxer.feed(LOFI));
+
+        // Segment 2: streak 2 → climb straight to hifi. The switch resets the demuxer.
+        estimator.record(SEG.len() as u64, 0.2);
+        let current = selector.select(estimator.estimate().unwrap(), &bandwidths);
+        assert_eq!(current, 2, "segment 2 must climb to hifi");
+        demuxer.reset();
+        adts.extend(demuxer.feed(SEG));
+
+        // Both tiers must have contributed their full, ffmpeg-identical ADTS.
+        assert_eq!(
+            adts.len(),
+            25124 + 97111,
+            "ADTS lost across the tier switch"
+        );
+        let (samples, ch, sr) = decode_adts(&adts).expect("combined session decode failed");
+        assert_eq!(sr.get(), 44100, "sample rate after the switch");
+        assert_eq!(ch.get(), 2, "channels after the switch");
+        assert_eq!(
+            samples.len(),
+            (172 + 172) * 1024 * 2,
+            "samples lost at the tier switch"
+        );
+    }
+
+    /// Shoutcast ships `timed_id3` metadata on PID 257. The demuxer must ignore that
+    /// stream, so no ID3 tag bytes may appear in the ADTS output.
+    #[test]
+    fn demuxed_adts_excludes_shoutcast_id3_metadata() {
+        for (name, seg) in [("lofi", LOFI), ("midfi", MIDFI), ("hifi", SEG)] {
+            let adts = demux_ts(seg);
+            assert!(
+                !adts.windows(3).any(|w| w == b"ID3"),
+                "{name}: ID3 metadata leaked into the ADTS stream"
+            );
+        }
     }
 
     /// The stateful demuxer must produce the same bytes as the one-shot demuxer.
