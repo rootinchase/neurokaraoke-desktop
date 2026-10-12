@@ -112,6 +112,7 @@ pub enum RadioUrl {
     #[default]
     Mp3320Kbps,
     Opus,
+    Hls,
 }
 
 impl RadioUrl {
@@ -119,6 +120,7 @@ impl RadioUrl {
         match self {
             Self::Mp3320Kbps => "320kbps MP3",
             Self::Opus => "Opus",
+            Self::Hls => "HLS (AAC)",
         }
     }
 
@@ -126,6 +128,37 @@ impl RadioUrl {
         match self {
             Self::Mp3320Kbps => "https://radio.twinskaraoke.com/listen/neuro_21/radio.mp3",
             Self::Opus => "https://radio.twinskaraoke.com/listen/neuro_21/radio.ogg",
+            Self::Hls => "https://radio.twinskaraoke.com/hls/neuro_21/live.m3u8",
+        }
+    }
+
+    /// Returns true if this radio URL is an HLS playlist (needs the HLS playback path).
+    pub fn is_hls(&self) -> bool {
+        matches!(self, Self::Hls)
+    }
+}
+
+/// HLS tier preference for adaptive bitrate selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum PreferredTier {
+    /// Estimate bandwidth and pick the highest sustainable tier automatically.
+    #[default]
+    Auto,
+    /// Lock to the lowest tier (lofi, ~52 kbps).
+    Lofi,
+    /// Lock to the middle tier (midfi, ~105 kbps).
+    Midfi,
+    /// Lock to the highest tier (hifi, ~211 kbps).
+    Hifi,
+}
+
+impl PreferredTier {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Auto => "Auto",
+            Self::Lofi => "Lofi",
+            Self::Midfi => "Midfi",
+            Self::Hifi => "Hifi",
         }
     }
 }
@@ -141,6 +174,8 @@ pub struct Config {
     pub loop_mode: LoopMode,
     #[serde(default)]
     pub radio_url: RadioUrl,
+    #[serde(default)]
+    pub preferred_tier: PreferredTier,
 
     #[serde(default)]
     pub theme: SelectableTheme,
@@ -167,6 +202,7 @@ impl Default for Config {
             shuffle: false,
             loop_mode: LoopMode::None,
             radio_url: Default::default(),
+            preferred_tier: PreferredTier::default(),
             theme: Default::default(),
             cache: Default::default(),
             framerate_when_not_focused: defaults::framerate_when_not_focused(),

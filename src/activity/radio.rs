@@ -223,6 +223,11 @@ impl RadioActivity {
                             RadioUrl::Opus,
                             RadioUrl::Opus.name(),
                         );
+                        ui.selectable_value(
+                            &mut config.radio_url,
+                            RadioUrl::Hls,
+                            RadioUrl::Hls.name(),
+                        );
                     });
             });
             ui.add_space(16.0);
@@ -360,7 +365,15 @@ pub fn render_radio_now_playing(
 
                     if resp.clicked() {
                         let _ = persistence::clear_app_state();
-                        player.radio_stream(config.radio_url.url().to_string(), Player::play);
+                        if config.radio_url.is_hls() {
+                            player.hls_stream(
+                                config.radio_url.url().to_string(),
+                                config.preferred_tier,
+                                Player::play,
+                            );
+                        } else {
+                            player.radio_stream(config.radio_url.url().to_string(), Player::play);
+                        }
                     }
                     ui.add_space(16.0);
 

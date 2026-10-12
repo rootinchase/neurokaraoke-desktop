@@ -1,4 +1,5 @@
 use crate::api::SongDTO;
+use crate::audio::hls::HlsChunk;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::sync::atomic::AtomicU32;
@@ -56,6 +57,15 @@ pub enum PlaybackCommand {
         Option<Box<dyn FnOnce(&Player) + Send + 'static>>,
     ),
     RadioStreamReady(File, Box<dyn FnOnce(&Player) + Send + 'static>),
+    HlsStream(
+        String,
+        crate::config::PreferredTier,
+        Box<dyn FnOnce(&Player) + Send + 'static>,
+    ),
+    HlsStreamReady(
+        std::sync::mpsc::Receiver<HlsChunk>,
+        Box<dyn FnOnce(&Player) + Send + 'static>,
+    ),
     Seek(Duration),
     Shutdown,
     NextSong,
@@ -69,4 +79,5 @@ pub struct Player {
     pub(crate) player_state: Arc<Mutex<PlayerState>>,
     pub(crate) sender: mpsc::Sender<PlaybackCommand>,
     pub(crate) current_url_metadata: Arc<Mutex<Option<SongDTO>>>,
+    pub(crate) hls_status: Arc<Mutex<crate::audio::hls::HlsStatus>>,
 }

@@ -291,7 +291,7 @@ pub fn render_mosaic(
     }
 }
 
-pub fn build_playlist_table<'a>(ui: &'a mut Ui, id: Id) -> Table<'a> {
+pub fn build_playlist_table(ui: &mut Ui, id: Id) -> Table<'_> {
     TableBuilder::new(ui)
         .id_salt(id)
         .column(Column::remainder())

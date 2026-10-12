@@ -64,7 +64,7 @@ pub struct PersistentMediaCache {
     /// single map lookup instead of stat-ing up to 6 candidate filenames per
     /// frame.
     resolved: DashMap<(Uuid, AssetType), PathBuf>,
-    /// Keys confirmed to be absent from disk. Memoizes negative results so a
+    /// Keys confirmed to be absent from disk. Memorizes negative results so a
     /// missing artwork is not re-stat-ed on every frame.
     negative: DashSet<(Uuid, AssetType)>,
     /// Access-order tracker for LRU eviction of `in_flight`: maps each asset key
@@ -908,7 +908,7 @@ mod tests {
             assert_eq!(cache.in_flight_len(), 2);
 
             // Entries whose disk file is gone are dropped even under the cap.
-            let _ = tokio::fs::remove_file(dir.join(format!("{}.webp", ids[2]))).await;
+            let _ = remove_file(dir.join(format!("{}.webp", ids[2]))).await;
             cache.evict_in_flight(10);
             assert_eq!(cache.in_flight_len(), 1);
 
@@ -974,7 +974,7 @@ mod tests {
             // Complete entry -> not in flight; a re-download may be spawned.
             cache.in_flight.insert(
                 key,
-                DownloadStatus::Complete(std::path::PathBuf::from("/tmp/x.webp")),
+                DownloadStatus::Complete(PathBuf::from("/tmp/x.webp")),
             );
             assert!(!cache.has_in_flight(id, AssetType::Image));
 

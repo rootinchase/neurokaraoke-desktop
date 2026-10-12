@@ -1,4 +1,5 @@
 use crate::api::{API_URLS, LazySongDatabase, LoadingState, SongDTO};
+use crate::audio::hls::{HlsClient, HlsSource, TsDemuxer, decode_adts};
 use crate::audio::types::*;
 use crate::debug_log;
 use crate::utilities::cache::{AssetType, PersistentMediaCache, cache_dir, get_thumbnail_url};
@@ -78,6 +79,7 @@ impl Clone for Player {
             player_state: self.player_state.clone(),
             sender: self.sender.clone(),
             current_url_metadata: self.current_url_metadata.clone(),
+            hls_status: self.hls_status.clone(),
         }
     }
 }
@@ -106,6 +108,7 @@ impl Player {
             })),
             sender: tx,
             current_url_metadata: Arc::new(Mutex::new(None)),
+            hls_status: Arc::new(Mutex::new(crate::audio::hls::HlsStatus::default())),
         };
 
         let mut player = p.clone();
@@ -1198,6 +1201,91 @@ impl Player {
                                         }
                                     }
                                 }
+
+                                PlaybackCommand::HlsStream(url, preferred_tier, cb) => {
+                                    if let Some(cancel) = active_radio_cancel.take() {
+                                        cancel.store(true, Ordering::Relaxed);
+                                    }
+                                    active_radio_url = Some(url.clone());
+                                    let cancel_flag = Arc::new(AtomicBool::new(false));
+                                    active_radio_cancel = Some(cancel_flag.clone());
+                                    let mut lock = player_worker.state.lock().unwrap();
+                                    mixer.pause();
+                                    mixer.clear();
+                                    mixer.set_volume(0.0);
+
+                                    let target_uuid = Uuid::new_v4();
+                                    *lock = Some(PlaybackState {
+                                        start: Instant::now(),
+                                        paused: None,
+                                        duration: Duration::from_secs(3600 * 24),
+                                        song: target_uuid,
+                                        loading: true,
+                                    });
+                                    drop(lock);
+                                    *player_worker.current_url_metadata.lock().unwrap() = None;
+                                    // Mark HLS active and clear the tier/bitrate display.
+                                    {
+                                        let mut s = player_worker.hls_status.lock().unwrap();
+                                        s.active = true;
+                                        s.tier_name = String::new();
+                                        s.estimated_bitrate = 0;
+                                    }
+                                    ctx_worker.request_repaint();
+
+                                    let handle = player_worker.clone();
+                                    let rt = rt_worker.clone();
+                                    let cancel_for_thread = cancel_flag.clone();
+                                    let client_for_hls = client.clone();
+                                    let status_for_thread = player_worker.hls_status.clone();
+
+                                    thread::spawn(move || {
+                                        hls_worker(
+                                            client_for_hls,
+                                            url,
+                                            preferred_tier,
+                                            rt,
+                                            handle,
+                                            cancel_for_thread,
+                                            status_for_thread,
+                                            cb,
+                                        );
+                                    });
+                                }
+
+                                PlaybackCommand::HlsStreamReady(rx, cb) => {
+                                    if active_radio_url.is_none() {
+                                        debug_log!(
+                                            "Discarding stale HlsStreamReady because radio mode is no longer active"
+                                        );
+                                        continue;
+                                    }
+                                    let source = HlsSource::new(rx);
+                                    let mut lock = player_worker.state.lock().unwrap();
+                                    mixer.pause();
+                                    mixer.clear();
+
+                                    let current_vol =
+                                        player_worker.player_state.lock().unwrap().volume;
+                                    mixer.set_volume(current_vol.powi(3));
+
+                                    *lock = Some(PlaybackState {
+                                        start: Instant::now(),
+                                        paused: None,
+                                        duration: Duration::from_secs(3600 * 24),
+                                        song: Uuid::nil(),
+                                        loading: false,
+                                    });
+
+                                    drop(mixer);
+                                    mixer = rodio::Player::connect_new(handle.mixer());
+                                    mixer.set_volume(current_vol.powi(3));
+                                    mixer.append(SafeSource { inner: source });
+                                    mixer.play();
+
+                                    cb(&player_worker);
+                                    ctx_worker.request_repaint();
+                                }
                             },
 
                             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {}
@@ -1366,6 +1454,20 @@ impl Player {
         self.sender
             .try_send(PlaybackCommand::RadioStream(
                 url,
+                Box::new(commands_after_load),
+            ))
+            .ok();
+    }
+    pub fn hls_stream(
+        &self,
+        url: String,
+        preferred_tier: crate::config::PreferredTier,
+        commands_after_load: impl FnOnce(&Player) + Send + 'static,
+    ) {
+        self.sender
+            .try_send(PlaybackCommand::HlsStream(
+                url,
+                preferred_tier,
                 Box::new(commands_after_load),
             ))
             .ok();
@@ -1540,4 +1642,176 @@ impl std::io::Seek for TailReader {
     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
         self.file.seek(pos)
     }
+}
+
+/// HLS background worker: fetches playlists/segments, demuxes, decodes, estimates
+/// bandwidth, selects the best tier (ABR), and streams PCM chunks to the player via
+/// `HlsStreamReady`. Tier switches flush the source so playback resumes cleanly.
+fn hls_worker(
+    client: Client,
+    url: String,
+    preferred_tier: crate::config::PreferredTier,
+    rt: Arc<Runtime>,
+    handle: Player,
+    cancel: Arc<AtomicBool>,
+    status: Arc<Mutex<crate::audio::hls::HlsStatus>>,
+    cb: Box<dyn FnOnce(&Player) + Send + 'static>,
+) {
+    use crate::audio::hls::{BandwidthEstimator, TierSelector, tier_name};
+    use crate::config::PreferredTier;
+
+    let (tx, rx) = std::sync::mpsc::channel::<crate::audio::hls::HlsChunk>();
+    // `rx` is handed to the player exactly once (the first decoded segment); keep it in an
+    // `Option` so the compiler sees a single move.
+    let mut ready_rx = Some(rx);
+    let mut initial_cb = Some(cb);
+
+    rt.block_on(async move {
+        let client = HlsClient::new(client, url.clone());
+        let master = match client.fetch_master().await {
+            Ok(m) => m,
+            Err(e) => {
+                debug_log!("⚠️ [HLS] Failed to fetch master playlist: {}", e);
+                return;
+            }
+        };
+
+        // Sort variants ascending by bandwidth so tier index 0 is the lowest tier.
+        let mut variants = master.variants.clone();
+        variants.sort_by_key(|v| v.bandwidth);
+        if variants.is_empty() {
+            debug_log!("⚠️ [HLS] Master playlist has no variants");
+            return;
+        }
+        let bandwidths: Vec<u64> = variants.iter().map(|v| v.bandwidth).collect();
+
+        // Map the preferred tier to a locked index (None = auto / estimator-driven).
+        let locked_idx = match preferred_tier {
+            PreferredTier::Auto => None,
+            PreferredTier::Lofi => Some(0usize),
+            PreferredTier::Midfi => Some(1usize.min(variants.len() - 1)),
+            PreferredTier::Hifi => Some(variants.len() - 1),
+        };
+
+        let mut estimator = BandwidthEstimator::new();
+        let mut selector = TierSelector::new(0);
+        let mut current_tier = locked_idx.unwrap_or(0);
+        let mut next_seq: Option<u64> = None;
+        // Stateful demuxer: live segments are 188-byte aligned, so an ADTS frame can
+        // straddle a segment boundary. Carrying the partial frame (and the resolved audio
+        // PID) across segments is what keeps the decode continuous.
+        let mut demuxer = TsDemuxer::new();
+        loop {
+            if cancel.load(Ordering::Relaxed) {
+                break;
+            }
+            let media_uri = variants[current_tier].uri.clone();
+            let media = match client.fetch_media(&media_uri).await {
+                Ok(m) => m,
+                Err(e) => {
+                    debug_log!("⚠️ [HLS] Failed to fetch media playlist: {}", e);
+                    break;
+                }
+            };
+
+            let segments: Vec<_> = media
+                .segments
+                .iter()
+                .filter(|s| next_seq.map(|n| s.sequence >= n).unwrap_or(true))
+                .cloned()
+                .collect();
+
+            for seg in segments {
+                if cancel.load(Ordering::Relaxed) {
+                    break;
+                }
+                let t0 = Instant::now();
+                let bytes = match client.fetch_segment(&seg.uri).await {
+                    Ok(b) => b,
+                    Err(e) => {
+                        debug_log!(
+                            "⚠️ [HLS] Failed to fetch segment {}: {}",
+                            seg.sequence,
+                            e
+                        );
+                        continue;
+                    }
+                };
+                let dt = t0.elapsed().as_secs_f64();
+                estimator.record(bytes.len() as u64, dt);
+
+                // A `#EXT-X-DISCONTINUITY` restarts the stream, so drop any carried
+                // partial frame before feeding this segment.
+                if seg.discontinuity {
+                    demuxer.reset();
+                }
+                let adts = demuxer.feed(&bytes);
+                match decode_adts(&adts) {
+                    Ok((samples, ch, sr)) => {
+                        if seg.discontinuity {
+                            let _ = tx.send(crate::audio::hls::HlsChunk::Flush);
+                        }
+                        if tx
+                            .send(crate::audio::hls::HlsChunk::Samples {
+                                samples,
+                                channels: ch,
+                                sample_rate: sr,
+                            })
+                            .is_err()
+                        {
+                            return;
+                        }
+                        if let Some(rx) = ready_rx.take() {
+                            let cb_to_use = initial_cb
+                                .take()
+                                .unwrap_or_else(|| Box::new(Player::play));
+                            handle
+                                .sender
+                                .try_send(PlaybackCommand::HlsStreamReady(rx, cb_to_use))
+                                .ok();
+                            debug_log!("🟢 [HLS] Stream ready signal sent to player.");
+                        }
+                    }
+                    Err(e) => {
+                        debug_log!(
+                            "⚠️ [HLS] Failed to decode segment {}: {}",
+                            seg.sequence,
+                            e
+                        );
+                    }
+                }
+                next_seq = Some(seg.sequence + 1);
+
+                // ABR tier selection.
+                let est = estimator.estimate().unwrap_or(0);
+                let new_tier = match locked_idx {
+                    Some(i) => i,
+                    None => selector.select(est, &bandwidths),
+                };
+                {
+                    let mut s = status.lock().unwrap();
+                    s.tier_name = tier_name(bandwidths[new_tier]).to_string();
+                    s.estimated_bitrate = est;
+                }
+                if new_tier != current_tier {
+                    current_tier = new_tier;
+                    next_seq = None; // restart from the new tier's current window
+                    demuxer.reset(); // the new tier is a different elementary stream
+                    let _ = tx.send(crate::audio::hls::HlsChunk::Flush);
+                    debug_log!(
+                        "🔀 [HLS] Switching to tier {} (est {} bps)",
+                        tier_name(bandwidths[new_tier]),
+                        est
+                    );
+                    break; // re-fetch the new tier's media playlist
+                }
+            }
+
+            if cancel.load(Ordering::Relaxed) {
+                break;
+            }
+            let target = media.target_duration.max(1);
+            tokio::time::sleep(Duration::from_secs(target)).await;
+        }
+    });
 }
