@@ -57,7 +57,7 @@ pub fn create_reqwest_client() -> Client {
 }
 
 pub fn sort_items<T>(
-    items: &mut [T],
+    items: &mut Vec<T>,
     current_sort: &SortOption,
     current_sort_desc: &bool,
     get_name: impl Fn(&T) -> String,
@@ -65,35 +65,32 @@ pub fn sort_items<T>(
     get_play_count: impl Fn(&T) -> u32,
     get_date: impl Fn(&T) -> Option<String>,
 ) {
-    match current_sort {
-        SortOption::Name => {
-            if *current_sort_desc {
-                items.sort_by_key(|a| std::cmp::Reverse(get_name(a).to_lowercase()))
-            } else {
-                items.sort_by_key(|a| get_name(a).to_lowercase())
-            }
-        }
-        SortOption::Songs => {
-            if *current_sort_desc {
-                items.sort_by_key(|a| std::cmp::Reverse(get_song_count(a)))
-            } else {
-                items.sort_by_key(|a| get_song_count(a))
-            }
-        }
-        SortOption::Plays => {
-            if *current_sort_desc {
-                items.sort_by_key(|a| std::cmp::Reverse(get_play_count(a)))
-            } else {
-                items.sort_by_key(|a| get_play_count(a))
-            }
-        }
-        SortOption::Date => {
-            if *current_sort_desc {
-                items.sort_by_key(|a| std::cmp::Reverse(get_date(a)))
-            } else {
-                items.sort_by_key(|a| get_date(a))
-            }
-        }
+    // Decorate-sort-undecorate: compute each item's sort key exactly once, sort
+    // the (key, item) pairs, then rebuild the list. The previous
+    // `sort_by_key(|a| get_name(a).to_lowercase())` recomputed the key on every
+    // comparison, allocating a fresh lowercased String O(n log n) times.
+    let taken = std::mem::take(items);
+    let mut pairs: Vec<(Key, T)> = Vec::with_capacity(taken.len());
+    for item in taken {
+        let key = match current_sort {
+            SortOption::Name => Key::Str(get_name(&item).to_lowercase()),
+            SortOption::Songs => Key::Num(get_song_count(&item)),
+            SortOption::Plays => Key::Num(get_play_count(&item)),
+            SortOption::Date => Key::OptStr(get_date(&item)),
+        };
+        pairs.push((key, item));
+    }
+    pairs.sort_by(|a, b| a.0.cmp(&b.0));
+    if *current_sort_desc {
+        pairs.reverse();
+    }
+    *items = pairs.into_iter().map(|(_, item)| item).collect();
+
+    #[derive(PartialOrd, Ord, PartialEq, Eq)]
+    enum Key {
+        Str(String),
+        Num(u32),
+        OptStr(Option<String>),
     }
 }
 

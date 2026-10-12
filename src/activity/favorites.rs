@@ -314,7 +314,7 @@ impl FavoritesActivity {
                         render_playlist_box(
                             ui,
                             theme,
-                            "favorites_box_favorite_songs",
+                            ui.id().with("favorites_box_favorite_songs"),
                             "Favorite Songs",
                             &creator,
                             &favorite_songs_detail,
@@ -357,7 +357,7 @@ impl FavoritesActivity {
                                         render_playlist_box(
                                             ui,
                                             theme,
-                                            &format!("favorites_playlist_box_{}", playlist.id),
+                                            ui.id().with(playlist.id),
                                             &detail.name,
                                             &playlist.creator,
                                             detail,

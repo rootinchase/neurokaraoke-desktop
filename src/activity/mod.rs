@@ -15,15 +15,40 @@ use crate::theme::ThemeManager;
 use crate::utilities::cache::{self, PersistentMediaCache};
 use crate::utilities::util::format_duration;
 use eframe::egui::{
-    Align2, Color32, Context, FontId, Frame, Grid, Image, ImageSource, Sense, Ui, Vec2,
+    Align2, Color32, Context, FontId, Frame, Grid, Id, Image, ImageSource, Sense, Ui, Vec2,
     include_image, vec2,
 };
 use egui_extras::{Column, Table, TableBuilder};
 use reqwest::Client;
 use std::fs::read;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use tokio::runtime::Runtime;
 use uuid::Uuid;
+
+// Sidebar icons are embedded assets. Constructing an `ImageSource` from
+// `include_image!` allocates and re-hashes the URI on every call, and the
+// sidebar calls `icon()` once per item per frame. These statics build each
+// source exactly once; `icon()` returns a reference that egui's texture cache
+// hits without re-registering.
+static HOME_ICON: LazyLock<ImageSource<'static>> =
+    LazyLock::new(|| include_image!("../../assets/home.svg"));
+static SEARCH_ICON: LazyLock<ImageSource<'static>> =
+    LazyLock::new(|| include_image!("../../assets/search.svg"));
+static RADIO_ICON: LazyLock<ImageSource<'static>> =
+    LazyLock::new(|| include_image!("../../assets/radio.svg"));
+static PLAYLIST_ICON: LazyLock<ImageSource<'static>> =
+    LazyLock::new(|| include_image!("../../assets/playlist.svg"));
+static SETLIST_ICON: LazyLock<ImageSource<'static>> =
+    LazyLock::new(|| include_image!("../../assets/setlist.svg"));
+static FAVORITE_ICON: LazyLock<ImageSource<'static>> =
+    LazyLock::new(|| include_image!("../../assets/favorite.svg"));
+static UPLOADED_ICON: LazyLock<ImageSource<'static>> =
+    LazyLock::new(|| include_image!("../../assets/uploaded.svg"));
+static PROFILE_ICON: LazyLock<ImageSource<'static>> =
+    LazyLock::new(|| include_image!("../../assets/icon.png"));
+static SETTINGS_ICON: LazyLock<ImageSource<'static>> =
+    LazyLock::new(|| include_image!("../../assets/settings.svg"));
 
 /// Computes the egui `bytes://` texture URI that `resolve_and_render_art`
 /// registers for a given artwork. Returns `None` when the artwork has no cached
@@ -98,18 +123,18 @@ impl ActivityType {
         }
     }
 
-    pub fn icon(&self) -> Option<ImageSource<'static>> {
+    pub fn icon(&self) -> Option<&'static ImageSource<'static>> {
         match self {
-            Self::Home => Some(include_image!("../../assets/home.svg")),
-            Self::Search => Some(include_image!("../../assets/search.svg")),
-            Self::Radio => Some(include_image!("../../assets/radio.svg")),
-            Self::Playlists => Some(include_image!("../../assets/playlist.svg")),
-            Self::MyPlaylists => Some(include_image!("../../assets/playlist.svg")),
-            Self::Setlists => Some(include_image!("../../assets/setlist.svg")),
-            Self::Favorites => Some(include_image!("../../assets/favorite.svg")),
-            Self::Uploads => Some(include_image!("../../assets/uploaded.svg")),
-            Self::Profile => Some(include_image!("../../assets/icon.png")),
-            Self::Settings => Some(include_image!("../../assets/settings.svg")),
+            Self::Home => Some(&HOME_ICON),
+            Self::Search => Some(&SEARCH_ICON),
+            Self::Radio => Some(&RADIO_ICON),
+            Self::Playlists => Some(&PLAYLIST_ICON),
+            Self::MyPlaylists => Some(&PLAYLIST_ICON),
+            Self::Setlists => Some(&SETLIST_ICON),
+            Self::Favorites => Some(&FAVORITE_ICON),
+            Self::Uploads => Some(&UPLOADED_ICON),
+            Self::Profile => Some(&PROFILE_ICON),
+            Self::Settings => Some(&SETTINGS_ICON),
         }
     }
 }
@@ -149,14 +174,20 @@ pub fn resolve_and_render_art(
         .unwrap_or_else(|_| Uuid::new_v5(&Uuid::NAMESPACE_URL, art_uuid_str.as_bytes()));
 
     // FIXED: Use the new helper method to safely query the persistent cache setup
-    if let Some(path) = cache.get_cached_path(art_uuid, cache::AssetType::Image)
-        && let Ok(bytes) = read(&path) {
-            ui.add(
-                Image::from_bytes(format!("bytes://{}", path.display()), bytes)
-                    .fit_to_exact_size(size),
-            );
+    if let Some(path) = cache.get_cached_path(art_uuid, cache::AssetType::Image) {
+        // egui's bytes loader caches by URI, so once an artwork's bytes are
+        // registered we can reuse the cached texture every frame without
+        // re-reading the file from disk. Only the first frame pays for the read.
+        let uri = format!("bytes://{}", path.display());
+        if ctx.try_load_bytes(&uri).is_ok() {
+            ui.add(Image::from_uri(uri).fit_to_exact_size(size));
             return;
         }
+        if let Ok(bytes) = read(&path) {
+            ui.add(Image::from_bytes(uri, bytes).fit_to_exact_size(size));
+            return;
+        }
+    }
 
     // Skip spawning a new download task when one is already in flight for
     // this artwork. Without this guard, every frame spawns a task for
@@ -189,14 +220,14 @@ pub fn render_grid_2x2(
     rt: &Runtime,
     client: &Client,
     id: &str,
-    covers: &[&Artwork],
+    covers: &[Arc<Artwork>],
     size: Vec2,
 ) {
     Grid::new(format!("{} songs mosaic", id))
         .spacing(Vec2::new(2.0, 2.0))
         .show(ui, |ui| {
             for i in 0..4 {
-                let cover = covers[i % covers.len()];
+                let cover = &covers[i % covers.len()];
                 resolve_and_render_art(ui, cache, ctx, rt, client, cover, size / 2.0);
                 if i == 1 {
                     ui.end_row();
@@ -215,9 +246,9 @@ pub fn render_mosaic(
     songs_list: &[SongDTO],
 ) {
     let size = Vec2::new(150.0, 150.0);
-    let valid_covers: Vec<&Artwork> = songs_list
+    let valid_covers: Vec<Arc<Artwork>> = songs_list
         .iter()
-        .filter_map(|s| s.cover_art.as_deref())
+        .filter_map(|s| s.cover_art.clone())
         .collect();
 
     if valid_covers.is_empty() {
@@ -229,14 +260,14 @@ pub fn render_mosaic(
 
     match valid_covers.len() {
         1 => {
-            resolve_and_render_art(ui, cache, ctx, rt, client, valid_covers[0], size);
+            resolve_and_render_art(ui, cache, ctx, rt, client, &valid_covers[0], size);
         }
         2 => {
             Grid::new(format!("{} songs mosaic", id))
                 .spacing(Vec2::new(0.0, 1.0))
                 .show(ui, |ui| {
                     for i in 0..2 {
-                        let cover = valid_covers[i % valid_covers.len()];
+                        let cover = &valid_covers[i % valid_covers.len()];
                         resolve_and_render_art(ui, cache, ctx, rt, client, cover, half_horizontal);
                         ui.end_row();
                     }
@@ -248,7 +279,7 @@ pub fn render_mosaic(
                 .spacing(Vec2::new(0.0, 1.0))
                 .show(ui, |ui| {
                     for i in 0..3 {
-                        let cover = valid_covers[i % valid_covers.len()];
+                        let cover = &valid_covers[i % valid_covers.len()];
                         resolve_and_render_art(ui, cache, ctx, rt, client, cover, third_horizontal);
                         ui.end_row();
                     }
@@ -260,9 +291,9 @@ pub fn render_mosaic(
     }
 }
 
-pub fn build_playlist_table<'a>(ui: &'a mut Ui, id: &str) -> Table<'a> {
+pub fn build_playlist_table<'a>(ui: &'a mut Ui, id: Id) -> Table<'a> {
     TableBuilder::new(ui)
-        .id_salt(format!("{}-songs", id))
+        .id_salt(id)
         .column(Column::remainder())
         .column(Column::exact(60.0))
         .column(Column::exact(100.0))
@@ -285,7 +316,7 @@ pub fn build_playlist_table<'a>(ui: &'a mut Ui, id: &str) -> Table<'a> {
 
 pub fn render_playlist_table(
     ui: &mut Ui,
-    id: &str,
+    id: Id,
     playlist: &PlaylistDetail,
     on_play_song: &mut impl FnMut(Vec<SongDTO>, Uuid),
 ) {
@@ -421,7 +452,7 @@ fn truncate_title(title: &str) -> String {
 pub fn render_playlist_box(
     ui: &mut Ui,
     theme: &ThemeManager,
-    id: &str,
+    id: Id,
     title: &str,
     label: &str,
     playlist: &PlaylistDetail,
@@ -458,7 +489,7 @@ pub fn render_mosaic_covers(
     rt: &Runtime,
     client: &Client,
     id: &str,
-    covers: &[&Artwork],
+    covers: &[Arc<Artwork>],
     size: Vec2,
 ) {
     if covers.is_empty() {
@@ -469,14 +500,14 @@ pub fn render_mosaic_covers(
 
     match covers.len() {
         1 => {
-            resolve_and_render_art(ui, cache, ctx, rt, client, covers[0], size);
+            resolve_and_render_art(ui, cache, ctx, rt, client, &covers[0], size);
         }
         2 => {
             Grid::new(format!("{} songs mosaic", id))
                 .spacing(Vec2::new(1.0, 2.0))
                 .show(ui, |ui| {
                     for i in 0..2 {
-                        let cover = covers[i % covers.len()];
+                        let cover = &covers[i % covers.len()];
                         resolve_and_render_art(ui, cache, ctx, rt, client, cover, half_vertical);
                     }
                 });
@@ -486,14 +517,14 @@ pub fn render_mosaic_covers(
                 .spacing(Vec2::new(1.0, 2.0))
                 .show(ui, |ui| {
                     for i in 0..2 {
-                        let cover = covers[i % covers.len()];
+                        let cover = &covers[i % covers.len()];
                         resolve_and_render_art(ui, cache, ctx, rt, client, cover, size / 2.0);
                     }
                 });
             Grid::new(format!("{} songs mosaic-p2", id))
                 .spacing(Vec2::new(1.0, 1.0))
                 .show(ui, |ui| {
-                    let cover = covers[2];
+                    let cover = &covers[2];
                     resolve_and_render_art(ui, cache, ctx, rt, client, cover, half_horizontal);
                 });
         }
@@ -529,30 +560,23 @@ pub fn render_playlist_art_advanced(
             return;
         }
 
-    let mosaic_valid = playlist
-        .mosaic_media
-        .as_ref()
-        .is_some_and(|m| !m.is_empty());
-    if mosaic_valid
-        && let Some(mosaic) = &playlist.mosaic_media {
-            let valid_mosaic: Vec<&Artwork> = mosaic.iter().map(|a| a.as_ref()).collect();
-            if !valid_mosaic.is_empty() {
-                render_mosaic_covers(
-                    ui,
-                    cache,
-                    ctx,
-                    rt,
-                    client,
-                    &playlist.id.to_string(),
-                    &valid_mosaic,
-                    size,
-                );
-                return;
-            }
-        }
+    let mosaic_valid = !playlist.mosaic_covers.is_empty();
+    if mosaic_valid {
+        render_mosaic_covers(
+            ui,
+            cache,
+            ctx,
+            rt,
+            client,
+            &playlist.id.to_string(),
+            &playlist.mosaic_covers,
+            size,
+        );
+        return;
+    }
 
-    let valid_song_covers: Vec<&Artwork> =
-        songs.iter().filter_map(|s| s.cover_art.as_deref()).collect();
+    let valid_song_covers: Vec<Arc<Artwork>> =
+        songs.iter().filter_map(|s| s.cover_art.clone()).collect();
     if !valid_song_covers.is_empty() {
         render_mosaic_covers(
             ui,

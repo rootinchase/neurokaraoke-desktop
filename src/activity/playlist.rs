@@ -4,7 +4,6 @@ use crate::activity::{
 };
 use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongDTO};
 use crate::app::fonts;
-use crate::config::Config;
 use crate::theme::ThemeManager;
 use crate::utilities::cache::{PersistentMediaCache, playlist_cache_dir};
 use crate::utilities::util::{
@@ -58,6 +57,13 @@ pub struct PlaylistActivity {
     /// egui's texture store bounded (each 512x512 cover is ~1 MB) instead of
     /// registering a texture for every loaded playlist.
     pub last_scroll_y: Arc<Mutex<f64>>,
+    /// Cached header strings (`"Created by … · N songs · …"` and
+    /// `"Last updated …"`) keyed by the playlist id they were computed for. The
+    /// detail view renders every frame; recomputing the total duration and
+    /// formatting the relative date every frame is pure waste once the detail is
+    /// loaded, so we memoize the strings and reuse them while the same playlist
+    /// is open.
+    pub header_stats_cache: Arc<Mutex<Option<(Uuid, String, String)>>>,
 }
 
 /// An action chosen from the playlist detail "more" (kebab) popup. The caller
@@ -182,6 +188,7 @@ impl PlaylistActivity {
             more_menu_pos,
             favorite_playlists,
             last_scroll_y: Arc::new(Mutex::new(0.0)),
+            header_stats_cache: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -473,26 +480,49 @@ impl PlaylistActivity {
                                 .strong(),
                         );
 
-                        let total_dur: u64 =
-                            detail.songs.iter().map(|s| s.duration.unwrap_or(0)).sum();
-                        let stats = format!(
-                            "Created by {} · {} songs · {}",
-                            playlist.creator,
-                            detail.songs.len(),
-                            format_total_duration(total_dur)
-                        );
-                        ui.label(RichText::new(stats).color(theme.text_secondary).size(14.0));
+                        // Header strings are memoized per playlist id so the
+                        // total-duration sum and relative-date formatting run
+                        // once, not on every frame.
+                        let cached = {
+                            let guard = self.header_stats_cache.try_lock().ok();
+                            guard
+                                .as_ref()
+                                .and_then(|g| g.as_ref())
+                                .filter(|(id, _, _)| *id == playlist.id)
+                                .map(|(_, s, u)| (s.clone(), u.clone()))
+                        };
+                        let (stats, last_updated) = match cached {
+                            Some(pair) => pair,
+                            None => {
+                                let total_dur: u64 =
+                                    detail.songs.iter().map(|s| s.duration.unwrap_or(0)).sum();
+                                let stats = format!(
+                                    "Created by {} · {} songs · {}",
+                                    playlist.creator,
+                                    detail.songs.len(),
+                                    format_total_duration(total_dur)
+                                );
+                                let last_updated = playlist
+                                    .updated_at
+                                    .as_deref()
+                                    .or(playlist.created_at.as_deref())
+                                    .map(|updated| {
+                                        format!("Last updated {}", format_relative_date(updated))
+                                    })
+                                    .unwrap_or_default();
+                                if let Ok(mut guard) = self.header_stats_cache.try_lock() {
+                                    *guard = Some((playlist.id, stats.clone(), last_updated.clone()));
+                                }
+                                (stats, last_updated)
+                            }
+                        };
+                        ui.label(RichText::new(&stats).color(theme.text_secondary).size(14.0));
 
-                        if let Some(updated) =
-                            playlist.updated_at.as_deref().or(playlist.created_at.as_deref())
-                        {
+                        if !last_updated.is_empty() {
                             ui.label(
-                                RichText::new(format!(
-                                    "Last updated {}",
-                                    format_relative_date(updated)
-                                ))
-                                .color(theme.text_secondary)
-                                .size(14.0),
+                                RichText::new(&last_updated)
+                                    .color(theme.text_secondary)
+                                    .size(14.0),
                             );
                         }
 
@@ -790,6 +820,7 @@ impl PlaylistActivity {
     pub fn render(
         &self,
         ui: &mut Ui,
+        theme: &ThemeManager,
         playlist_search: &mut Option<&mut String>,
         current_sort: &mut SortOption,
         current_sort_desc: &mut bool,
@@ -820,7 +851,6 @@ impl PlaylistActivity {
                         id,
                         playlist.name.clone(),
                     );
-                    let theme = ThemeManager::new(Config::read().unwrap_or_default().theme.as_theme());
                     if let Some(detail_state) = self.playlist_details.get(&id) {
                         match &*detail_state {
                             LoadingState::Loaded(detail) => {
@@ -836,7 +866,7 @@ impl PlaylistActivity {
                                     .show(ui, |ui| {
                                         action = self.render_full_view(
                                             ui,
-                                            &theme,
+                                            theme,
                                             &playlist,
                                             detail,
                                             &mut play_playlist,
@@ -1005,13 +1035,8 @@ impl PlaylistActivity {
                                             LoadingState::Loaded(detail) => {
                                                 render_playlist_box(
                                                     ui,
-                                                    &ThemeManager::new(
-                                                        Config::read()
-                                                            .unwrap_or_default()
-                                                            .theme
-                                                            .as_theme(),
-                                                    ),
-                                                    &format!("playlist_box_{}", playlist.id),
+                                                    theme,
+                                                    ui.id().with(playlist.id),
                                                     &detail.name,
                                                     &playlist.creator,
                                                     detail,
@@ -1035,10 +1060,7 @@ impl PlaylistActivity {
                                                             Rect::from_min_max(top, top + cover_size);
                                                         let resp = ui.interact(
                                                             rect,
-                                                            ui.id().with(format!(
-                                                                "cover_{}",
-                                                                playlist.id
-                                                            )),
+                                                            ui.id().with(playlist.id),
                                                             Sense::click(),
                                                         );
                                                         if resp.clicked() {

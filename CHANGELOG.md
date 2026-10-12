@@ -2,9 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
-## v0.4.3
+## v0.4.3: Memory improvements
 
 ### Improvements
+* **Repaint Gating:** `ui()` (`src/app/ui.rs`) computes a `needs_continuous` flag (seeker drag, active playback, theme animation, in-flight downloads, open popup) and calls `request_repaint()` only when it is true; otherwise it uses `request_repaint_after(250ms)`, so idle focused frames no longer run the full egui layout + render pass continuously.
+* **Artwork Texture Reuse:** `resolve_and_render_art` (`src/activity/mod.rs`) and `render_fullscreen_player` (`src/app/player_ui.rs`) register each artwork once via egui's `bytes://` URI cache and reuse the cached texture, so the disk read runs only on the first frame. The resolved URI is cached in `cached_art_paths` so the `format!` is not repeated, and the fullscreen player reuses the cached texture instead of reading the file every frame.
+* **Theme From App State:** `render_playlist_box` and the playlist detail view (`src/activity/playlist.rs`) take the app's `theme` field as a `&ThemeManager` parameter instead of calling `Config::read()` (disk read + RON parse) every frame.
+* **Search Filter/Sort Allocations:** `src/activity/search.rs` lowercases the query once, uses a non-allocating case-insensitive `contains`, and decorate-sorts results into a `Vec<(key, Uuid)>` that is cached and invalidated only when the song map, query, or sort option changes, removing the O(n log n) allocations per frame.
+* **`sort_items` Key Precompute:** `sort_items` (`src/utilities/util.rs`) computes each item's sort key once into `Vec<(Key, T)>` (decorate-sort-undecorate) instead of `sort_by_key` recomputing `get_name`/`get_date` (which clone/allocate) on every comparison.
+* **Cache Lookup Memoization:** `get_cached_path` (`src/utilities/cache.rs`) memoizes the resolved path in a `resolved` DashMap and negative results in a `negative` DashSet, so a hit is a single map lookup and a missing artwork is not re-stat-ed every frame. The per-hit `set_modified` syscall is replaced by the in-memory `in_flight_last_used` counter, with mtime flushed to disk only on eviction sweeps.
+* **Playlist Display Strings:** the playlist detail loaded state stores precomputed display strings (`Vec<(String, Uuid)>`) and the grid rows use persistent `ui.id().with(playlist.id)` ids, so row labels and `original_artists.join(" & ")` are built once on load, not every frame.
+* **Static Sidebar Icons:** `ActivityType::icon()` (`src/activity/mod.rs`) returns references to `LazyLock<ImageSource<'static>>` statics built once per asset, so the sidebar no longer rebuilds and re-hashes an `ImageSource` per item per frame.
+* **Avatar ImageSource Reuse:** `AvatarState::Ready` stores the `ImageSource<'static>` once when the avatar finishes downloading, so the sidebar reuses it with a stable URI and egui's texture cache hits without re-registering, instead of cloning the full JPEG bytes and formatting the URI every frame.
+* **4-Worker Runtime:** `src/main.rs` uses `worker_threads(4)` instead of 2, so API calls, downloads, prefetch, Discord presence, and eviction sweeps no longer compete for the same two workers.
+* **Shared Reqwest Client:** the audio worker (`src/audio/player.rs`) receives the shared `Arc<Client>` from `create_app` instead of building its own `Client` per loop, so stream reconnects reuse the shared connection pool.
+* **Single Logout Clear:** the Logout branch (`src/app/ui.rs`) calls `self.songs.map.clear()` once instead of twice.
+* **Mosaic Cover Slice:** the playlist detail loaded state stores the valid mosaic slice (`Vec<Arc<Artwork>>`) computed once on load, so `render_mosaic`/`render_playlist_art_advanced` render from the stored slice instead of rebuilding `Vec<&Artwork>` every frame.
+* **Audio Worker Arc Hoisting:** The audio worker loop in `src/audio/player.rs` cloned `player`, `rt`, `ctx`, `database`, `cache`, `rx`, and `client` on every iteration, so the `catch_unwind` closure captured fresh `Arc` clones each time. The clones are now built once outside the loop and borrowed inside the `AssertUnwindSafe` closure, removing the per-iteration `Arc` increment overhead.
+* **Event-Driven Search Font Scanning:** `src/activity/search.rs` now calls `fonts::ensure_str` only when the search `TextEdit` reports `changed()`, instead of scanning every character of the query string on every repaint. `detect_scripts` runs only when the text actually changes, so idle search frames no longer pay for the script scan.
+* **Gated Memory Logging:** The background eviction sweep in `src/app/factory.rs` no longer writes to the debug log on every tick. Memory logging is gated behind the `DEBUG_MEMORY` environment variable and emits only when the `song_map`/`art_paths`/`in_flight` counts change, so the sweep stays silent during steady-state operation.
+* **Bounded Auth Error Reads:** `handle_error_response` in `src/auth/service.rs` now reads the response body with `bytes()` and truncates it to 4 KiB before formatting the error, so a misbehaving endpoint cannot cause an unbounded body read on every auth failure.
 * **Debug Log Username Redaction:** `redact_username` (`src/utilities/util.rs`) masks usernames written to `debug.log`. Names of six characters or more keep their first two and last two characters, so someone who already knows the username can confirm a match while outsiders cannot reconstruct it (`rootinchase` → `ro•••••••se`). Names of five characters or fewer are reduced to the first character plus a mask, because keeping a suffix would expose the whole name, and single-character names are masked entirely. The auth login log line in `src/auth/service.rs` now uses it.
 * **CodeQL Triage:** all 21 CodeQL alerts reviewed. Of the 10 open alerts, 9 (`src/utilities/cache.rs` lines 188/199/203/218/224 and `src/audio/player.rs` lines 832/870/969/988) log public Cloudflare image and song UUIDs, matching the existing false-positive dismissals for alerts 1-5, 7, 8, 18 and 19. Alert 6 (`src/auth/service.rs:86`) flagged the username and is addressed by the redaction above.
 * **Home Memory Release:** `HomeActivity::clear()` (`src/activity/home.rs`) resets the suggested, trending, and setlist loading states back to `Loading` and clears the setlist name, dropping the loaded `Vec<SongDTO>` payloads from RAM. `ui()` (`src/app/ui.rs`) captures the activity before the sidebar render and, when it changes, calls `clear()` on navigating away from Home and re-fetches suggested/trending/setlist on reopening Home, so the home data no longer sits in memory while the user is on another page.
@@ -29,7 +46,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## v0.4.2
+## v0.4.2: Uploads and more
 
 ### Added features
 * **Fullscreen Player:** Added a fullscreen player overlay toggled from the player controls (fullscreen icon, fullscreen-exit icon when active, Esc to exit) that shows the full-resolution cover artwork filling the screen with the embedded play/pause, seek, volume, favorite, timer and queue controls
@@ -49,7 +66,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## v0.4.1
+## v0.4.1: Radio
 
 ### Added features
 * **Radio Mode:** Introduced dedicated Radio functionality with persistent volume control and smooth playback switching between Radio and normal tracks

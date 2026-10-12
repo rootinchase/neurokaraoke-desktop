@@ -1,7 +1,7 @@
 use crate::api::API_URLS;
 use crate::debug_log;
 use anyhow::Result;
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use reqwest::Client;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
@@ -59,6 +59,14 @@ pub struct PersistentMediaCache {
     client: Client,
     network_gate: Arc<Semaphore>,
     in_flight: DashMap<(Uuid, AssetType), DownloadStatus>,
+    /// Resolved on-disk path for each asset key, memoized after the first
+    /// successful filesystem scan. Lets `get_cached_path` answer hits with a
+    /// single map lookup instead of stat-ing up to 6 candidate filenames per
+    /// frame.
+    resolved: DashMap<(Uuid, AssetType), PathBuf>,
+    /// Keys confirmed to be absent from disk. Memoizes negative results so a
+    /// missing artwork is not re-stat-ed on every frame.
+    negative: DashSet<(Uuid, AssetType)>,
     /// Access-order tracker for LRU eviction of `in_flight`: maps each asset key
     /// to the monotonic counter value of its last access. Bumped on every
     /// `get_cached_path` hit and `get_or_download_image` insert.
@@ -73,6 +81,8 @@ impl PersistentMediaCache {
             client,
             network_gate: Arc::new(Semaphore::new(max_concurrent_downloads)),
             in_flight: DashMap::new(),
+            resolved: DashMap::new(),
+            negative: DashSet::new(),
             in_flight_last_used: DashMap::new(),
             in_flight_counter: Arc::new(AtomicU64::new(0)),
         }
@@ -86,35 +96,57 @@ impl PersistentMediaCache {
     pub fn get_cached_path(&self, id: Uuid, asset_type: AssetType) -> Option<PathBuf> {
         let key = (id, asset_type);
 
-        // 1. Check in-flight status for completed records
+        // 1. In-flight completed record.
         if let Some(status) = self.in_flight.get(&key)
             && let DownloadStatus::Complete(path) = status.value() {
                 self.touch_in_flight(key);
-                touch_file(path);
                 return Some(path.clone());
             }
 
-        // 2. Fallback check for raw files existing on the operating system storage drive
-        match asset_type {
-            AssetType::Image | AssetType::FullImage => {
-                for ext in &["webp", "jpeg", "jpg", "png", "gif", "bin"] {
-                    let potential_path = Self::get_asset_path(id, Some(ext));
-                    if std::fs::metadata(&potential_path).is_ok() {
-                        touch_file(&potential_path);
-                        return Some(potential_path);
-                    }
-                }
-            }
-            AssetType::Audio => {
-                let potential_path = Self::get_asset_path(id, None);
-                if std::fs::metadata(&potential_path).is_ok() {
-                    touch_file(&potential_path);
-                    return Some(potential_path);
-                }
-            }
+        // 2. Resolved-path cache: a single map lookup, no filesystem stat.
+        if let Some(path) = self.resolved.get(&key) {
+            let path = path.value().clone();
+            self.touch_in_flight(key);
+            return Some(path);
         }
 
-        None
+        // 3. Negative cache: we already know this asset is not on disk, so skip
+        //    the 6-extension scan entirely on every frame.
+        if self.negative.contains(&key) {
+            return None;
+        }
+
+        // 4. First access for this key: scan candidate filenames once, then
+        //    memoize the result. The disk mtime is flushed once here; subsequent
+        //    hits rely on the in-memory LRU counter, and mtime is refreshed to
+        //    disk only during eviction sweeps.
+        let found = match asset_type {
+            AssetType::Image | AssetType::FullImage => ["webp", "jpeg", "jpg", "png", "gif", "bin"]
+                .iter()
+                .map(|ext| Self::get_asset_path(id, Some(ext)))
+                .find(|p| std::fs::metadata(p).is_ok()),
+            AssetType::Audio => {
+                let p = Self::get_asset_path(id, None);
+                if std::fs::metadata(&p).is_ok() {
+                    Some(p)
+                } else {
+                    None
+                }
+            }
+        };
+
+        match found {
+            Some(path) => {
+                self.resolved.insert(key, path.clone());
+                self.touch_in_flight(key);
+                touch_file(&path);
+                Some(path)
+            }
+            None => {
+                self.negative.insert(key);
+                None
+            }
+        }
     }
 
     /// Global baseline path helper for Windows, Linux, and macOS
@@ -130,6 +162,8 @@ impl PersistentMediaCache {
     pub fn remove_asset(&self, id: Uuid, asset_type: AssetType) {
         let key = (id, asset_type);
         self.in_flight.remove(&key);
+        self.resolved.remove(&key);
+        self.negative.remove(&key);
         for ext in &["webp", "jpeg", "jpg", "png", "gif", "bin", "tmp"] {
             let path = Self::get_asset_path(id, Some(ext));
             if path.exists() {
@@ -169,6 +203,13 @@ impl PersistentMediaCache {
             };
             if !keep {
                 self.in_flight_last_used.remove(key);
+                self.resolved.remove(key);
+                self.negative.remove(key);
+            } else if let DownloadStatus::Complete(path) = status {
+                // Flush the LRU mtime to disk once per sweep for kept entries,
+                // so the hot `get_cached_path` path no longer needs to touch the
+                // file on every frame.
+                touch_file(path);
             }
             keep
         });
@@ -203,6 +244,8 @@ impl PersistentMediaCache {
                 notify.notify_waiters();
             }
             self.in_flight_last_used.remove(&key);
+            self.resolved.remove(&key);
+            self.negative.remove(&key);
             to_remove -= 1;
         }
     }
@@ -303,6 +346,8 @@ impl PersistentMediaCache {
                 debug_log!("💿 [Cache] Found persisted file for: {}", cloudflare_id);
                 self.in_flight
                     .insert(key, DownloadStatus::Complete(potential_path.clone()));
+                self.resolved.insert(key, potential_path.clone());
+                self.negative.remove(&key);
                 self.touch_in_flight(key);
                 return Ok(potential_path);
             }
@@ -329,6 +374,8 @@ impl PersistentMediaCache {
                     debug_log!("🎉 [Cache] Successfully downloaded: {}", cloudflare_id);
                     self.in_flight
                         .insert(key, DownloadStatus::Complete(saved_path.clone()));
+                    self.resolved.insert(key, saved_path.clone());
+                    self.negative.remove(&key);
                     self.touch_in_flight(key);
                     notify.notify_waiters();
                     Ok(saved_path)
@@ -337,6 +384,10 @@ impl PersistentMediaCache {
                     debug_log!("❌ [Cache] Download failed for {}: {}", cloudflare_id, e);
                     self.in_flight.remove(&key);
                     self.in_flight_last_used.remove(&key);
+                    self.resolved.remove(&key);
+                    // The asset is confirmed absent from disk; memoize the miss so
+                    // `get_cached_path` stops re-stat-ing it every frame.
+                    self.negative.insert(key);
                     notify.notify_waiters();
                     Err(e)
                 }
@@ -420,6 +471,9 @@ impl PersistentMediaCache {
 
         // 1. Wipe out everything in the in-memory stampede protection tracker
         self.in_flight.clear();
+        self.resolved.clear();
+        self.negative.clear();
+        self.in_flight_last_used.clear();
 
         // 2. Iterate and delete all asset files from the filesystem
         if metadata(&dir_path).await.is_ok() {

@@ -58,31 +58,33 @@ impl SearchActivity {
         player: &mut Player,
         current_song_uuid: &Option<Uuid>,
     ) {
-        ui.add(TextEdit::singleline(&mut self.search));
-        crate::app::fonts::ensure_str(&self.search);
+        let text_response = ui.add(TextEdit::singleline(&mut self.search));
+        // Only scan the query for required scripts when the text actually
+        // changed, not on every repaint.
+        if text_response.changed() {
+            crate::app::fonts::ensure_str(&self.search);
+        }
 
         ui.add_space(10.0);
 
         let criteria = parse_query(&self.search, false);
+        // Lowercase the query once, not per song per frame.
+        let title_lower = criteria.title.to_lowercase();
+        let original_lower = criteria.original.as_ref().map(|q| q.to_lowercase());
+        let cover_lower = criteria.cover.as_ref().map(|q| q.to_lowercase());
+
         let mut matching_songs: Vec<Uuid> = songs
             .get_map()
             .iter()
             .filter(|x| {
                 x.value().if_loaded_or_else(
                     |s| {
-                        let title_match = s
-                            .title
-                            .to_lowercase()
-                            .contains(&criteria.title.to_lowercase());
-                        let original_match = criteria.original.as_ref().is_none_or(|q| {
-                            s.original_artists
-                                .iter()
-                                .any(|a| a.to_lowercase().contains(&q.to_lowercase()))
+                        let title_match = contains_ignore_case(&s.title, &title_lower);
+                        let original_match = original_lower.as_ref().is_none_or(|q| {
+                            s.original_artists.iter().any(|a| contains_ignore_case(a, q))
                         });
-                        let cover_match = criteria.cover.as_ref().is_none_or(|q| {
-                            s.cover_artists
-                                .iter()
-                                .any(|a| a.to_lowercase().contains(&q.to_lowercase()))
+                        let cover_match = cover_lower.as_ref().is_none_or(|q| {
+                            s.cover_artists.iter().any(|a| contains_ignore_case(a, q))
                         });
 
                         title_match && original_match && cover_match
@@ -93,49 +95,28 @@ impl SearchActivity {
             .map(|x| *x.key())
             .collect();
 
-        matching_songs.sort_by(|a, b| {
-            let a_data = songs.get(a, |s| {
-                (
-                    s.title.to_string(),
-                    s.original_artists.join(" "),
-                    s.cover_artists.join(" "),
-                    s.play_count.unwrap_or(0),
-                    s.duration.unwrap_or(0),
-                )
-            });
-            let b_data = songs.get(b, |s| {
-                (
-                    s.title.to_string(),
-                    s.original_artists.join(" "),
-                    s.cover_artists.join(" "),
-                    s.play_count.unwrap_or(0),
-                    s.duration.unwrap_or(0),
-                )
-            });
-
-            let (a_title, a_orig, a_cover, a_plays, a_dur) = match a_data {
-                LoadingState::Loaded(d) => d,
-                _ => ("".to_string(), "".to_string(), "".to_string(), 0, 0),
+        // Decorate-sort-undecorate: compute the sort key once per song, sort the
+        // (key, id) pairs, then map back to UUIDs. Avoids O(n log n) allocations
+        // per comparison that the previous comparator performed.
+        let mut decorated: Vec<(String, Uuid)> = Vec::with_capacity(matching_songs.len());
+        for id in &matching_songs {
+            let key = match songs.get(id, |s| match self.current_search_sort {
+                SearchSortOption::Name => s.title.to_lowercase(),
+                SearchSortOption::OriginalArtist => s.original_artists.join(" ").to_lowercase(),
+                SearchSortOption::CoverArtist => s.cover_artists.join(" ").to_lowercase(),
+                SearchSortOption::Plays => format!("{:010}", s.play_count.unwrap_or(0)),
+                SearchSortOption::Length => format!("{:010}", s.duration.unwrap_or(0)),
+            }) {
+                LoadingState::Loaded(k) => k,
+                _ => String::new(),
             };
-            let (b_title, b_orig, b_cover, b_plays, b_dur) = match b_data {
-                LoadingState::Loaded(d) => d,
-                _ => ("".to_string(), "".to_string(), "".to_string(), 0, 0),
-            };
-
-            let cmp = match self.current_search_sort {
-                SearchSortOption::Name => a_title.cmp(&b_title),
-                SearchSortOption::OriginalArtist => a_orig.cmp(&b_orig),
-                SearchSortOption::CoverArtist => a_cover.cmp(&b_cover),
-                SearchSortOption::Plays => a_plays.cmp(&b_plays),
-                SearchSortOption::Length => a_dur.cmp(&b_dur),
-            };
-
-            if self.current_search_sort_desc {
-                cmp.reverse()
-            } else {
-                cmp
-            }
-        });
+            decorated.push((key, *id));
+        }
+        decorated.sort_by(|a, b| a.0.cmp(&b.0));
+        if self.current_search_sort_desc {
+            decorated.reverse();
+        }
+        matching_songs = decorated.into_iter().map(|(_, id)| id).collect();
 
         TableBuilder::new(ui)
             .column(Column::exact(40.0)) // Add Button
@@ -335,4 +316,32 @@ pub(crate) fn parse_query(search: &str, is_playlist: bool) -> SearchCriteria {
         creator,
         title: title_parts.join(" "),
     }
+}
+
+/// Case-insensitive substring check that avoids allocating a lowercased copy of
+/// `hay`. `needle_lower` must already be lowercased. Uses ASCII byte folding,
+/// which is allocation-free and correct for the common (ASCII) case; non-ASCII
+/// bytes are compared byte-for-byte.
+fn contains_ignore_case(hay: &str, needle_lower: &str) -> bool {
+    let h = hay.as_bytes();
+    let n = needle_lower.as_bytes();
+    if n.is_empty() {
+        return true;
+    }
+    if n.len() > h.len() {
+        return false;
+    }
+    for i in 0..=h.len() - n.len() {
+        let mut matched = true;
+        for j in 0..n.len() {
+            if h[i + j].to_ascii_lowercase() != n[j] {
+                matched = false;
+                break;
+            }
+        }
+        if matched {
+            return true;
+        }
+    }
+    false
 }

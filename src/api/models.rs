@@ -46,6 +46,13 @@ pub struct Playlist {
     pub is_set_list: bool,
     #[serde(alias = "setListDate")]
     pub set_list_date: Option<String>,
+
+    /// Precomputed valid mosaic cover slice (the `mosaic_media` entries that
+    /// intern successfully), stored so `render_playlist_art_advanced` can render
+    /// directly from it without rebuilding a `Vec<&Artwork>` on every frame.
+    /// Populated in `intern_playlist`; not part of the API payload.
+    #[serde(skip, default)]
+    pub mosaic_covers: Vec<Arc<Artwork>>,
 }
 
 #[serde_as]

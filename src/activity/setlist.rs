@@ -285,7 +285,7 @@ impl SetlistActivity {
                                             render_playlist_box(
                                                 ui,
                                                 theme,
-                                                &format!("setlist_box_{}", setlist.id),
+                                                ui.id().with(setlist.id),
                                                 &detail.name,
                                                 "",
                                                 detail,

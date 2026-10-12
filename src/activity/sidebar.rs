@@ -14,13 +14,11 @@ fn render_avatar(ui: &mut Ui, profile_activity: &ProfileActivity, theme: &ThemeM
         .as_ref()
         .and_then(|p| p.avatar_url.clone());
 
-    if let Some(avatar_url) = current_avatar_url {
+    if let Some(_avatar_url) = current_avatar_url {
         match &profile_activity.state.avatar_state {
-            AvatarState::Ready { bytes } => {
-                let uri = format!("bytes://avatar_{}.jpeg", avatar_url);
-
+            AvatarState::Ready { source } => {
                 ui.add(
-                    Image::from_bytes(uri, bytes.clone())
+                    Image::new(source.clone())
                         .fit_to_exact_size(Vec2::new(32.0, 32.0))
                         .corner_radius(16.0)
                         .texture_options(TextureOptions::LINEAR),
@@ -343,7 +341,7 @@ pub fn render_sidebar(
                             if padding > 0.0 {
                                 ui.add_space(padding);
                             }
-                            let mut img = Image::new(activity.icon().unwrap())
+                            let mut img = Image::new(activity.icon().unwrap().clone())
                                 .fit_to_exact_size(Vec2::new(24.0, 24.0));
                             if *current_activity == activity {
                                 img = img.tint(theme.primary);
@@ -358,7 +356,7 @@ pub fn render_sidebar(
                     ui.scope(|ui| {
                         ui.set_min_width(ui.available_width());
                         ui.horizontal(|ui| {
-                            let mut img = Image::new(activity.icon().unwrap())
+                            let mut img = Image::new(activity.icon().unwrap().clone())
                                 .fit_to_exact_size(Vec2::new(24.0, 24.0));
                             if *current_activity == activity {
                                 img = img.tint(theme.primary);
@@ -474,7 +472,7 @@ pub fn render_sidebar(
                     // Settings icon on the right side of the profile name
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         ui.add_space(4.0);
-                        let mut settings_img = Image::new(ActivityType::Settings.icon().unwrap())
+                        let mut settings_img = Image::new(ActivityType::Settings.icon().unwrap().clone())
                             .fit_to_exact_size(Vec2::new(20.0, 20.0));
                         if *current_activity == ActivityType::Settings {
                             settings_img = settings_img.tint(theme.primary);

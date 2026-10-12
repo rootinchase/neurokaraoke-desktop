@@ -2,8 +2,9 @@ use crate::api::{API_URLS, LazySongDatabase, LoadingState, SongDTO};
 use crate::audio::types::*;
 use crate::debug_log;
 use crate::utilities::cache::{AssetType, PersistentMediaCache, cache_dir, get_thumbnail_url};
-use crate::utilities::util::{create_reqwest_client, resolve_audio_url};
+use crate::utilities::util::resolve_audio_url;
 use eframe::egui;
+use reqwest::Client;
 use rand::prelude::SliceRandom;
 use rodio::Source;
 use rodio::decoder::DecoderBuilder;
@@ -87,6 +88,7 @@ impl Player {
         ctx: egui::Context,
         database: LazySongDatabase,
         cache: Arc<PersistentMediaCache>,
+        client: Client,
     ) -> Player {
         let (tx, rx) = tokio::sync::mpsc::channel(64);
         let rx = Arc::new(Mutex::new(rx));
@@ -115,17 +117,24 @@ impl Player {
         let database_for_thread = database.clone();
         let cache_for_thread = cache.clone();
         let rx_for_thread = rx.clone();
+        // Reuse the shared reqwest client (cheap to clone) so stream reconnects
+        // share the connection pool used by downloads/API instead of building a
+        // fresh client on every worker iteration.
+        let client_for_thread = client.clone();
 
         thread::spawn(move || {
-            loop {
-                let player_worker = player_clone.clone();
-                let rt_worker = rt_for_thread.clone();
-                let ctx_worker = ctx_for_thread.clone();
-                let database_worker = database_for_thread.clone();
-                let cache_worker = cache_for_thread.clone();
-                let rx_worker = rx_for_thread.clone();
+            // Hoist the Arc clones outside the loop so the catch_unwind closure
+            // borrows them instead of re-cloning 7 Arcs on every iteration.
+            let player_worker = player_clone;
+            let rt_worker = rt_for_thread;
+            let ctx_worker = ctx_for_thread;
+            let database_worker = database_for_thread;
+            let cache_worker = cache_for_thread;
+            let rx_worker = rx_for_thread;
+            let client_for_closure = client_for_thread;
 
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+            loop {
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let mut handle = loop {
                         match rodio::DeviceSinkBuilder::open_default_sink() {
                             Ok(h) => break h,
@@ -145,7 +154,7 @@ impl Player {
                     mixer.set_volume(init_vol.powi(3));
                     mixer.pause();
 
-                    let client = create_reqwest_client();
+                    let client = &client_for_closure;
 
                     let mut ordered_playlist: Option<Arc<[Uuid]>> = None;
                     let mut shuffle = false;

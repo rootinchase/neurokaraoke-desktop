@@ -24,12 +24,18 @@ impl AuthService {
     /// Handles standard API errors which arrive as plain text or bare JSON strings.
     async fn handle_error_response(response: reqwest::Response) -> anyhow::Error {
         let status = response.status();
-        if let Ok(body_text) = response.text().await {
-            // Attempting to trim bare string serialization markers if present
-            let clean_msg = body_text.trim_matches('"');
-            anyhow!("Auth Error ({}): {}", status, clean_msg)
-        } else {
-            anyhow!("Auth request failed with network status: {}", status)
+        // Cap the body read to 4 KiB so a misbehaving endpoint cannot force an
+        // unbounded read into memory.
+        const MAX_ERROR_BODY: usize = 4096;
+        match response.bytes().await {
+            Ok(bytes) => {
+                let truncated = &bytes[..bytes.len().min(MAX_ERROR_BODY)];
+                let body_text = String::from_utf8_lossy(truncated);
+                // Attempting to trim bare string serialization markers if present
+                let clean_msg = body_text.trim_matches('"');
+                anyhow!("Auth Error ({}): {}", status, clean_msg)
+            }
+            Err(_) => anyhow!("Auth request failed with network status: {}", status),
         }
     }
 

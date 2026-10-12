@@ -173,7 +173,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
         });
     }
 
-    let player = Player::new(rt.clone(), ctx.clone(), songs.clone(), cache.clone());
+    let player = Player::new(rt.clone(), ctx.clone(), songs.clone(), cache.clone(), client.clone());
     player.volume(config.volume);
     player.shuffle(config.shuffle);
     player.looping(config.loop_mode);
@@ -212,6 +212,9 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
     let cached_art_paths_for_evict = cached_art_paths.clone();
     let art_last_used_for_evict = art_last_used.clone();
     let last_update: Arc<Mutex<Option<Instant>>> = Arc::default();
+    // Track the last logged memory counts so the background sweep only writes
+    // to the debug log when the counts actually change.
+    let mut last_counts = (usize::MAX, usize::MAX, usize::MAX);
 
     rt.spawn(async move {
         loop {
@@ -260,13 +263,24 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
                 art_path_max,
             );
             cache_clone.evict_in_flight(in_flight_max);
-            debug_log!(
-                "[mem] song_map={} art_paths={} in_flight={}",
+            let counts = (
                 s.map.len(),
                 cached_art_paths_for_evict.len(),
-                cache_clone.in_flight_len()
+                cache_clone.in_flight_len(),
             );
-            log_memory("background eviction");
+            // Gate memory logging behind DEBUG_MEMORY and only emit when the
+            // counts changed, so the sweep does not write to the debug log on
+            // every tick.
+            if std::env::var("DEBUG_MEMORY").is_ok() && counts != last_counts {
+                debug_log!(
+                    "[mem] song_map={} art_paths={} in_flight={}",
+                    counts.0,
+                    counts.1,
+                    counts.2
+                );
+                log_memory("background eviction");
+                last_counts = counts;
+            }
 
             let d = Duration::from_secs(expiration);
 

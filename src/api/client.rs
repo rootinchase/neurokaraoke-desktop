@@ -68,6 +68,11 @@ impl LazySongDatabase {
                 .filter_map(|a| self.intern_artwork(Some(a)))
                 .collect()
         });
+        // Precompute the valid mosaic slice once so the grid renderer can read it
+        // directly each frame instead of rebuilding a `Vec<&Artwork>` per frame.
+        p.mosaic_covers = p
+            .mosaic_media.clone()
+            .unwrap_or_default();
     }
 
     pub fn intern_playlist_detail(&self, d: &mut PlaylistDetail) {
@@ -1013,6 +1018,7 @@ mod tests {
             is_public: false,
             is_set_list: false,
             set_list_date: None,
+            mosaic_covers: Vec::new(),
         }
     }
 

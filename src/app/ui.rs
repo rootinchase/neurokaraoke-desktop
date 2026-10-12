@@ -152,8 +152,6 @@ impl eframe::App for App {
                     }
                     self.profile_activity.state.profile_data = None;
 
-                    self.songs.map.clear();
-
                     let cache = self.cache.clone();
                     spawn(async move {
                         if let Err(e) = cache.clear_cache().await {
@@ -372,7 +370,25 @@ impl eframe::App for App {
         });
 
         if ui.input(|i| i.focused) {
-            ui.request_repaint();
+            // Only repaint continuously when there is an active reason: playback
+            // running (progress bar ticking), downloads in flight, a popup open,
+            // or the seek bar being dragged. Theme animation already triggers its
+            // own repaint above. Otherwise throttle to 250 ms to keep idle CPU low.
+            let needs_continuous = self.dragging_seeker
+                || self.show_queue
+                || self.show_fullscreen
+                || self.show_timer_menu
+                || !self.active_art_downloads.is_empty()
+                || self
+                    .player
+                    .get_playback_state()
+                    .map(|s| !s.paused())
+                    .unwrap_or(false);
+            if needs_continuous {
+                ui.request_repaint();
+            } else {
+                ui.request_repaint_after(Duration::from_millis(250));
+            }
         } else if self.config.framerate_when_not_focused > 0.0 {
             ui.request_repaint_after(Duration::from_micros(
                 (1_000_000.0 / self.config.framerate_when_not_focused) as u64,
@@ -525,6 +541,7 @@ impl App {
             let mut player3 = self.player.clone();
             self.playlist_activity.render(
                 ui,
+                &self.theme,
                 &mut Some(&mut self.playlist_search),
                 &mut self.current_playlist_sort,
                 &mut self.current_playlist_sort_desc,
@@ -551,6 +568,7 @@ impl App {
                 .map(|a| a.user.username.to_string());
             self.my_playlist_activity.render(
                 ui,
+                &self.theme,
                 &mut Some(&mut self.playlist_search),
                 &mut self.current_playlist_sort,
                 &mut self.current_playlist_sort_desc,

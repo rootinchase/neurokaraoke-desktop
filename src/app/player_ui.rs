@@ -923,19 +923,28 @@ pub fn render_fullscreen_player(app: &mut App, ctx: &Context) {
             let art_rect = Rect::from_center_size(rect.center(), vec2(size, size));
 
             if let Some(path_str) = artwork_path {
-                if let Ok(image_bytes) = std::fs::read(&path_str) {
-                    let image_source = ImageSource::Bytes {
-                        uri: std::borrow::Cow::Owned(format!("bytes://{}", path_str)),
+                // Reuse egui's cached texture when the bytes are already
+                // registered for this URI; only read from disk on the first frame.
+                let uri = format!("bytes://{}", path_str);
+                let image_source = if ctx.try_load_bytes(&uri).is_ok() {
+                    ImageSource::Uri(std::borrow::Cow::Owned(uri))
+                } else if let Ok(image_bytes) = std::fs::read(&path_str) {
+                    ImageSource::Bytes {
+                        uri: std::borrow::Cow::Owned(uri),
                         bytes: image_bytes.into(),
-                    };
-                    ui.put(
-                        art_rect,
-                        Image::new(image_source)
-                            .max_size(vec2(size, size))
-                            .bg_fill(Color32::TRANSPARENT)
-                            .corner_radius(20.0),
-                    );
-                }
+                    }
+                } else {
+                    ui.painter()
+                        .rect_filled(art_rect, 20.0, app.theme.background_elevated);
+                    return;
+                };
+                ui.put(
+                    art_rect,
+                    Image::new(image_source)
+                        .max_size(vec2(size, size))
+                        .bg_fill(Color32::TRANSPARENT)
+                        .corner_radius(20.0),
+                );
             } else {
                 ui.painter()
                     .rect_filled(art_rect, 20.0, app.theme.background_elevated);

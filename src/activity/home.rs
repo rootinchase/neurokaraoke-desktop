@@ -286,7 +286,7 @@ impl HomeActivity {
                         ui.set_width(ui.available_width());
                         ui.set_height(200.0);
 
-                        let table = build_playlist_table(ui, id);
+                        let table = build_playlist_table(ui, ui.id().with(id));
 
                         match &*songs_list {
                             LoadingState::Loaded(songs_list) => {

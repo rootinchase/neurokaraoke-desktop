@@ -30,7 +30,11 @@ pub struct ProfileActivity {
 pub enum AvatarState {
     None,
     Downloading,
-    Ready { bytes: Vec<u8> },
+    /// Built once when the avatar finishes downloading. The URI is stable, so
+    /// egui's texture cache hits on every frame without re-registering the
+    /// bytes (the previous version cloned the full JPEG and formatted the URI
+    /// on every sidebar render).
+    Ready { source: egui::ImageSource<'static> },
 }
 
 pub struct ProfileState {
@@ -72,7 +76,12 @@ impl ProfileActivity {
                     }
                     ProfileMessage::AvatarLoaded(path) => {
                         if let Ok(bytes) = std::fs::read(path) {
-                            self.state.avatar_state = AvatarState::Ready { bytes };
+                            let uri = format!("bytes://{}", path);
+                            let source = egui::ImageSource::Bytes {
+                                uri: std::borrow::Cow::Owned(uri),
+                                bytes: bytes.into(),
+                            };
+                            self.state.avatar_state = AvatarState::Ready { source };
                         }
                     }
                     ProfileMessage::UserLimitsLoaded(limits) => {
@@ -90,9 +99,14 @@ impl ProfileActivity {
                     }
                     ProfileMessage::BadgeImageLoaded(badge_id, path) => {
                         if let Ok(bytes) = std::fs::read(path) {
+                            let uri = format!("bytes://badge_{}.png", badge_id);
+                            let source = egui::ImageSource::Bytes {
+                                uri: std::borrow::Cow::Owned(uri),
+                                bytes: bytes.into(),
+                            };
                             self.state
                                 .badge_images
-                                .insert(badge_id.clone(), AvatarState::Ready { bytes });
+                                .insert(badge_id.clone(), AvatarState::Ready { source });
                         }
                     }
                     _ => {}
@@ -197,6 +211,13 @@ impl ProfileActivity {
     }
 
     pub fn try_load_avatar(&mut self, ctx: &Context, rt: &Runtime) {
+        // Guard on the state first: once the avatar is Ready/Downloading we
+        // return immediately, so the `avatar_url` clone + `to_string()`
+        // allocation no longer runs on every frame.
+        if !matches!(self.state.avatar_state, AvatarState::None) {
+            return;
+        }
+
         let url = self
             .state
             .profile_data
@@ -204,10 +225,9 @@ impl ProfileActivity {
             .and_then(|data| data.avatar_url.as_ref())
             .map(|url| url.to_string());
 
-        if let Some(url) = url
-            && matches!(self.state.avatar_state, AvatarState::None) {
-                self.resolve_avatar_uri(ctx, rt, &url);
-            }
+        if let Some(url) = url {
+            self.resolve_avatar_uri(ctx, rt, &url);
+        }
     }
 
     pub fn resolve_avatar_uri(
@@ -285,11 +305,9 @@ impl ProfileActivity {
 
                                     if let Some(avatar_url) = avatar_url {
                                         match &self.state.avatar_state {
-                                            AvatarState::Ready { bytes } => {
-                                                let uri =
-                                                    format!("bytes://avatar_{}.jpeg", avatar_url);
+                                            AvatarState::Ready { source } => {
                                                 ui.add(
-                                                    egui::Image::from_bytes(uri, bytes.clone())
+                                                    egui::Image::new(source.clone())
                                                         .fit_to_exact_size(Vec2::new(64.0, 64.0))
                                                         .corner_radius(32.0)
                                                         .texture_options(
@@ -562,14 +580,9 @@ impl ProfileActivity {
                                                                         {
                                                                             Some(
                                                                                 AvatarState::Ready {
-                                                                                    bytes,
+                                                                                    source,
                                                                                 },
                                                                             ) => {
-                                                                                let uri = format!(
-                                                                                    "bytes://badge_{}.png",
-                                                                                    badge_id
-                                                                                );
-
                                                                                 Frame::new()
                                                                                     .corner_radius(radius)
                                                                                     .stroke(
@@ -581,9 +594,8 @@ impl ProfileActivity {
                                                                                     .show(ui, |ui| {
                                                                                         ui.add_sized(
                                                                                             Vec2::splat(badge_size),
-                                                                                            egui::Image::from_bytes(
-                                                                                                uri,
-                                                                                                bytes.clone(),
+                                                                                            egui::Image::new(
+                                                                                                source.clone(),
                                                                                             )
                                                                                                 .fit_to_exact_size(
                                                                                                     Vec2::splat(badge_size),

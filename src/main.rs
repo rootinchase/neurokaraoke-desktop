@@ -50,7 +50,11 @@ fn main() -> Result<()> {
 
     let runtime = Arc::new(
         Builder::new_multi_thread()
-            .worker_threads(2)
+            // The runtime is mostly IO-bound (API calls, artwork/audio downloads,
+            // prefetch, Discord presence, persistence sweeps, playlist cache
+            // writes). Two workers let a slow download stall unrelated spawned
+            // work, so raise the baseline to 4 workers.
+            .worker_threads(4)
             .enable_all()
             .build()
             .unwrap(),
