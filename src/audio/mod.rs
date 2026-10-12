@@ -1,3 +1,4 @@
+pub mod hls;
 pub mod player;
 pub mod types;
 

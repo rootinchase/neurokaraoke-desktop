@@ -1427,6 +1427,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af9673d8203fcb076b19dfd17e38b3d4ae9f44959416ea532ce72415a6020365"
 
 [[package]]
+name = "fast-float2"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6e8948ce679d00a02a94739ea185595dca7118ed04feb991127e443bd3d761f"
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2779,6 +2785,7 @@ dependencies = [
  "open",
  "playwire",
  "presenceforge",
+ "quick-m3u8",
  "rand 0.10.3",
  "reqwest",
  "rfd",
@@ -2787,6 +2794,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
+ "symphonia-codec-aac",
  "tokio",
  "tray-icon",
  "url",
@@ -3769,6 +3777,16 @@ name = "quick-error"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a993555f31e5a609f617c12db6250dedcac1b0a85076912c436e6fc9b2c8e6a3"
+
+[[package]]
+name = "quick-m3u8"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4d754ddb17dfb1a8ba15f50d745c56e5fbaaf1dcab162dfcbcab6d7739f636f"
+dependencies = [
+ "fast-float2",
+ "memchr",
+]
 
 [[package]]
 name = "quick-xml"
