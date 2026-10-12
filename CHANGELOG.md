@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## v0.4.3: Memory improvements
 
+### Added features
+* **Fullscreen Playlist View:** Added a full playlist detail page (`render_full_view` in `src/activity/playlist.rs`) that opens when a playlist is selected, showing the cover art, title, creator, stats, and action buttons (Play, Shuffle, favorite toggle, kebab "more" menu) in a header, followed by a searchable Tracks table with per-song play controls. Wired in `ui.rs` via `selected_playlist_id`; the kebab menu's CopyLink copies the playlist URL to the clipboard, shuffle plays the playlist in random order from a random starting song, and the favorite toggle calls `POST /api/favorites/toggle?itemId={id}&type=3`. The remaining kebab actions (download, save offline, create/add-to playlist, edit, delete) are stubs pending the server endpoints tracked in issue #1.
+
 ### Improvements
 * **Repaint Gating:** `ui()` (`src/app/ui.rs`) computes a `needs_continuous` flag (seeker drag, active playback, theme animation, in-flight downloads, open popup) and calls `request_repaint()` only when it is true; otherwise it uses `request_repaint_after(250ms)`, so idle focused frames no longer run the full egui layout + render pass continuously.
 * **Artwork Texture Reuse:** `resolve_and_render_art` (`src/activity/mod.rs`) and `render_fullscreen_player` (`src/app/player_ui.rs`) register each artwork once via egui's `bytes://` URI cache and reuse the cached texture, so the disk read runs only on the first frame. The resolved URI is cached in `cached_art_paths` so the `format!` is not repeated, and the fullscreen player reuses the cached texture instead of reading the file every frame.
