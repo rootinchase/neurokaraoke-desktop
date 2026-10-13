@@ -1,5 +1,6 @@
 use crate::api::internal::deserialize_artists;
 use crate::config::SharedConfig;
+use crate::utilities::lrc::LyricsParsed;
 use dashmap::DashMap;
 use reqwest::Client;
 use serde::de::Error;
@@ -8,6 +9,7 @@ use serde_with::{DefaultOnNull, serde_as};
 use std::fmt::Formatter;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::AtomicU64;
 use uuid::Uuid;
 
@@ -106,6 +108,10 @@ pub struct SongDTO {
     /// Community upload rather than an official karaoke cut (`userUploaded`).
     #[serde(default)]
     pub user_uploaded: bool,
+
+    /// Whether the song has synced lyrics available.
+    #[serde(default)]
+    pub has_lyrics: bool,
 }
 
 #[serde_as]
@@ -202,6 +208,15 @@ pub struct Song {
     pub play_count: Option<u64>,
     #[serde(rename = "duration", default)]
     pub duration: Option<u64>,
+}
+
+/// One entry from `GET /api/songs/{id}/lyrics` — a .NET `TimeSpan`
+/// (`HH:mm:ss.fffffff`) plus the line text. The endpoint returns a JSON array
+/// of these; lines are not guaranteed sorted, so sort by timestamp after parsing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LyricEntry {
+    pub time: String,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -386,6 +401,9 @@ impl<T> LoadingState<T> {
     }
 }
 
+/// Single-slot lyrics cache slot: the cached song id plus its loading state.
+type LyricsSlot = (Uuid, LoadingState<Arc<LyricsParsed>>);
+
 #[derive(Clone)]
 pub struct LazySongDatabase {
     pub client: Client,
@@ -404,6 +422,9 @@ pub struct LazySongDatabase {
     /// so cover-art metadata is stored once per unique artwork instead of once
     /// per song/playlist.
     pub artwork_cache: Arc<DashMap<String, Arc<Artwork>>>,
+    /// Single-slot lyrics cache: keeps only the current song's parsed lyric
+    /// lines. Replaced when the current song changes.
+    pub lyrics_cache: Arc<Mutex<Option<LyricsSlot>>>,
 }
 
 /// Payload for `POST /api/user/song/download-from-url` on the IDK host. The server

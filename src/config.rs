@@ -70,6 +70,10 @@ mod defaults {
     pub fn in_flight_max_entries() -> usize {
         15
     }
+    /// Fullscreen player shows synced lyrics over the cover art. Default off.
+    pub fn show_lyrics() -> bool {
+        false
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -190,6 +194,10 @@ pub struct Config {
     #[serde(default)]
     pub compact_sidebar: bool,
 
+    /// Show synced lyrics over the cover art in the fullscreen player. Default off.
+    #[serde(default = "defaults::show_lyrics")]
+    pub show_lyrics: bool,
+
     /// Stores active user authentication. If None, app runs anonymously.
     #[serde(default)]
     pub auth: Option<AuthContext>,
@@ -207,6 +215,7 @@ impl Default for Config {
             cache: Default::default(),
             framerate_when_not_focused: defaults::framerate_when_not_focused(),
             compact_sidebar: false,
+            show_lyrics: defaults::show_lyrics(),
             auth: None, // Defaults to logged-out state
         }
     }

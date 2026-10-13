@@ -3,6 +3,7 @@ use crate::app::state::App;
 use crate::audio::{LoopMode, PlaybackState, Player};
 use crate::debug_log;
 use crate::theme::ThemeManager;
+use crate::utilities::lrc;
 use crate::utilities::util::format_duration;
 use eframe::egui::{
     self, Align, Align2, Button, Color32, Context, CursorIcon, Image, ImageSource, Key, Layout,
@@ -10,9 +11,10 @@ use eframe::egui::{
     lerp,
 };
 use egui::{
-    Area, Frame, Id, InnerResponse, Label, Margin, Mesh, Panel, Popup, PopupAnchor, Rect, Shape,
-    vec2,
+    Area, Frame, Id, InnerResponse, Label, Margin, Mesh, Panel, Popup, PopupAnchor, Rect,
+    ScrollArea, Shape, TextureOptions, vec2,
 };
+use egui::containers::scroll_area::ScrollBarVisibility;
 use std::sync::Arc;
 use std::sync::atomic::Ordering::SeqCst;
 use std::time::{Duration, Instant};
@@ -401,29 +403,34 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                                     app.resolve_artwork_uri(ui.ctx(), current_img_uuid, abs_path);
                             }
 
-                            let size = 80.0;
-                            if let Some(path_str) = cached_path_str {
-                                if let Ok(image_bytes) = std::fs::read(&path_str) {
-                                    let image_source = ImageSource::Bytes {
-                                        uri: std::borrow::Cow::Owned(format!(
-                                            "bytes://{}",
-                                            path_str
-                                        )),
-                                        bytes: image_bytes.into(),
-                                    };
+                            // In fullscreen the cover art is already shown as the
+                            // background/centered art, so skip the small thumbnail
+                            // here to avoid drawing two copies of the cover.
+                            if !app.show_fullscreen {
+                                let size = 80.0;
+                                if let Some(path_str) = cached_path_str {
+                                    if let Ok(image_bytes) = std::fs::read(&path_str) {
+                                        let image_source = ImageSource::Bytes {
+                                            uri: std::borrow::Cow::Owned(format!(
+                                                "bytes://{}",
+                                                path_str
+                                            )),
+                                            bytes: image_bytes.into(),
+                                        };
 
-                                    ui.add(
-                                        Image::new(image_source)
-                                            .fit_to_exact_size(vec2(size, size))
-                                            .bg_fill(Color32::TRANSPARENT)
-                                            .corner_radius(8.0),
-                                    );
+                                        ui.add(
+                                            Image::new(image_source)
+                                                .fit_to_exact_size(vec2(size, size))
+                                                .bg_fill(Color32::TRANSPARENT)
+                                                .corner_radius(8.0),
+                                        );
+                                    }
+                                } else {
+                                    let (rect, _) = ui
+                                        .allocate_exact_size(Vec2::new(size, size), Sense::hover());
+                                    ui.painter()
+                                        .rect_filled(rect, 8.0, app.theme.background_elevated);
                                 }
-                            } else {
-                                let (rect, _) =
-                                    ui.allocate_exact_size(Vec2::new(size, size), Sense::hover());
-                                ui.painter()
-                                    .rect_filled(rect, 8.0, app.theme.background_elevated);
                             }
 
                             ui.add_space(8.0);
@@ -875,6 +882,195 @@ pub fn btn(theme: &ThemeManager, ui: &mut Ui, source: ImageSource, active: bool)
     resp.clicked()
 }
 
+/// Resolves the catalog UUID whose lyrics should be shown and whether the
+/// current song reports `has_lyrics`. For radio, the UUID is the catalog
+/// `current.id` (not the nil playback id); for non-radio it is `state.song()`.
+/// When the DTO is unavailable (song loaded straight from the DB), `has_lyrics`
+/// defaults to `true` so a fetch is attempted; a `404` stores an empty sentinel.
+fn resolve_lyrics_target(app: &App, state: &PlaybackState, is_radio: bool) -> (Option<Uuid>, bool) {
+    if is_radio {
+        if let Ok(guard) = app.radio_activity.current_state.try_lock()
+            && let LoadingState::Loaded(curr) = &*guard
+            && let Some(cur) = &curr.current
+        {
+            return (Some(cur.id), cur.has_lyrics);
+        }
+        (None, false)
+    } else {
+        let uuid = state.song();
+        let has = if let Ok(meta) = app.player.current_url_metadata.lock()
+            && let Some(meta) = &*meta
+            && meta.id == uuid
+        {
+            meta.has_lyrics
+        } else {
+            true
+        };
+        (Some(uuid), has)
+    }
+}
+
+/// Draws the cover art scaled to fit inside `rect` (`object-fit: contain`,
+/// showing the whole image with bars on the sides) dimmed to ~30% brightness,
+/// as the lyrics panel backdrop. Returns the rect the cover was drawn into so
+/// the dark overlay can be limited to the cover, leaving the bars transparent.
+fn draw_dimmed_cover(ui: &mut Ui, ctx: &Context, rect: Rect, artwork_path: &str) -> Rect {
+    let uri = format!("bytes://{}", artwork_path);
+    if ctx.try_load_bytes(&uri).is_err() {
+        if let Ok(image_bytes) = std::fs::read(artwork_path) {
+            ctx.include_bytes(uri.clone(), egui::load::Bytes::from(image_bytes));
+        } else {
+            return rect;
+        }
+    }
+
+    let poll = ctx
+        .try_load_texture(
+            &uri,
+            TextureOptions::LINEAR,
+            egui::load::SizeHint::Scale(1.0.into()),
+        )
+        .ok();
+    let texture = match poll {
+        Some(egui::load::TexturePoll::Ready { texture }) => texture,
+        _ => return rect,
+    };
+
+    let sw = texture.size.x;
+    let sh = texture.size.y;
+    if sw <= 0.0 || sh <= 0.0 {
+        return rect;
+    }
+    // object-fit: contain — scale to fit the whole image inside rect,
+    // top-aligned so the cover starts at the top of the panel with bars on
+    // the bottom (the solid background shows through).
+    let scale = (rect.width() / sw).min(rect.height() / sh);
+    let fitted = vec2(sw * scale, sh * scale);
+    let img_rect = Rect::from_min_size(
+        Pos2::new(rect.center().x - fitted.x * 0.5, rect.min.y),
+        fitted,
+    );
+
+    // brightness(0.3) via tint (0.3 * 255 ≈ 77).
+    ui.painter().image(
+        texture.id,
+        img_rect,
+        Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)),
+        Color32::from_white_alpha(77),
+    );
+    img_rect
+}
+
+/// Draws all lyrics in a centered, scrollable panel over a dimmed cover-art
+/// backdrop, mirroring the web player's `LyricsDisplay`: the active line is
+/// large and bright, past lines dimmed, next/future lines progressively
+/// dimmer, and the panel auto-scrolls to keep the active line centered.
+fn draw_lyrics_panel(
+    ui: &mut Ui,
+    ctx: &Context,
+    app: &mut App,
+    parsed: &lrc::LyricsParsed,
+    pos: Duration,
+    song_uuid: Uuid,
+    artwork_path: Option<&str>,
+) {
+    let active = parsed.active_index(pos);
+
+    // Dimmed cover art as the panel backdrop, mirroring the web player's
+    // lyrics-section over the fullscreen-artwork-bg.
+    let rect = ui.available_rect_before_wrap();
+    if rect.width() <= 0.0 || rect.height() <= 0.0 {
+        return;
+    }
+    let cover_rect = if let Some(path) = artwork_path {
+        draw_dimmed_cover(ui, ctx, rect, path)
+    } else {
+        rect
+    };
+    // Translucent dark overlay over the cover only, leaving the bars transparent.
+    ui.painter().rect_filled(cover_rect, 0.0, Color32::from_black_alpha(140));
+
+    ScrollArea::vertical()
+        .auto_shrink([false, false])
+        .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
+        .show(ui, |ui| {
+            ui.with_layout(Layout::top_down(Align::Center), |ui| {
+                // Top spacer so the first lines can scroll above center.
+                ui.add_space(40.0);
+                for (i, line) in parsed.lines.iter().enumerate() {
+                    let (size, alpha) = match active {
+                        Some(a) if i == a => (32.0, 255u8),
+                        Some(a) if i == a + 1 => (22.0, 153u8),
+                        Some(a) if i > a => (18.0, 77u8),
+                        _ => (18.0, 89u8),
+                    };
+                    let resp = ui.add(
+                        Label::new(
+                            RichText::new(line.text.as_str())
+                                .size(size)
+                                .color(Color32::from_white_alpha(alpha)),
+                        )
+                        .wrap_mode(TextWrapMode::Wrap),
+                    );
+                    // Clicking a line seeks playback to that line's timestamp.
+                    let clickable = ui
+                        .interact(resp.rect, ui.id().with(("lyric", i)), Sense::click())
+                        .on_hover_cursor(CursorIcon::PointingHand);
+                    if clickable.clicked() && app.current_song_uuid == Some(song_uuid) {
+                        app.player.seek(line.start);
+                        ctx.request_repaint();
+                    }
+                    // Small split between lines.
+                    ui.add_space(14.0);
+                    if active == Some(i) {
+                        ui.scroll_to_cursor(Some(Align::Center));
+                    }
+                }
+                ui.add_space(40.0);
+            });
+        });
+}
+
+/// Draws the plain (unsynced) lyrics in a centered, scrollable panel over a
+/// dimmed cover-art backdrop.
+fn draw_unsynced_panel(
+    ui: &mut Ui,
+    ctx: &Context,
+    parsed: &lrc::LyricsParsed,
+    artwork_path: Option<&str>,
+) {
+    let rect = ui.available_rect_before_wrap();
+    if rect.width() <= 0.0 || rect.height() <= 0.0 {
+        return;
+    }
+    let cover_rect = if let Some(path) = artwork_path {
+        draw_dimmed_cover(ui, ctx, rect, path)
+    } else {
+        rect
+    };
+    // Translucent dark overlay over the cover only, leaving the bars transparent.
+    ui.painter().rect_filled(cover_rect, 0.0, Color32::from_black_alpha(140));
+
+    ScrollArea::vertical()
+        .auto_shrink([false, false])
+        .scroll_bar_visibility(ScrollBarVisibility::AlwaysHidden)
+        .show(ui, |ui| {
+            ui.with_layout(Layout::top_down(Align::Center), |ui| {
+                for line in &parsed.unsynced {
+                    ui.add(
+                        Label::new(
+                            RichText::new(line.as_str())
+                                .size(18.0)
+                                .color(Color32::from_white_alpha(200)),
+                        )
+                        .wrap_mode(TextWrapMode::Wrap),
+                    );
+                    ui.add_space(6.0);
+                }
+            });
+        });
+}
+
 /// Draws the fullscreen player overlay: full-resolution artwork filling the
 /// screen above the embedded player controls. Esc exits, and the toggle button
 /// in the player controls (now showing the collapse icon) also exits.
@@ -896,58 +1092,148 @@ pub fn render_fullscreen_player(app: &mut App, ctx: &Context) {
             ui.painter()
                 .rect_filled(screen_rect, 0.0, app.theme.background);
 
+            // Force the overlay to the current screen size every frame so the
+            // stateful Area shrinks when the window is resized smaller.
+            ui.set_min_size(screen_rect.size());
+            ui.set_max_size(screen_rect.size());
+
             // The player controls dock to the bottom of the overlay, giving the
             // fullscreen view embedded play/pause, seek, volume, favorite, timer and queue.
             render_player_controls(app, ui);
 
+            // Remaining area above the bottom panel: a left control column with the
+            // cover art filling the space to its right.
             let avail = ui.available_rect_before_wrap();
-            let size = avail.width().min(avail.height());
-            if size <= 0.0 {
+            if avail.width() <= 0.0 || avail.height() <= 0.0 {
                 return;
             }
 
-            let (rect, _resp) =
-                ui.allocate_exact_size(vec2(avail.width(), avail.height()), Sense::hover());
+            let control_bar_width = 40.0;
 
-            let artwork_path = app.player.get_playback_state().and_then(|state| {
-                let is_radio = state.song() == Uuid::nil();
-                let (song, _, _) = resolve_current_song(app, &state, is_radio);
-                let (img_uuid, abs_path) = current_artwork_refs(app, song.as_ref(), &state);
-                app.resolve_full_artwork_uri(
-                    ctx,
-                    img_uuid,
-                    abs_path.unwrap_or_else(|| Arc::from("")),
-                )
-            });
+            // Lay the control column and the cover art out side by side so the art
+            // sits directly to the right of the buttons, flush with the top of the
+            // screen (no gap).
+            ui.allocate_ui_with_layout(avail.size(), Layout::left_to_right(Align::Min), |ui| {
+                // Left control column (lyrics toggle + more controls to be added
+                // later), mirroring the web player.
+                ui.allocate_ui(vec2(control_bar_width, avail.height()), |ui| {
+                    // Inner margin keeps the icons off the screen edges.
+                    Frame::new()
+                        .inner_margin(Margin::symmetric(12, 12))
+                        .show(ui, |ui| {
+                            ui.spacing_mut().item_spacing.y = 8.0;
+                            ui.vertical(|ui| {
+                                // Lyrics toggle.
+                                let toggle_resp = ui
+                                    .add(
+                                        Image::new(include_image!("../../assets/lyrics.svg"))
+                                            .fit_to_exact_size(vec2(24.0, 24.0))
+                                            .tint(if app.config.show_lyrics {
+                                                app.theme.accent_light
+                                            } else {
+                                                app.theme.text
+                                            }),
+                                    )
+                                    .interact(Sense::click());
+                                if toggle_resp.clicked() {
+                                    app.config.show_lyrics = !app.config.show_lyrics;
+                                    let _ = app.config.write();
+                                    ctx.request_repaint();
+                                }
+                                toggle_resp.on_hover_text("Show lyrics");
+                            });
+                        });
+                });
 
-            let art_rect = Rect::from_center_size(rect.center(), vec2(size, size));
+                let artwork_path = app.player.get_playback_state().and_then(|state| {
+                    let is_radio = state.song() == Uuid::nil();
+                    let (song, _, _) = resolve_current_song(app, &state, is_radio);
+                    let (img_uuid, abs_path) = current_artwork_refs(app, song.as_ref(), &state);
+                    app.resolve_full_artwork_uri(
+                        ctx,
+                        img_uuid,
+                        abs_path.unwrap_or_else(|| Arc::from("")),
+                    )
+                });
 
-            if let Some(path_str) = artwork_path {
-                // Reuse egui's cached texture when the bytes are already
-                // registered for this URI; only read from disk on the first frame.
-                let uri = format!("bytes://{}", path_str);
-                let image_source = if ctx.try_load_bytes(&uri).is_ok() {
-                    ImageSource::Uri(std::borrow::Cow::Owned(uri))
-                } else if let Ok(image_bytes) = std::fs::read(&path_str) {
-                    ImageSource::Bytes {
-                        uri: std::borrow::Cow::Owned(uri),
-                        bytes: image_bytes.into(),
+                // Area to the right of the control column.
+                let avail = ui.available_rect_before_wrap();
+                if avail.width() <= 0.0 || avail.height() <= 0.0 {
+                    return;
+                }
+
+                if app.config.show_lyrics {
+                    // Lyrics panel over a dimmed cover-art backdrop; the rest of the
+                    // screen keeps the solid theme background.
+                    if let Some(state) = app.player.get_playback_state() {
+                        let is_radio = state.song() == Uuid::nil();
+                        let (uuid, has) = resolve_lyrics_target(app, &state, is_radio);
+                        if let Some(id) = uuid
+                            && has
+                        {
+                            match app.songs.get_lyrics(id) {
+                                LoadingState::Loaded(parsed) => {
+                                    if !parsed.lines.is_empty() {
+                                        draw_lyrics_panel(
+                                            ui,
+                                            ctx,
+                                            app,
+                                            &parsed,
+                                            state.position(),
+                                            state.song(),
+                                            artwork_path.as_deref(),
+                                        );
+                                    } else if !parsed.unsynced.is_empty() {
+                                        draw_unsynced_panel(
+                                            ui,
+                                            ctx,
+                                            &parsed,
+                                            artwork_path.as_deref(),
+                                        );
+                                    }
+                                }
+                                LoadingState::Loading => {
+                                    ctx.request_repaint();
+                                }
+                                LoadingState::Failed(_) => {}
+                            }
+                        }
                     }
                 } else {
-                    ui.painter()
-                        .rect_filled(art_rect, 20.0, app.theme.background_elevated);
-                    return;
-                };
-                ui.put(
-                    art_rect,
-                    Image::new(image_source)
-                        .max_size(vec2(size, size))
-                        .bg_fill(Color32::TRANSPARENT)
-                        .corner_radius(20.0),
-                );
-            } else {
-                ui.painter()
-                    .rect_filled(art_rect, 20.0, app.theme.background_elevated);
-            }
+                    // Lyrics off: cover art filling the area to the right of the control column.
+                    let size = avail.width().min(avail.height());
+                    let (rect, _resp) =
+                        ui.allocate_exact_size(vec2(avail.width(), avail.height()), Sense::hover());
+                    let art_rect = Rect::from_center_size(rect.center(), vec2(size, size));
+
+                    if let Some(path_str) = artwork_path {
+                        // Reuse egui's cached texture when the bytes are already
+                        // registered for this URI; only read from disk on the first frame.
+                        let uri = format!("bytes://{}", path_str);
+                        let image_source = if ctx.try_load_bytes(&uri).is_ok() {
+                            ImageSource::Uri(std::borrow::Cow::Owned(uri))
+                        } else if let Ok(image_bytes) = std::fs::read(&path_str) {
+                            ImageSource::Bytes {
+                                uri: std::borrow::Cow::Owned(uri),
+                                bytes: image_bytes.into(),
+                            }
+                        } else {
+                            ui.painter()
+                                .rect_filled(art_rect, 20.0, app.theme.background_elevated);
+                            return;
+                        };
+                        ui.put(
+                            art_rect,
+                            Image::new(image_source)
+                                .max_size(vec2(size, size))
+                                .bg_fill(Color32::TRANSPARENT)
+                                .corner_radius(20.0),
+                        );
+                    } else {
+                        ui.painter()
+                            .rect_filled(art_rect, 20.0, app.theme.background_elevated);
+                    }
+                }
+            });
         });
 }

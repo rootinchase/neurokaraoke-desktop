@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.4.4: Synced lyrics
+
+### Added features
+* **Synced Lyrics Overlay:** `get_lyrics` (`src/api/client.rs`) fetches `GET /api/songs/{id}/lyrics` lazily, deserializes the JSON array of `{time, text}` entries, parses each .NET `TimeSpan` (`HH:mm:ss.fffffff`) into a `Duration`, sorts by timestamp, and caches a single song slot (`src/utilities/lrc.rs` `parse_time_entries`).
+    * A `404` stores an empty sentinel so songs without lyrics are not re-fetched every frame.
+    * `has_lyrics` is added to `SongDTO` to gate the fetch.
+* **Fullscreen Lyrics Toggle & Overlay:** `render_fullscreen_player` (`src/app/player_ui.rs`) draws a top-left lyrics toggle button (using `assets/lyrics.svg`) that flips the persisted `show_lyrics` config flag.
+    * When enabled and the current song has lyrics, the synced lyrics overlay is drawn centered over the cover art: the active line is white at full opacity (2rem), the next line is 0.6 opacity (1.375rem), and past lines are 0.35 opacity (1.125rem).
+    * The overlay forces the fullscreen `Area` to the current screen size each frame so it shrinks cleanly when the window is resized smaller.
+    * The radio current song's lyrics use the catalog `current.id` (not the nil playback id).
+
 ## v0.4.3: Memory improvements
 
 ### Added features

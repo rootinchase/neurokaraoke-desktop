@@ -148,6 +148,7 @@ mod tests {
             stream_date: None,
             duration: Some(180),
             user_uploaded: false,
+            has_lyrics: false,
         };
         assert!(song_valid.is_valid());
 
@@ -165,6 +166,7 @@ mod tests {
             stream_date: None,
             duration: Some(180),
             user_uploaded: false,
+            has_lyrics: false,
         };
         assert!(!song_invalid.is_valid());
     }

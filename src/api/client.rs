@@ -1,11 +1,12 @@
 use crate::api::sources::classify_source_url;
 use crate::api::{
     API_URLS, Artwork, AzuraCastNowPlayingResponse, FavoriteEntry, FavoriteItem, FileUpload,
-    GameHubScheduledInfo, LazySongDatabase, LoadingState, Playlist, PlaylistDetail,
+    GameHubScheduledInfo, LazySongDatabase, LyricEntry, LoadingState, Playlist, PlaylistDetail,
     ProfileResponse, RadioCurrentStateResponse, SetlistStats, Song, SongDTO, TrendingTimes,
     UploadSong, UploadSongResult, UserLimits,
 };
 use crate::app::fonts;
+use crate::utilities::lrc;
 use crate::config::SharedConfig;
 use crate::debug_log;
 use anyhow::anyhow;
@@ -18,6 +19,7 @@ use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use uuid::{Uuid, uuid};
 
@@ -36,6 +38,7 @@ impl LazySongDatabase {
             last_used: Arc::new(DashMap::new()),
             counter: Arc::new(AtomicU64::new(0)),
             artwork_cache: Arc::new(DashMap::new()),
+            lyrics_cache: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -689,6 +692,76 @@ impl LazySongDatabase {
         }
     }
 
+    /// Single-slot lyrics fetch: keeps only the current song's lyrics. On a cache
+    /// miss (or when the cached id differs), spawns
+    /// `GET /api/songs/lyrics/{id}` with `apply_auth`, parses the LRC text once,
+    /// registers CJK font fallbacks, and stores the slot. A `404` stores a
+    /// sentinel with empty `text` so we do not re-fetch every frame.
+    pub fn get_lyrics(&self, id: Uuid) -> LoadingState<Arc<lrc::LyricsParsed>> {
+        {
+            let slot = self.lyrics_cache.lock().unwrap();
+            if let Some((cached_id, state)) = slot.as_ref()
+                && *cached_id == id
+            {
+                return match state {
+                    LoadingState::Loaded(p) => LoadingState::Loaded(p.clone()),
+                    LoadingState::Failed(e) => LoadingState::Failed(e.clone()),
+                    LoadingState::Loading => LoadingState::Loading,
+                };
+            }
+        }
+
+        {
+            let mut slot = self.lyrics_cache.lock().unwrap();
+            *slot = Some((id, LoadingState::Loading));
+        }
+
+        let client = self.client.clone();
+        let cache = self.lyrics_cache.clone();
+        let db_self = self.clone();
+
+        tokio::spawn(async move {
+            let url = format!("{}/api/songs/{}/lyrics", API_URLS.api, id);
+            let mut req = client.get(url);
+            req = db_self.apply_auth(req).await;
+
+            let result: anyhow::Result<Arc<lrc::LyricsParsed>> = async {
+                let resp = req.send().await?;
+                if resp.status().as_u16() == 404 {
+                    return Ok(Arc::new(lrc::LyricsParsed::default()));
+                }
+                if !resp.status().is_success() {
+                    return Err(anyhow!("Failed to fetch lyrics: {}", resp.status()));
+                }
+                let entries: Vec<LyricEntry> =
+                    serde_json::from_slice(resp.bytes().await?.as_ref())?;
+                let parsed = lrc::parse_time_entries(&entries);
+                let joined: String =
+                    entries.iter().map(|e| e.text.as_str()).collect::<Vec<_>>().join("\n");
+                fonts::ensure_str(&joined);
+                Ok(Arc::new(parsed))
+            }
+            .await;
+
+            match result {
+                Ok(parsed) => {
+                    let mut slot = cache.lock().unwrap();
+                    if slot.as_ref().map(|(cid, _)| *cid) == Some(id) {
+                        *slot = Some((id, LoadingState::Loaded(parsed)));
+                    }
+                }
+                Err(e) => {
+                    let mut slot = cache.lock().unwrap();
+                    if slot.as_ref().map(|(cid, _)| *cid) == Some(id) {
+                        *slot = Some((id, LoadingState::Failed(Arc::new(e))));
+                    }
+                }
+            }
+        });
+
+        LoadingState::Loading
+    }
+
     pub async fn load_all<T>(
         &self,
         f: impl FnMut(&Song) -> T,
@@ -996,6 +1069,7 @@ mod tests {
             stream_date: None,
             duration: None,
             user_uploaded: false,
+            has_lyrics: false,
         }
     }
 

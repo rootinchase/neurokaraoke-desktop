@@ -1,6 +1,7 @@
 pub mod cache;
 pub mod discord;
 pub mod integration;
+pub mod lrc;
 pub mod persistence;
 pub mod playwire;
 pub mod util;

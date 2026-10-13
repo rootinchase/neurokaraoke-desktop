@@ -45,6 +45,7 @@
 - Cache management (time- and storage-based eviction, TTL updates, and stale download cleanup)
 - Default cover art fallback for songs without cover art metadata
 - Lazy font loading (Noto fallback fonts are decompressed only when their scripts appear)
+- Synced lyrics overlay in the fullscreen player (active/next/past lines, top-left toggle button, and unsynced lyrics)
 - Debug log file output
 - ...and more coming soon!
 
