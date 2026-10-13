@@ -1,15 +1,26 @@
 #[cfg(test)]
 mod tests {
+    use std::env::{temp_dir, var};
+    use std::fs::read_to_string;
+    use std::path::PathBuf;
     use crate::api::internal::deserialize_artists;
     use crate::api::models::*;
     use serde::Deserialize;
     use std::sync::Arc;
+    use std::time::SystemTime;
+    use dashmap::DashMap;
+    use reqwest::Client;
+    use serde_json::{from_str, Value, from_value, Deserializer};
+    use tokio::fs::{create_dir_all, remove_dir_all};
+    use tokio::runtime::Runtime;
+    use uuid::Uuid;
+    use crate::config::Config;
 
     #[test]
     fn test_parse_azuracast_neuro_21() {
         let json_data =
-            std::fs::read_to_string("raw_json/neuro_21").expect("Failed to read raw_json/neuro_21");
-        let parsed: AzuraCastNowPlayingResponse = serde_json::from_str(&json_data)
+            read_to_string("raw_json/neuro_21").expect("Failed to read raw_json/neuro_21");
+        let parsed: AzuraCastNowPlayingResponse = from_str(&json_data)
             .expect("Failed to deserialize AzuraCastNowPlayingResponse");
 
         assert!(parsed.is_online);
@@ -29,8 +40,8 @@ mod tests {
     #[test]
     fn test_parse_azuracast_station_mounts() {
         let json_data =
-            std::fs::read_to_string("raw_json/neuro_21").expect("Failed to read raw_json/neuro_21");
-        let parsed: AzuraCastNowPlayingResponse = serde_json::from_str(&json_data)
+            read_to_string("raw_json/neuro_21").expect("Failed to read raw_json/neuro_21");
+        let parsed: AzuraCastNowPlayingResponse = from_str(&json_data)
             .expect("Failed to deserialize AzuraCastNowPlayingResponse");
 
         let station = parsed.station.expect("Expected station");
@@ -54,8 +65,8 @@ mod tests {
 
     #[test]
     fn test_effective_now_playing_transition() {
-        let now_secs = std::time::SystemTime::now()
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        let now_secs = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
 
@@ -112,8 +123,8 @@ mod tests {
 
     #[test]
     fn test_elapsed_secs_fallback() {
-        let now_secs = std::time::SystemTime::now()
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        let now_secs = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
 
@@ -135,7 +146,7 @@ mod tests {
     #[test]
     fn test_song_dto_validation() {
         let song_valid = SongDTO {
-            id: uuid::Uuid::nil(),
+            id: Uuid::nil(),
             title: "Valid Song".into(),
             opus: None,
             audio_url: None,
@@ -153,7 +164,7 @@ mod tests {
         assert!(song_valid.is_valid());
 
         let song_invalid = SongDTO {
-            id: uuid::Uuid::nil(),
+            id: Uuid::nil(),
             title: "".into(),
             opus: None,
             audio_url: None,
@@ -174,8 +185,8 @@ mod tests {
     #[test]
     fn test_parse_raw_uploads_json() {
         let json_data = include_str!("../../raw_json/uploads.json");
-        let items: Vec<serde_json::Value> =
-            serde_json::from_str(json_data).expect("uploads.json should be a JSON array");
+        let items: Vec<Value> =
+            from_str(json_data).expect("uploads.json should be a JSON array");
 
         // Mirrors get_user_uploads tolerant parsing: entries may be wrapped in a "song" key.
         let songs: Vec<SongDTO> = items
@@ -186,7 +197,7 @@ mod tests {
                     .and_then(|obj| obj.get("song"))
                     .cloned()
                     .unwrap_or(v.clone());
-                serde_json::from_value::<SongDTO>(song_value).ok()
+                from_value::<SongDTO>(song_value).ok()
             })
             .collect();
 
@@ -209,34 +220,34 @@ mod tests {
 
         // Single string
         let json1 = r#"{"artists": "Neuro-sama"}"#;
-        let parsed1: TestStruct = serde_json::from_str(json1).unwrap();
+        let parsed1: TestStruct = from_str(json1).unwrap();
         assert_eq!(parsed1.artists.len(), 1);
         assert_eq!(parsed1.artists[0].as_ref(), "Neuro-sama");
 
         // List of objects with name and optional id
         let json2 = r#"{"artists": [{"name": "Evil Neuro"}, {"id": "00000000-0000-0000-0000-000000000000", "name": "Vedal"}]}"#;
-        let parsed2: TestStruct = serde_json::from_str(json2).unwrap();
+        let parsed2: TestStruct = from_str(json2).unwrap();
         assert_eq!(parsed2.artists.len(), 2);
         assert_eq!(parsed2.artists[0].as_ref(), "Evil Neuro");
         assert_eq!(parsed2.artists[1].as_ref(), "Vedal");
 
         // Null / missing
         let json3 = r#"{"artists": null}"#;
-        let parsed3: TestStruct = serde_json::from_str(json3).unwrap();
+        let parsed3: TestStruct = from_str(json3).unwrap();
         assert!(parsed3.artists.is_empty());
     }
 
     #[test]
     fn test_artwork_and_cover_art_deserialization() {
         let json_null = r#"null"#;
-        let _art: Option<Artwork> = serde_json::from_str(json_null).unwrap();
+        let _art: Option<Artwork> = from_str(json_null).unwrap();
         let deserialized =
-            deserialize_cover_art(&mut serde_json::Deserializer::from_str(json_null)).unwrap();
+            deserialize_cover_art(&mut Deserializer::from_str(json_null)).unwrap();
         assert!(deserialized.is_some());
         assert_eq!(deserialized.unwrap().id, Artwork::default_art().id);
 
         let json_obj = r#"{"id": "custom-art-id", "fileName": "cover.png", "absolutePath": "/path", "isSensitive": false}"#;
-        let art_obj: Artwork = serde_json::from_str(json_obj).unwrap();
+        let art_obj: Artwork = from_str(json_obj).unwrap();
         assert_eq!(art_obj.id, "custom-art-id");
         assert_eq!(art_obj.file_name.as_ref(), "cover.png");
     }
@@ -307,7 +318,7 @@ mod tests {
             "offline": false,
             "playlistName": "Test Playlist"
         }"#;
-        let state: RadioCurrentStateResponse = serde_json::from_str(json_data).unwrap();
+        let state: RadioCurrentStateResponse = from_str(json_data).unwrap();
         assert_eq!(state.listener_count, 15);
         assert!(!state.offline);
         assert_eq!(state.playlist_name.as_deref(), Some("Test Playlist"));
@@ -316,7 +327,7 @@ mod tests {
     #[test]
     fn test_gamehub_scheduled_info_deserialization() {
         let json_data = r#"{"active": true}"#;
-        let info: GameHubScheduledInfo = serde_json::from_str(json_data).unwrap();
+        let info: GameHubScheduledInfo = from_str(json_data).unwrap();
         assert!(info.active);
     }
 
@@ -331,7 +342,7 @@ mod tests {
             "playlistLimit": 20,
             "songPerPlaylistLimit": 500
         }"#;
-        let limits: UserLimits = serde_json::from_str(json_data).unwrap();
+        let limits: UserLimits = from_str(json_data).unwrap();
         assert_eq!(limits.max_songs, 100);
         assert_eq!(limits.current_song_count, 10);
     }
@@ -342,7 +353,7 @@ mod tests {
             "totalCount": 42,
             "years": [2024, 2025, 2026]
         }"#;
-        let stats: SetlistStats = serde_json::from_str(json_data).unwrap();
+        let stats: SetlistStats = from_str(json_data).unwrap();
         assert_eq!(stats.total_count, 42);
         assert_eq!(stats.years, vec![2024, 2025, 2026]);
     }
@@ -360,7 +371,7 @@ mod tests {
             "isPublic": true,
             "isSetList": false
         }"#;
-        let playlist: Playlist = serde_json::from_str(json_data).unwrap();
+        let playlist: Playlist = from_str(json_data).unwrap();
         assert_eq!(playlist.name.as_ref(), "Test Playlist");
         assert_eq!(playlist.song_count, 5);
         assert!(playlist.editable);
@@ -383,7 +394,7 @@ mod tests {
                 "setListDate": "2026-09-30T00:00:00Z"
             }
         ]"#;
-        let playlists: Vec<Playlist> = serde_json::from_str(json_data).unwrap();
+        let playlists: Vec<Playlist> = from_str(json_data).unwrap();
         assert_eq!(playlists.len(), 1);
         let setlist = &playlists[0];
         assert_eq!(
@@ -401,16 +412,16 @@ mod tests {
     #[test]
     #[ignore]
     fn test_fetch_official_setlists_from_server() {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = Runtime::new().unwrap();
         rt.block_on(async {
-            let temp_dir = std::env::temp_dir()
-                .join(format!("neurokaraoke_test_server_{}", uuid::Uuid::new_v4()));
-            let _ = tokio::fs::create_dir_all(&temp_dir).await;
+            let temp_dir = temp_dir()
+                .join(format!("neurokaraoke_test_server_{}", Uuid::new_v4()));
+            let _ = create_dir_all(&temp_dir).await;
 
-            let client = reqwest::Client::new();
-            let map = Arc::new(dashmap::DashMap::new());
-            let guest_id: Arc<str> = uuid::Uuid::new_v4().to_string().into();
-            let config = crate::config::Config::default();
+            let client = Client::new();
+            let map = Arc::new(DashMap::new());
+            let guest_id: Arc<str> = Uuid::new_v4().to_string().into();
+            let config = Config::default();
             let shared_config = config.to_shared();
 
             let db = LazySongDatabase::new(client, map, guest_id, shared_config);
@@ -433,25 +444,25 @@ mod tests {
                 }
             }
 
-            let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+            let _ = remove_dir_all(&temp_dir).await;
         });
     }
 
     #[test]
     #[ignore]
     fn test_fetch_public_playlists_from_server() {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = Runtime::new().unwrap();
         rt.block_on(async {
-            let temp_dir = std::env::temp_dir().join(format!(
+            let temp_dir = temp_dir().join(format!(
                 "neurokaraoke_test_playlists_{}",
-                uuid::Uuid::new_v4()
+                Uuid::new_v4()
             ));
-            let _ = tokio::fs::create_dir_all(&temp_dir).await;
+            let _ = create_dir_all(&temp_dir).await;
 
-            let client = reqwest::Client::new();
-            let map = Arc::new(dashmap::DashMap::new());
-            let guest_id: Arc<str> = uuid::Uuid::new_v4().to_string().into();
-            let config = crate::config::Config::default();
+            let client = Client::new();
+            let map = Arc::new(DashMap::new());
+            let guest_id: Arc<str> = Uuid::new_v4().to_string().into();
+            let config = Config::default();
             let shared_config = config.to_shared();
 
             let db = LazySongDatabase::new(client, map, guest_id, shared_config);
@@ -474,16 +485,16 @@ mod tests {
                 }
             }
 
-            let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+            let _ = remove_dir_all(&temp_dir).await;
         });
     }
 
     #[test]
     fn test_parse_playlist_cover_art_and_mosaics() {
-        let json_data = std::fs::read_to_string("raw_json/playlists.json")
+        let json_data = read_to_string("raw_json/playlists.json")
             .expect("Failed to read raw_json/playlists.json");
         let playlists: Vec<Playlist> =
-            serde_json::from_str(&json_data).expect("Failed to deserialize playlists.json");
+            from_str(&json_data).expect("Failed to deserialize playlists.json");
         assert!(!playlists.is_empty());
 
         let mut found_media = false;
@@ -511,10 +522,10 @@ mod tests {
 
     #[test]
     fn test_parse_song_cover_art() {
-        let json_data = std::fs::read_to_string("raw_json/recent.json")
+        let json_data = read_to_string("raw_json/recent.json")
             .expect("Failed to read raw_json/recent.json");
         let detail: PlaylistDetail =
-            serde_json::from_str(&json_data).expect("Failed to deserialize recent.json");
+            from_str(&json_data).expect("Failed to deserialize recent.json");
         assert!(!detail.songs.is_empty());
 
         let mut found_cover = false;
@@ -529,57 +540,57 @@ mod tests {
 
     #[test]
     fn test_parse_raw_playlists_json() {
-        let json_data = std::fs::read_to_string("raw_json/playlists.json")
+        let json_data = read_to_string("raw_json/playlists.json")
             .expect("Failed to read raw_json/playlists.json");
         let parsed: Vec<Playlist> =
-            serde_json::from_str(&json_data).expect("Failed to deserialize playlists.json");
+            from_str(&json_data).expect("Failed to deserialize playlists.json");
         assert!(!parsed.is_empty());
         assert!(!parsed[0].name.is_empty());
     }
 
     #[test]
     fn test_parse_raw_recent_json() {
-        let json_data = std::fs::read_to_string("raw_json/recent.json")
+        let json_data = read_to_string("raw_json/recent.json")
             .expect("Failed to read raw_json/recent.json");
         let parsed: PlaylistDetail =
-            serde_json::from_str(&json_data).expect("Failed to deserialize recent.json");
+            from_str(&json_data).expect("Failed to deserialize recent.json");
         assert!(!parsed.songs.is_empty());
         assert!(parsed.songs[0].is_valid());
     }
 
     #[test]
     fn test_parse_raw_suggested_json() {
-        let json_data = std::fs::read_to_string("raw_json/suggested.json")
+        let json_data = read_to_string("raw_json/suggested.json")
             .expect("Failed to read raw_json/suggested.json");
         let parsed: Vec<SongDTO> =
-            serde_json::from_str(&json_data).expect("Failed to deserialize suggested.json");
+            from_str(&json_data).expect("Failed to deserialize suggested.json");
         assert!(!parsed.is_empty());
     }
 
     #[test]
     fn test_parse_raw_trending_json() {
-        let json_data = std::fs::read_to_string("raw_json/trending.json")
+        let json_data = read_to_string("raw_json/trending.json")
             .expect("Failed to read raw_json/trending.json");
         let parsed: Vec<SongDTO> =
-            serde_json::from_str(&json_data).expect("Failed to deserialize trending.json");
+            from_str(&json_data).expect("Failed to deserialize trending.json");
         assert!(!parsed.is_empty());
     }
 
     #[test]
     fn test_parse_raw_schedule_json() {
-        let json_data = std::fs::read_to_string("raw_json/schedule.json")
+        let json_data = read_to_string("raw_json/schedule.json")
             .expect("Failed to read raw_json/schedule.json");
-        let parsed: serde_json::Value =
-            serde_json::from_str(&json_data).expect("Failed to deserialize schedule.json");
+        let parsed: Value =
+            from_str(&json_data).expect("Failed to deserialize schedule.json");
         assert!(parsed.is_array());
     }
 
     #[test]
     fn test_parse_raw_broadcasts_json() {
-        let json_data = std::fs::read_to_string("raw_json/broadcasts.json")
+        let json_data = read_to_string("raw_json/broadcasts.json")
             .expect("Failed to read raw_json/broadcasts.json");
-        let parsed: serde_json::Value =
-            serde_json::from_str(&json_data).expect("Failed to deserialize broadcasts.json");
+        let parsed: Value =
+            from_str(&json_data).expect("Failed to deserialize broadcasts.json");
         assert!(parsed.is_array());
     }
 
@@ -647,12 +658,12 @@ mod tests {
         // Run with: cargo test -- --ignored test_upload_song_file_to_server
         // The server answers 200 with an empty body; the new song appears in
         // GET /api/user/songs as `user-audio/{GUID}.m4a`.
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = Runtime::new().unwrap();
         rt.block_on(async {
-            let path = std::env::var("NEUROKARAOKE_UPLOAD_FILE")
-                .map(std::path::PathBuf::from)
+            let path = var("NEUROKARAOKE_UPLOAD_FILE")
+                .map(PathBuf::from)
                 .unwrap_or_else(|_| {
-                    std::path::PathBuf::from(
+                    PathBuf::from(
                         "/home/rootinchase/Backups/pixel9/sdcard/Ringtones/Resurrection2.mp3",
                     )
                 });
@@ -665,15 +676,15 @@ mod tests {
                 return;
             }
 
-            let client = reqwest::Client::new();
-            let map = Arc::new(dashmap::DashMap::new());
-            let guest_id: Arc<str> = uuid::Uuid::new_v4().to_string().into();
-            let config = crate::config::Config::default();
+            let client = Client::new();
+            let map = Arc::new(DashMap::new());
+            let guest_id: Arc<str> = Uuid::new_v4().to_string().into();
+            let config = Config::default();
             let shared_config = config.to_shared();
 
             // `config_dir()` is only initialized at app startup, so the test cannot
             // read the real config. Supply the token the web app used instead.
-            if let Ok(token) = std::env::var("NEUROKARAOKE_TOKEN") {
+            if let Ok(token) = var("NEUROKARAOKE_TOKEN") {
                 *shared_config.auth_token.write().unwrap() = Some(Arc::from(token.as_str()));
             }
 
@@ -700,12 +711,12 @@ mod tests {
         //   NEUROKARAOKE_TOKEN=... cargo test -- --ignored test_upload_song_file_and_delete_on_server
         // The upload answers `200` with an empty body, so the new song id is found by
         // listing `GET /api/user/songs` and matching the submitted title.
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = Runtime::new().unwrap();
         rt.block_on(async {
-            let path = std::env::var("NEUROKARAOKE_UPLOAD_FILE")
-                .map(std::path::PathBuf::from)
+            let path = var("NEUROKARAOKE_UPLOAD_FILE")
+                .map(PathBuf::from)
                 .unwrap_or_else(|_| {
-                    std::path::PathBuf::from(
+                    PathBuf::from(
                         "/home/rootinchase/Backups/pixel9/sdcard/Ringtones/Resurrection2.mp3",
                     )
                 });
@@ -718,13 +729,13 @@ mod tests {
                 return;
             }
 
-            let client = reqwest::Client::new();
-            let map = Arc::new(dashmap::DashMap::new());
-            let guest_id: Arc<str> = uuid::Uuid::new_v4().to_string().into();
-            let config = crate::config::Config::default();
+            let client = Client::new();
+            let map = Arc::new(DashMap::new());
+            let guest_id: Arc<str> = Uuid::new_v4().to_string().into();
+            let config = Config::default();
             let shared_config = config.to_shared();
 
-            if let Ok(token) = std::env::var("NEUROKARAOKE_TOKEN") {
+            if let Ok(token) = var("NEUROKARAOKE_TOKEN") {
                 *shared_config.auth_token.write().unwrap() = Some(Arc::from(token.as_str()));
             }
 
@@ -886,7 +897,7 @@ mod tests {
     fn test_upload_song_result_parses_server_response() {
         // Response captured in raw_requests/upload_youtube.har
         let body = r#"{"success":true,"songId":"d3377f95-7390-4d8e-8c1e-ab7bbd9d3e95","title":"Pattern Recognition - Neuro-sama x ODDEEO"}"#;
-        let result: UploadSongResult = serde_json::from_str(body).unwrap();
+        let result: UploadSongResult = from_str(body).unwrap();
         assert!(result.success);
         assert_eq!(
             result.song_id.to_string(),
@@ -902,20 +913,20 @@ mod tests {
         //   NEUROKARAOKE_TOKEN=... cargo test -- --ignored test_upload_song_from_url_to_server
         // The server answers 200 with {"success":true,"songId":…,"title":…} and the new
         // song appears in GET /api/user/songs with `userUploaded: true`.
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = Runtime::new().unwrap();
         rt.block_on(async {
-            let url = std::env::var("NEUROKARAOKE_UPLOAD_URL")
+            let url = var("NEUROKARAOKE_UPLOAD_URL")
                 .unwrap_or_else(|_| "https://youtu.be/xWDfREk0ZLs".to_string());
 
-            let client = reqwest::Client::new();
-            let map = Arc::new(dashmap::DashMap::new());
-            let guest_id: Arc<str> = uuid::Uuid::new_v4().to_string().into();
-            let config = crate::config::Config::default();
+            let client = Client::new();
+            let map = Arc::new(DashMap::new());
+            let guest_id: Arc<str> = Uuid::new_v4().to_string().into();
+            let config = Config::default();
             let shared_config = config.to_shared();
 
             // `config_dir()` is only initialized at app startup, so the test cannot
             // read the real config. Supply the token the web app used instead.
-            if let Ok(token) = std::env::var("NEUROKARAOKE_TOKEN") {
+            if let Ok(token) = var("NEUROKARAOKE_TOKEN") {
                 *shared_config.auth_token.write().unwrap() = Some(Arc::from(token.as_str()));
             }
 
@@ -936,5 +947,46 @@ mod tests {
                 Err(e) => println!("Note: upload rejected (auth/quota/offline): {e}"),
             }
         });
+    }
+    #[test]
+    fn test_lyric_entries_parse_server_array() {
+        // Shape captured from GET /api/songs/{id}/lyrics: a JSON array of
+        // { time, text } where time is a .NET TimeSpan (HH:mm:ss.fffffff).
+        // The server array is not guaranteed sorted.
+        let body = r#"[
+            {"time":"00:00:12.3456789","text":"line one"},
+            {"time":"00:00:01.0000000","text":"line two"},
+            {"time":"00:01:00.5000000","text":"line three"}
+        ]"#;
+        let entries: Vec<LyricEntry> =
+            from_str(body).expect("Failed to deserialize Vec<LyricEntry>");
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].time, "00:00:12.3456789");
+        assert_eq!(entries[0].text, "line one");
+
+        // parse_time_entries sorts by timestamp and truncates the fractional
+        // part to milliseconds.
+        let parsed = crate::utilities::lrc::parse_time_entries(&entries);
+        assert_eq!(parsed.lines.len(), 3);
+        assert_eq!(parsed.lines[0].start, std::time::Duration::from_millis(1000));
+        assert_eq!(parsed.lines[0].text, "line two");
+        assert_eq!(parsed.lines[1].start, std::time::Duration::from_millis(12345));
+        assert_eq!(parsed.lines[2].start, std::time::Duration::from_millis(60500));
+        // A line's end is the next line's start; the last line runs to u64::MAX.
+        assert_eq!(parsed.lines[0].end, std::time::Duration::from_millis(12345));
+        assert_eq!(parsed.lines[2].end, std::time::Duration::from_secs(u64::MAX));
+    }
+
+    #[test]
+    fn test_lyric_entry_round_trips() {
+        let entry = LyricEntry {
+            time: "00:01:02.3000000".to_string(),
+            text: "hello".to_string(),
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        assert_eq!(json, r#"{"time":"00:01:02.3000000","text":"hello"}"#);
+        let back: LyricEntry = from_str(&json).unwrap();
+        assert_eq!(back.time, entry.time);
+        assert_eq!(back.text, entry.text);
     }
 }

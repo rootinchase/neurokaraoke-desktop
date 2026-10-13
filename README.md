@@ -50,9 +50,6 @@
 - ...and more coming soon!
 
 ## Upcoming Features:
-#### 0.4.x
-- Lyrics in the fullscreen player
-
 #### 0.5.x
 - Editing playlists
 - Listen together
