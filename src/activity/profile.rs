@@ -5,9 +5,17 @@ use crate::debug_log;
 use crate::theme::ThemeManager;
 use crate::utilities::cache::{AssetType, PersistentMediaCache};
 use eframe::egui::{self, Context, Frame, RichText, Ui, Vec2, include_image};
+use egui::{
+    Button, Grid, Image, ImageSource, Label, ProgressBar, ScrollArea, Sense, Stroke, TextureOptions,
+};
+use std::borrow::Cow;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::fs::read;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
+use tokio::sync::mpsc::{Receiver, Sender, channel};
 use uuid::Uuid;
 
 pub enum ProfileMessage {
@@ -21,8 +29,8 @@ pub enum ProfileMessage {
 }
 
 pub struct ProfileActivity {
-    tx: tokio::sync::mpsc::Sender<ProfileMessage>,
-    rx: tokio::sync::mpsc::Receiver<ProfileMessage>,
+    tx: Sender<ProfileMessage>,
+    rx: Receiver<ProfileMessage>,
     pub state: ProfileState,
     cache: Arc<PersistentMediaCache>,
 }
@@ -34,7 +42,9 @@ pub enum AvatarState {
     /// egui's texture cache hits on every frame without re-registering the
     /// bytes (the previous version cloned the full JPEG and formatted the URI
     /// on every sidebar render).
-    Ready { source: egui::ImageSource<'static> },
+    Ready {
+        source: ImageSource<'static>,
+    },
 }
 
 pub struct ProfileState {
@@ -50,7 +60,7 @@ pub struct ProfileState {
 
 impl ProfileActivity {
     pub fn new(cache: Arc<PersistentMediaCache>) -> Self {
-        let (tx, rx) = tokio::sync::mpsc::channel(8);
+        let (tx, rx) = channel(8);
         Self {
             tx,
             rx,
@@ -75,10 +85,10 @@ impl ProfileActivity {
                         self.state.profile_data = Some(data.clone());
                     }
                     ProfileMessage::AvatarLoaded(path) => {
-                        if let Ok(bytes) = std::fs::read(path) {
+                        if let Ok(bytes) = read(path) {
                             let uri = format!("bytes://{}", path);
-                            let source = egui::ImageSource::Bytes {
-                                uri: std::borrow::Cow::Owned(uri),
+                            let source = ImageSource::Bytes {
+                                uri: Cow::Owned(uri),
                                 bytes: bytes.into(),
                             };
                             self.state.avatar_state = AvatarState::Ready { source };
@@ -98,10 +108,10 @@ impl ProfileActivity {
                         self.state.badges = badges.clone();
                     }
                     ProfileMessage::BadgeImageLoaded(badge_id, path) => {
-                        if let Ok(bytes) = std::fs::read(path) {
+                        if let Ok(bytes) = read(path) {
                             let uri = format!("bytes://badge_{}.png", badge_id);
-                            let source = egui::ImageSource::Bytes {
-                                uri: std::borrow::Cow::Owned(uri),
+                            let source = ImageSource::Bytes {
+                                uri: Cow::Owned(uri),
                                 bytes: bytes.into(),
                             };
                             self.state
@@ -117,7 +127,7 @@ impl ProfileActivity {
         }
     }
 
-    pub fn get_sender_handle(&self) -> tokio::sync::mpsc::Sender<ProfileMessage> {
+    pub fn get_sender_handle(&self) -> Sender<ProfileMessage> {
         self.tx.clone()
     }
 
@@ -187,9 +197,9 @@ impl ProfileActivity {
         let badge_id_owned = badge_id.to_string();
 
         rt.spawn(async move {
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            std::hash::Hash::hash(&badge_id_owned, &mut hasher);
-            let hash_val = std::hash::Hasher::finish(&hasher);
+            let mut hasher = DefaultHasher::new();
+            Hash::hash(&badge_id_owned, &mut hasher);
+            let hash_val = Hasher::finish(&hasher);
             let badge_uuid = Uuid::from_u128(hash_val as u128);
 
             match cache
@@ -230,12 +240,7 @@ impl ProfileActivity {
         }
     }
 
-    pub fn resolve_avatar_uri(
-        &mut self,
-        ctx: &Context,
-        rt: &Runtime,
-        avatar_url: &str,
-    ) {
+    pub fn resolve_avatar_uri(&mut self, ctx: &Context, rt: &Runtime, avatar_url: &str) {
         if matches!(self.state.avatar_state, AvatarState::Downloading) {
             return;
         }
@@ -249,9 +254,9 @@ impl ProfileActivity {
         };
         debug_log!("Fetching User avatar from : {}", avatar_url);
 
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        std::hash::Hash::hash(&avatar_url, &mut hasher);
-        let hash_val = std::hash::Hasher::finish(&hasher);
+        let mut hasher = DefaultHasher::new();
+        Hash::hash(&avatar_url, &mut hasher);
+        let hash_val = Hasher::finish(&hasher);
         let avatar_uuid = Uuid::from_u128(hash_val as u128);
 
         let tx = self.tx.clone();
@@ -283,7 +288,7 @@ impl ProfileActivity {
         auth_service: &AuthService,
         rt: &Arc<Runtime>,
     ) {
-        egui::ScrollArea::vertical()
+        ScrollArea::vertical()
             .auto_shrink([false, false])
             .max_height(ui.available_height())
             .show(ui, |ui| {
@@ -307,18 +312,18 @@ impl ProfileActivity {
                                         match &self.state.avatar_state {
                                             AvatarState::Ready { source } => {
                                                 ui.add(
-                                                    egui::Image::new(source.clone())
+                                                    Image::new(source.clone())
                                                         .fit_to_exact_size(Vec2::new(64.0, 64.0))
                                                         .corner_radius(32.0)
                                                         .texture_options(
-                                                            egui::TextureOptions::LINEAR,
+                                                            TextureOptions::LINEAR,
                                                         ),
                                                 );
                                             }
                                             AvatarState::Downloading => {
                                                 let (rect, _) = ui.allocate_exact_size(
                                                     Vec2::new(64.0, 64.0),
-                                                    egui::Sense::hover(),
+                                                    Sense::hover(),
                                                 );
                                                 ui.painter().rect_filled(
                                                     rect,
@@ -334,7 +339,7 @@ impl ProfileActivity {
                                                 );
                                                 let (rect, _) = ui.allocate_exact_size(
                                                     Vec2::new(64.0, 64.0),
-                                                    egui::Sense::hover(),
+                                                    Sense::hover(),
                                                 );
                                                 ui.painter().rect_filled(
                                                     rect,
@@ -345,7 +350,7 @@ impl ProfileActivity {
                                         }
                                     } else {
                                         ui.add(
-                                            egui::Label::new(
+                                            Label::new(
                                                 RichText::new("👤").size(64.0),
                                             ),
                                         );
@@ -405,7 +410,7 @@ impl ProfileActivity {
                                         profile_data.total_xp
                                             + profile_data.xp_to_next_level
                                     );
-                                    let bar = egui::ProgressBar::new(progress)
+                                    let bar = ProgressBar::new(progress)
                                         .text(xp_text)
                                         .fill(theme.primary);
                                     ui.add(bar);
@@ -415,7 +420,7 @@ impl ProfileActivity {
                                         let coin_size = Vec2::new(24.0, 24.0);
 
                                         ui.add(
-                                            egui::Image::new(include_image!(
+                                            Image::new(include_image!(
                                                 "../../assets/coin-neuros.png"
                                             ))
                                                 .fit_to_exact_size(coin_size),
@@ -430,7 +435,7 @@ impl ProfileActivity {
 
                                         ui.add_space(10.0);
                                         ui.add(
-                                            egui::Image::new(include_image!(
+                                            Image::new(include_image!(
                                                 "../../assets/coin-evil.png"
                                             ))
                                                 .fit_to_exact_size(coin_size),
@@ -445,7 +450,7 @@ impl ProfileActivity {
 
                                         ui.add_space(10.0);
                                         ui.add(
-                                            egui::Image::new(include_image!(
+                                            Image::new(include_image!(
                                                 "../../assets/coin-twins.png"
                                             ))
                                                 .fit_to_exact_size(coin_size),
@@ -504,10 +509,10 @@ impl ProfileActivity {
 
                                     let column_width = ui.available_width() / 4.0;
 
-                                    egui::ScrollArea::vertical()
+                                    ScrollArea::vertical()
                                         .max_height(200.0)
                                         .show(ui, |ui| {
-                                            egui::Grid::new("badges_grid")
+                                            Grid::new("badges_grid")
                                                 .num_columns(4)
                                                 .min_col_width(column_width - 10.0)
                                                 .spacing(Vec2::new(10.0, 10.0))
@@ -586,7 +591,7 @@ impl ProfileActivity {
                                                                                 Frame::new()
                                                                                     .corner_radius(radius)
                                                                                     .stroke(
-                                                                                        egui::Stroke::new(
+                                                                                        Stroke::new(
                                                                                             2.0,
                                                                                             border_color,
                                                                                         ),
@@ -594,7 +599,7 @@ impl ProfileActivity {
                                                                                     .show(ui, |ui| {
                                                                                         ui.add_sized(
                                                                                             Vec2::splat(badge_size),
-                                                                                            egui::Image::new(
+                                                                                            Image::new(
                                                                                                 source.clone(),
                                                                                             )
                                                                                                 .fit_to_exact_size(
@@ -602,7 +607,7 @@ impl ProfileActivity {
                                                                                                 )
                                                                                                 .corner_radius(radius)
                                                                                                 .texture_options(
-                                                                                                    egui::TextureOptions::LINEAR,
+                                                                                                    TextureOptions::LINEAR,
                                                                                                 ),
                                                                                         );
                                                                                     });
@@ -611,7 +616,7 @@ impl ProfileActivity {
                                                                                 Frame::new()
                                                                                     .corner_radius(radius)
                                                                                     .stroke(
-                                                                                        egui::Stroke::new(
+                                                                                        Stroke::new(
                                                                                             2.0,
                                                                                             border_color,
                                                                                         ),
@@ -619,7 +624,7 @@ impl ProfileActivity {
                                                                                     .show(ui, |ui| {
                                                                                         ui.add_sized(
                                                                                             Vec2::splat(badge_size),
-                                                                                            egui::Label::new(
+                                                                                            Label::new(
                                                                                                 RichText::new("🏅")
                                                                                                     .size(32.0),
                                                                                             ),
@@ -656,7 +661,7 @@ impl ProfileActivity {
                                 ui.add_space(15.0);
 
                                 let logout_btn =
-                                    egui::Button::new(RichText::new("Log Out").size(14.0))
+                                    Button::new(RichText::new("Log Out").size(14.0))
                                         .fill(theme.error)
                                         .min_size(Vec2::new(120.0, 32.0));
 

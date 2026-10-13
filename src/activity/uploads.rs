@@ -18,8 +18,8 @@ use ron::ser::to_string_pretty;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::fs::write;
-use tokio::sync::Mutex;
+use tokio::fs::{create_dir_all, write};
+use tokio::{spawn, sync::Mutex, task::spawn_blocking};
 use uuid::Uuid;
 
 /// Extensions the file picker accepts, aligned with `audio_content_type`.
@@ -93,7 +93,7 @@ impl UploadsActivity {
         let db = self.db.clone();
         let ctx = self.ctx.clone();
 
-        tokio::spawn(async move {
+        spawn(async move {
             let cache_path = cache_dir().join("uploads.ron");
             let has_cached = load_cached_song_list(&cache_path, &s, &db).await;
 
@@ -101,7 +101,7 @@ impl UploadsActivity {
                 Ok(list) => {
                     *s.lock().await = LoadingState::Loaded(list.clone());
                     if let Some(parent) = cache_path.parent() {
-                        let _ = tokio::fs::create_dir_all(parent).await;
+                        let _ = create_dir_all(parent).await;
                     }
                     if let Ok(serialized) = to_string_pretty(&list, Default::default()) {
                         let _ = write(&cache_path, serialized).await;
@@ -152,7 +152,7 @@ impl UploadsActivity {
         let picked = self.picked.clone();
         let open = self.picker_open.clone();
         let ctx = self.ctx.clone();
-        tokio::task::spawn_blocking(move || {
+        spawn_blocking(move || {
             let paths = pick_audio_files();
             if !paths.is_empty() {
                 picked.blocking_lock().extend(paths);
@@ -213,7 +213,7 @@ impl UploadsActivity {
         let ctx = self.ctx.clone();
         let url_done = self.url_done.clone();
 
-        tokio::spawn(async move {
+        spawn(async move {
             match db.upload_song_from_url(UploadSong::new(url)).await {
                 Ok(result) => {
                     debug_log!("Upload accepted: {} ({})", result.title, result.song_id);
@@ -269,7 +269,7 @@ impl UploadsActivity {
         let uploading = self.is_uploading.clone();
         let ctx = self.ctx.clone();
 
-        tokio::spawn(async move {
+        spawn(async move {
             match db.upload_song_file(upload).await {
                 Ok(()) => {
                     debug_log!("File upload accepted: {}", title);
@@ -300,7 +300,7 @@ impl UploadsActivity {
         let uploading = self.is_uploading.clone();
         let ctx = self.ctx.clone();
 
-        tokio::spawn(async move {
+        spawn(async move {
             match db.delete_uploaded_song(song_id).await {
                 Ok(()) => {
                     debug_log!("Deleted uploaded song {}", song_id);

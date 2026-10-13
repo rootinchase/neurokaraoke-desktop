@@ -2,6 +2,7 @@ use crate::api::SongDTO;
 use crate::audio::{Player, types::LoopMode};
 use crate::config::{Config, config_dir};
 use crate::utilities::cache::PersistentMediaCache;
+use anyhow::Result;
 use ron::from_str;
 use ron::ser::{PrettyConfig, to_string_pretty};
 use serde::{Deserialize, Serialize};
@@ -22,7 +23,7 @@ pub struct AppState {
     pub loop_mode: LoopMode,
 }
 
-pub fn save_app_state(state: &AppState) -> anyhow::Result<()> {
+pub fn save_app_state(state: &AppState) -> Result<()> {
     let path = config_dir().join("state.ron");
     let content = to_string_pretty(state, PrettyConfig::default())?;
     write(path, content)?;
@@ -35,7 +36,7 @@ pub fn load_app_state() -> Option<AppState> {
     from_str(&content).ok()
 }
 
-pub fn clear_app_state() -> anyhow::Result<()> {
+pub fn clear_app_state() -> Result<()> {
     let path = config_dir().join("state.ron");
     if path.exists() {
         remove_file(path)?;

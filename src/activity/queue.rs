@@ -32,84 +32,85 @@ impl QueueActivity {
         ui.heading(&self.activity);
         ui.push_id(&self.activity, |ui| {
             if self.show_queue
-                && let Some(pl) = player.get_playlist() {
-                    let url_pl = player.get_url_playlist();
-                    self.current_song_uuid = player.get_playback_state().map(|s| s.song());
+                && let Some(pl) = player.get_playlist()
+            {
+                let url_pl = player.get_url_playlist();
+                self.current_song_uuid = player.get_playback_state().map(|s| s.song());
 
-                    TableBuilder::new(ui)
-                        .column(Column::remainder())
-                        .column(Column::exact(150.0))
-                        .column(Column::exact(60.0))
-                        .header(20.0, |mut header| {
-                            header.col(|ui| {
-                                ui.label("Song");
-                            });
-                            header.col(|ui| {
-                                ui.label("Cover Artist");
-                            });
-                            header.col(|ui| {
-                                ui.label("Duration");
-                            });
-                        })
-                        .body(|body| {
-                            body.rows(20.0, pl.len(), |mut row| {
-                                let idx = row.index();
-                                let song_uuid = pl[idx];
+                TableBuilder::new(ui)
+                    .column(Column::remainder())
+                    .column(Column::exact(150.0))
+                    .column(Column::exact(60.0))
+                    .header(20.0, |mut header| {
+                        header.col(|ui| {
+                            ui.label("Song");
+                        });
+                        header.col(|ui| {
+                            ui.label("Cover Artist");
+                        });
+                        header.col(|ui| {
+                            ui.label("Duration");
+                        });
+                    })
+                    .body(|body| {
+                        body.rows(20.0, pl.len(), |mut row| {
+                            let idx = row.index();
+                            let song_uuid = pl[idx];
 
-                                let song_data = url_pl
-                                    .as_ref()
-                                    .and_then(|list| list.iter().find(|s| s.id == song_uuid));
+                            let song_data = url_pl
+                                .as_ref()
+                                .and_then(|list| list.iter().find(|s| s.id == song_uuid));
 
-                                let (orig_artists, title, cover_artists, duration) =
-                                    if let Some(song) = song_data {
+                            let (orig_artists, title, cover_artists, duration) =
+                                if let Some(song) = song_data {
+                                    (
+                                        song.original_artists.join(" & "),
+                                        song.title.to_string(),
+                                        song.cover_artists.join(" & "),
+                                        song.duration,
+                                    )
+                                } else {
+                                    match self.songs.get(&song_uuid, |s| {
                                         (
-                                            song.original_artists.join(" & "),
-                                            song.title.to_string(),
-                                            song.cover_artists.join(" & "),
-                                            song.duration,
+                                            s.original_artists.clone(),
+                                            s.title.to_string(),
+                                            s.cover_artists.clone(),
+                                            None,
                                         )
-                                    } else {
-                                        match self.songs.get(&song_uuid, |s| {
-                                            (
-                                                s.original_artists.clone(),
-                                                s.title.to_string(),
-                                                s.cover_artists.clone(),
-                                                None,
-                                            )
-                                        }) {
-                                            LoadingState::Loaded((oa, t, ca, d)) => {
-                                                (oa.join(" & "), t, ca.join(" & "), d)
-                                            }
-                                            _ => (
-                                                "-".to_string(),
-                                                "Loading...".to_string(),
-                                                "-".to_string(),
-                                                None,
-                                            ),
+                                    }) {
+                                        LoadingState::Loaded((oa, t, ca, d)) => {
+                                            (oa.join(" & "), t, ca.join(" & "), d)
                                         }
-                                    };
-
-                                row.col(|ui| {
-                                    let display_text = format!("{} - {}", orig_artists, title);
-                                    if ui
-                                        .selectable_label(
-                                            self.current_song_uuid == Some(song_uuid),
-                                            display_text,
-                                        )
-                                        .clicked()
-                                    {
-                                        player.play_song(song_uuid);
+                                        _ => (
+                                            "-".to_string(),
+                                            "Loading...".to_string(),
+                                            "-".to_string(),
+                                            None,
+                                        ),
                                     }
-                                });
-                                row.col(|ui| {
-                                    ui.label(cover_artists);
-                                });
-                                row.col(|ui| {
-                                    render_duration_label(ui, duration);
-                                });
+                                };
+
+                            row.col(|ui| {
+                                let display_text = format!("{} - {}", orig_artists, title);
+                                if ui
+                                    .selectable_label(
+                                        self.current_song_uuid == Some(song_uuid),
+                                        display_text,
+                                    )
+                                    .clicked()
+                                {
+                                    player.play_song(song_uuid);
+                                }
+                            });
+                            row.col(|ui| {
+                                ui.label(cover_artists);
+                            });
+                            row.col(|ui| {
+                                render_duration_label(ui, duration);
                             });
                         });
-                }
+                    });
+            }
         });
     }
 }

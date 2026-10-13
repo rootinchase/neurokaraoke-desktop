@@ -14,8 +14,9 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::fs::{read, write};
+use tokio::fs::{create_dir_all, read, write};
 use tokio::runtime::Runtime;
+use tokio::spawn;
 use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
 
@@ -77,7 +78,7 @@ impl FavoritesActivity {
         let db = db.clone();
         let ctx = self.ctx.clone();
 
-        tokio::spawn(async move {
+        spawn(async move {
             let is_favorite = favs.read().await.contains(&id);
             if is_favorite {
                 match db.remove_from_favorites(id).await {
@@ -119,7 +120,7 @@ impl FavoritesActivity {
         *p.blocking_lock() = LoadingState::Loading;
         *s.blocking_lock() = LoadingState::Loading;
 
-        tokio::spawn(async move {
+        spawn(async move {
             let playlists_cache_path = playlist_cache_dir().join("favorites_playlists.ron");
             let songs_cache_path = cache_dir().join("favorites_songs.ron");
 
@@ -156,7 +157,7 @@ impl FavoritesActivity {
             match db.fetch_favorite_playlists().await {
                 Ok(playlists) => {
                     if let Some(parent) = playlists_cache_path.parent() {
-                        let _ = tokio::fs::create_dir_all(parent).await;
+                        let _ = create_dir_all(parent).await;
                     }
                     let _ = write(
                         &playlists_cache_path,
@@ -232,9 +233,10 @@ impl FavoritesActivity {
         if let LoadingState::Loaded(list) = &*playlists {
             for playlist in list {
                 if let Some(art) = &playlist.media
-                    && let Some(uri) = cover_art_uri(&self.cache, art) {
-                        ctx.forget_image(&uri);
-                    }
+                    && let Some(uri) = cover_art_uri(&self.cache, art)
+                {
+                    ctx.forget_image(&uri);
+                }
                 if let Some(mosaic) = &playlist.mosaic_media {
                     for art in mosaic {
                         if let Some(uri) = cover_art_uri(&self.cache, art) {
@@ -250,9 +252,10 @@ impl FavoritesActivity {
         if let LoadingState::Loaded(list) = &*songs {
             for song in list {
                 if let Some(art) = &song.cover_art
-                    && let Some(uri) = cover_art_uri(&self.cache, art) {
-                        ctx.forget_image(&uri);
-                    }
+                    && let Some(uri) = cover_art_uri(&self.cache, art)
+                {
+                    ctx.forget_image(&uri);
+                }
             }
         }
         drop(songs);

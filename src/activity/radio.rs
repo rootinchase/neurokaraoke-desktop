@@ -9,7 +9,8 @@ use crate::theme::ThemeManager;
 use crate::utilities::cache::{AssetType, PersistentMediaCache};
 use crate::utilities::persistence;
 use eframe::egui::{
-    Button, Color32, Context, Frame, Image, RichText, ScrollArea, Ui, Vec2, include_image,
+    Align2, Button, Color32, Context, FontId, Frame, Image, RichText, ScrollArea, Sense, Ui, Vec2,
+    include_image,
 };
 use reqwest::Client;
 use std::sync::Arc;
@@ -77,25 +78,22 @@ impl RadioActivity {
                         _ => true,
                     };
 
-                    if should_repaint
-                        && let Some(np) = res.effective_now_playing() {
-                            let is_radio_specific = np
-                                .song
-                                .as_ref()
-                                .is_none_or(|s| s.song_id_uuid().is_none());
+                    if should_repaint && let Some(np) = res.effective_now_playing() {
+                        let is_radio_specific =
+                            np.song.as_ref().is_none_or(|s| s.song_id_uuid().is_none());
 
-                            if let Some(old_uuid) = last_radio_art_uuid_clone.lock().await.take() {
-                                cache_clone_for_cleanup.remove_asset(old_uuid, AssetType::Image);
-                            }
-
-                            if is_radio_specific
-                                && let Some(song) = &np.song
-                                    && let Some(art_url) = &song.art {
-                                        let new_uuid =
-                                            Uuid::new_v5(&Uuid::NAMESPACE_URL, art_url.as_bytes());
-                                        *last_radio_art_uuid_clone.lock().await = Some(new_uuid);
-                                    }
+                        if let Some(old_uuid) = last_radio_art_uuid_clone.lock().await.take() {
+                            cache_clone_for_cleanup.remove_asset(old_uuid, AssetType::Image);
                         }
+
+                        if is_radio_specific
+                            && let Some(song) = &np.song
+                            && let Some(art_url) = &song.art
+                        {
+                            let new_uuid = Uuid::new_v5(&Uuid::NAMESPACE_URL, art_url.as_bytes());
+                            *last_radio_art_uuid_clone.lock().await = Some(new_uuid);
+                        }
+                    }
 
                     *guard = LoadingState::Loaded(res);
                     if should_repaint {
@@ -167,27 +165,28 @@ impl RadioActivity {
             let curr_guard = self.current_state.blocking_lock();
             if let LoadingState::Loaded(curr) = &*curr_guard
                 && let Some(song) = curr.current.as_ref()
-                    && let Some(art) = &song.cover_art
-                        && let Some(uri) = cover_art_uri(&self.cache, art) {
-                            ctx.forget_image(&uri);
-                        }
+                && let Some(art) = &song.cover_art
+                && let Some(uri) = cover_art_uri(&self.cache, art)
+            {
+                ctx.forget_image(&uri);
+            }
         }
 
         {
             let az_guard = self.azuracast_state.blocking_lock();
             if let LoadingState::Loaded(az) = &*az_guard
                 && let Some(np) = az.effective_now_playing()
-                    && let Some(song) = &np.song
-                        && let Some(art_url) = &song.art {
-                            let song_id_uuid = song.song_id_uuid();
-                            let art_uuid = song_id_uuid.unwrap_or_else(|| {
-                                Uuid::new_v5(&Uuid::NAMESPACE_URL, art_url.as_bytes())
-                            });
-                            let art_obj = Artwork::from_url(art_uuid, art_url);
-                            if let Some(uri) = cover_art_uri(&self.cache, &art_obj) {
-                                ctx.forget_image(&uri);
-                            }
-                        }
+                && let Some(song) = &np.song
+                && let Some(art_url) = &song.art
+            {
+                let song_id_uuid = song.song_id_uuid();
+                let art_uuid = song_id_uuid
+                    .unwrap_or_else(|| Uuid::new_v5(&Uuid::NAMESPACE_URL, art_url.as_bytes()));
+                let art_obj = Artwork::from_url(art_uuid, art_url);
+                if let Some(uri) = cover_art_uri(&self.cache, &art_obj) {
+                    ctx.forget_image(&uri);
+                }
+            }
         }
 
         *self.current_state.blocking_lock() = LoadingState::Loading;
@@ -237,13 +236,14 @@ impl RadioActivity {
             let azuracast_guard = azuracast_state.try_lock();
 
             if let Ok(curr) = &current_guard
-                && matches!(**curr, LoadingState::Loading) {
-                    drop(current_guard);
-                    drop(azuracast_guard);
-                    self.fetch_data();
-                    ui.label("Loading radio state...");
-                    return;
-                }
+                && matches!(**curr, LoadingState::Loading)
+            {
+                drop(current_guard);
+                drop(azuracast_guard);
+                self.fetch_data();
+                ui.label("Loading radio state...");
+                return;
+            }
 
             ui.horizontal(|ui| {
                 if let Ok(LoadingState::Loaded(az)) = azuracast_guard.as_deref() {
@@ -391,41 +391,39 @@ pub fn render_radio_now_playing(
                             );
                         }
                     } else if let Some(np) = az_np.as_ref()
-                        && let Some(song) = &np.song {
-                            if let Some(art_url) = &song.art {
-                                let song_id_uuid = song.song_id_uuid();
+                        && let Some(song) = &np.song
+                    {
+                        if let Some(art_url) = &song.art {
+                            let song_id_uuid = song.song_id_uuid();
 
-                                let art_uuid = song_id_uuid.unwrap_or_else(|| {
-                                    Uuid::new_v5(&Uuid::NAMESPACE_URL, art_url.as_bytes())
-                                });
+                            let art_uuid = song_id_uuid.unwrap_or_else(|| {
+                                Uuid::new_v5(&Uuid::NAMESPACE_URL, art_url.as_bytes())
+                            });
 
-                                let art_obj = Artwork::from_url(art_uuid, art_url);
-                                resolve_and_render_art(
-                                    ui,
-                                    cache,
-                                    ctx,
-                                    rt,
-                                    client,
-                                    &art_obj,
-                                    Vec2::new(120.0, 120.0),
-                                );
-                            } else {
-                                let (rect, _) = ui.allocate_exact_size(
-                                    Vec2::new(120.0, 120.0),
-                                    eframe::egui::Sense::hover(),
-                                );
-                                ui.painter()
-                                    .rect_filled(rect, 4.0, theme.background_elevated);
-                                ui.painter().text(
-                                    rect.center(),
-                                    eframe::egui::Align2::CENTER_CENTER,
-                                    "🎵",
-                                    eframe::egui::FontId::proportional(32.0),
-                                    Color32::WHITE,
-                                );
-                            }
+                            let art_obj = Artwork::from_url(art_uuid, art_url);
+                            resolve_and_render_art(
+                                ui,
+                                cache,
+                                ctx,
+                                rt,
+                                client,
+                                &art_obj,
+                                Vec2::new(120.0, 120.0),
+                            );
+                        } else {
+                            let (rect, _) =
+                                ui.allocate_exact_size(Vec2::new(120.0, 120.0), Sense::hover());
+                            ui.painter()
+                                .rect_filled(rect, 4.0, theme.background_elevated);
+                            ui.painter().text(
+                                rect.center(),
+                                Align2::CENTER_CENTER,
+                                "🎵",
+                                FontId::proportional(32.0),
+                                Color32::WHITE,
+                            );
                         }
-
+                    }
 
                     ui.add_space(16.0);
                     ui.vertical(|ui| {

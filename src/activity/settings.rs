@@ -4,10 +4,13 @@ use crate::theme::ThemeManager;
 use crate::utilities::cache::PersistentMediaCache;
 use crate::utilities::cache::cache_dir;
 use eframe::egui::{self, Color32, DragValue, Frame, ProgressBar, RichText, ScrollArea, Ui};
+use egui::Slider;
+use fs2::{free_space, total_space};
 use std::fs::read_dir;
 use std::path::Path;
 use std::sync::Arc;
-use tokio::runtime::Runtime;
+use tokio::runtime::{Handle, Runtime};
+use tokio::task::block_in_place;
 
 pub struct SettingsActivity {
     cache: Arc<PersistentMediaCache>,
@@ -29,8 +32,8 @@ impl SettingsActivity {
     pub fn refresh_storage(&mut self) {
         let base_dir = cache_dir();
 
-        let total = fs2::total_space(base_dir).unwrap_or(0);
-        let free = fs2::free_space(base_dir).unwrap_or(0);
+        let total = total_space(base_dir).unwrap_or(0);
+        let free = free_space(base_dir).unwrap_or(0);
         let our_usage = get_dir_size(base_dir);
         let other_usage = total.saturating_sub(free).saturating_sub(our_usage);
 
@@ -74,7 +77,7 @@ impl SettingsActivity {
                         ui.label("Framerate when not focused (FPS):");
                         let mut fps = config.framerate_when_not_focused;
                         if ui
-                            .add(egui::Slider::new(&mut fps, 0.0..=60.0).step_by(1.0))
+                            .add(Slider::new(&mut fps, 0.0..=60.0).step_by(1.0))
                             .changed()
                         {
                             config.framerate_when_not_focused = fps;
@@ -106,8 +109,8 @@ impl SettingsActivity {
                     ui.add_space(10.0);
 
                     let cache_config = config.cache.clone();
-                    let mut cc = if tokio::runtime::Handle::try_current().is_ok() {
-                        tokio::task::block_in_place(|| cache_config.blocking_lock())
+                    let mut cc = if Handle::try_current().is_ok() {
+                        block_in_place(|| cache_config.blocking_lock())
                     } else {
                         cache_config.blocking_lock()
                     };

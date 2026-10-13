@@ -2,6 +2,8 @@ use crate::audio::Player;
 use crate::config::Config;
 use crate::theme::{SelectableTheme, ThemeManager};
 use eframe::egui;
+use image;
+use std::process::exit;
 use std::time::{Duration, Instant};
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, Submenu};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
@@ -236,7 +238,7 @@ impl TrayIconMenu {
                 ctx.request_repaint();
             } else if event.id == self.quit_id {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                std::process::exit(0);
+                exit(0);
             }
         }
     }

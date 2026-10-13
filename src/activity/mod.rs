@@ -12,7 +12,7 @@ pub mod uploads;
 
 use crate::api::{Artwork, Playlist, PlaylistDetail, SongDTO};
 use crate::theme::ThemeManager;
-use crate::utilities::cache::{self, PersistentMediaCache};
+use crate::utilities::cache::{self, AssetType, PersistentMediaCache};
 use crate::utilities::util::format_duration;
 use eframe::egui::{
     Align2, Color32, Context, FontId, Frame, Grid, Id, Image, ImageSource, Sense, Ui, Vec2,
@@ -21,8 +21,7 @@ use eframe::egui::{
 use egui_extras::{Column, Table, TableBuilder};
 use reqwest::Client;
 use std::fs::read;
-use std::sync::Arc;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 use tokio::runtime::Runtime;
 use uuid::Uuid;
 
@@ -59,7 +58,7 @@ pub fn cover_art_uri(cache: &PersistentMediaCache, art: &Artwork) -> Option<Stri
     let art_uuid_str = cloudflare_id.unwrap_or(&art.id);
     let art_uuid = Uuid::parse_str(art_uuid_str)
         .unwrap_or_else(|_| Uuid::new_v5(&Uuid::NAMESPACE_URL, art_uuid_str.as_bytes()));
-    let path = cache.get_cached_path(art_uuid, cache::AssetType::Image)?;
+    let path = cache.get_cached_path(art_uuid, AssetType::Image)?;
     Some(format!("bytes://{}", path.display()))
 }
 
@@ -174,7 +173,7 @@ pub fn resolve_and_render_art(
         .unwrap_or_else(|_| Uuid::new_v5(&Uuid::NAMESPACE_URL, art_uuid_str.as_bytes()));
 
     // FIXED: Use the new helper method to safely query the persistent cache setup
-    if let Some(path) = cache.get_cached_path(art_uuid, cache::AssetType::Image) {
+    if let Some(path) = cache.get_cached_path(art_uuid, AssetType::Image) {
         // egui's bytes loader caches by URI, so once an artwork's bytes are
         // registered we can reuse the cached texture every frame without
         // re-reading the file from disk. Only the first frame pays for the read.
@@ -193,7 +192,7 @@ pub fn resolve_and_render_art(
     // this artwork. Without this guard, every frame spawns a task for
     // missing/stalled art, and tasks blocked on a stalled download's Notify
     // accumulate unboundedly.
-    if cache.has_in_flight(art_uuid, cache::AssetType::Image) {
+    if cache.has_in_flight(art_uuid, AssetType::Image) {
         render_fallback_art(ui, size);
         return;
     }
@@ -204,7 +203,7 @@ pub fn resolve_and_render_art(
     let artwork_url_clone = artwork_url.clone();
     rt.spawn(async move {
         let _ = cache_clone
-            .get_or_download_image(art_uuid, artwork_url_clone, cache::AssetType::Image)
+            .get_or_download_image(art_uuid, artwork_url_clone, AssetType::Image)
             .await;
         ctx_clone.request_repaint();
     });
@@ -554,11 +553,10 @@ pub fn render_playlist_art_advanced(
         !url.is_empty()
     });
 
-    if media_valid
-        && let Some(art) = &playlist.media {
-            resolve_and_render_art(ui, cache, ctx, rt, client, art, size);
-            return;
-        }
+    if media_valid && let Some(art) = &playlist.media {
+        resolve_and_render_art(ui, cache, ctx, rt, client, art, size);
+        return;
+    }
 
     let mosaic_valid = !playlist.mosaic_covers.is_empty();
     if mosaic_valid {
@@ -654,4 +652,3 @@ mod tests {
         assert_eq!((start, end), (19, 20));
     }
 }
-

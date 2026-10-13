@@ -1,23 +1,24 @@
 use crate::activity::SortOption;
-use crate::api::{LazySongDatabase, PlaylistDetail, SongDTO, LoadingState};
+use crate::api::{LazySongDatabase, LoadingState, PlaylistDetail, SongDTO};
 use crate::config::config_dir;
 use crate::utilities::cache;
-use chrono::Utc;
+
+use anyhow::Error;
+use chrono::{Datelike, NaiveDateTime, Utc};
+use dashmap::DashMap;
+use eframe::egui::Context;
 use reqwest::Client;
-use ron::de::from_bytes;
-use ron::ser::to_string_pretty;
+use ron::{de::from_bytes, ser::to_string_pretty};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{DeserializeAs, SerializeAs};
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::panic::catch_unwind;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Duration;
+use std::fs::{OpenOptions, create_dir_all, read_to_string};
+use std::path::{Path, PathBuf};
+use std::{
+    io::Write, marker::PhantomData, mem::take, panic::catch_unwind, sync::Arc, time::Duration,
+};
 use tokio::fs::{read, write};
-use tokio::runtime::Handle;
-use tokio::sync::Mutex;
-use tokio::task::block_in_place;
+use tokio::runtime::{Handle, Runtime};
+use tokio::{fs, sync::Mutex, task::block_in_place};
 use uuid::Uuid;
 
 pub fn resolve_audio_url(audio_url: &str) -> String {
@@ -69,7 +70,7 @@ pub fn sort_items<T>(
     // the (key, item) pairs, then rebuild the list. The previous
     // `sort_by_key(|a| get_name(a).to_lowercase())` recomputed the key on every
     // comparison, allocating a fresh lowercased String O(n log n) times.
-    let taken = std::mem::take(items);
+    let taken = take(items);
     let mut pairs: Vec<(Key, T)> = Vec::with_capacity(taken.len());
     for item in taken {
         let key = match current_sort {
@@ -149,11 +150,10 @@ pub fn format_play_count(count: u64) -> String {
 /// Formats an ISO-8601 timestamp (e.g. `2026-04-14T00:00:00`) as a short
 /// `Date Added` label such as `Apr 14 2026`. Falls back to the raw string on parse failure.
 pub fn format_added_date(iso: &str) -> String {
-    let dt = match chrono::NaiveDateTime::parse_from_str(iso, "%Y-%m-%dT%H:%M:%S%.f") {
+    let dt = match NaiveDateTime::parse_from_str(iso, "%Y-%m-%dT%H:%M:%S%.f") {
         Ok(dt) => dt,
         Err(_) => return iso.to_string(),
     };
-    use chrono::Datelike;
     format!("{} {} {}", dt.format("%b"), dt.day(), dt.year())
 }
 
@@ -185,10 +185,10 @@ pub fn redact_username(username: &str) -> String {
 }
 
 pub fn spawn_fetch_playlist_details(
-    rt: &tokio::runtime::Runtime,
-    ctx: Option<&eframe::egui::Context>,
+    rt: &Runtime,
+    ctx: Option<&Context>,
     db: &LazySongDatabase,
-    details: &Arc<dashmap::DashMap<Uuid, LoadingState<PlaylistDetail>>>,
+    details: &Arc<DashMap<Uuid, LoadingState<PlaylistDetail>>>,
     playlist_id: Uuid,
     playlist_name: Arc<str>,
 ) {
@@ -220,11 +220,11 @@ pub fn spawn_fetch_playlist_details(
 }
 
 pub async fn load_cached_song_list(
-    cache_path: &std::path::Path,
+    cache_path: &Path,
     state: &Arc<Mutex<LoadingState<Vec<SongDTO>>>>,
     songs: &LazySongDatabase,
 ) -> bool {
-    if let Ok(data) = tokio::fs::read(cache_path).await
+    if let Ok(data) = read(cache_path).await
         && let Ok(mut song_list) = from_bytes::<Vec<SongDTO>>(&data)
     {
         for dto in &mut song_list {
@@ -241,7 +241,7 @@ pub async fn load_cached_song_list(
 /// profile the dominant memory allocations (egui texture store, song map,
 /// artwork path cache) before and after navigation.
 pub fn current_rss_mb() -> Option<f64> {
-    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let status = read_to_string("/proc/self/status").ok()?;
     for line in status.lines() {
         if let Some(rest) = line.strip_prefix("VmRSS:") {
             let kb: f64 = rest.split_whitespace().next()?.parse().ok()?;
@@ -257,16 +257,16 @@ pub fn current_rss_mb() -> Option<f64> {
 pub fn log_memory(tag: &str) {
     if std::env::var("DEBUG_MEMORY").is_ok()
         && let Some(rss) = current_rss_mb()
-        {
-            crate::debug_log!("[mem] {tag}: RSS {:.1} MB", rss);
-        }
+    {
+        crate::debug_log!("[mem] {tag}: RSS {:.1} MB", rss);
+    }
 }
 
 pub fn write_debug_log(msg: &str) {
     let log_path = catch_unwind(|| config_dir().join("debug.log")).unwrap_or_else(|_| {
         if let Some(dir) = dirs::config_dir() {
             let fallback = dir.join("neurokaraoke-desktop");
-            let _ = std::fs::create_dir_all(&fallback);
+            let _ = create_dir_all(&fallback);
             fallback.join("debug.log")
         } else {
             PathBuf::from("debug.log")
@@ -293,7 +293,7 @@ macro_rules! debug_log {
 }
 
 #[allow(dead_code)]
-pub struct IntoAs<T>(std::marker::PhantomData<T>);
+pub struct IntoAs<T>(PhantomData<T>);
 impl<'de, U, T: Deserialize<'de> + Into<U>> DeserializeAs<'de, U> for IntoAs<T> {
     fn deserialize_as<D>(deserializer: D) -> Result<U, D::Error>
     where
@@ -314,7 +314,7 @@ where
     }
 }
 
-pub struct AsArcMutex<T>(std::marker::PhantomData<T>);
+pub struct AsArcMutex<T>(PhantomData<T>);
 impl<'de, T: Deserialize<'de>> DeserializeAs<'de, Arc<Mutex<T>>> for AsArcMutex<T> {
     fn deserialize_as<D>(deserializer: D) -> Result<Arc<Mutex<T>>, D::Error>
     where
@@ -340,7 +340,7 @@ impl<T: Serialize> SerializeAs<Arc<Mutex<T>>> for AsArcMutex<T> {
 pub async fn get_playlist_details_cached(
     id: Uuid,
     songs: &LazySongDatabase,
-) -> Result<PlaylistDetail, anyhow::Error> {
+) -> Result<PlaylistDetail, Error> {
     let cache_path = cache::playlist_cache_dir().join(format!("playlist_detail_{}.ron", id));
 
     let mut cached_detail = None;
@@ -354,7 +354,7 @@ pub async fn get_playlist_details_cached(
     match songs.get_playlist_details(id).await {
         Ok(data) => {
             if let Some(parent) = cache_path.parent() {
-                let _ = tokio::fs::create_dir_all(parent).await;
+                let _ = fs::create_dir_all(parent).await;
             }
             let _ = write(&cache_path, to_string_pretty(&data, Default::default())?).await;
             Ok(data)
@@ -501,5 +501,4 @@ mod tests {
     fn test_redact_username_is_unicode_safe() {
         assert_eq!(redact_username("日本語ユーザ"), "日本••ーザ");
     }
-
 }

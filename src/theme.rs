@@ -1,6 +1,7 @@
 use eframe::egui;
 use eframe::egui::{Color32, Rgba, lerp};
 use serde::{Deserialize, Serialize};
+use std::f32::consts::PI;
 use std::ops::Deref;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -237,11 +238,7 @@ impl ThemeManager {
     pub fn animate(&mut self, dt: f32) -> bool {
         if self.t < 1.0 {
             self.t += dt / 2.0; // 2.0s animation time
-            self.current = Theme::lerp(
-                &self.from,
-                &self.to,
-                0.5 * (1.0 - (std::f32::consts::PI * self.t).cos()),
-            ); // sine ease in/out
+            self.current = Theme::lerp(&self.from, &self.to, 0.5 * (1.0 - (PI * self.t).cos())); // sine ease in/out
             true
         } else {
             self.current = self.to;
@@ -288,4 +285,3 @@ impl SelectableTheme {
         }
     }
 }
-

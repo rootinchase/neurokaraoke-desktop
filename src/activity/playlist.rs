@@ -3,7 +3,7 @@ use crate::activity::{
     render_playlist_box, search, visible_range,
 };
 use crate::api::{LazySongDatabase, LoadingState, Playlist, PlaylistDetail, SongDTO};
-use crate::app::fonts;
+use crate::app::fonts::{ensure_str, scan_playlists};
 use crate::theme::ThemeManager;
 use crate::utilities::cache::{PersistentMediaCache, playlist_cache_dir};
 use crate::utilities::util::{
@@ -14,19 +14,19 @@ use crate::utilities::util::{
 use crate::debug_log;
 use dashmap::DashMap;
 use eframe::egui::{
-    Align, Area, Button, Context, Frame, Id, Image, Layout, Order, Pos2, Rect, RichText, ScrollArea,
-    Sense, TextEdit, Ui, Vec2, include_image,
+    Align, Area, Button, Context, Frame, Id, Image, Layout, Order, Pos2, Rect, RichText,
+    ScrollArea, Sense, TextEdit, Ui, Vec2, include_image,
 };
 use egui_extras::{Column, TableBuilder};
 use reqwest::Client;
-use ron::de;
+use ron::de::from_bytes;
 use ron::ser;
 use std::cell::RefCell;
 use std::collections::HashSet;
-use std::fs::read;
+use std::fs;
 use std::path::Path;
 use std::sync::Arc;
-use tokio::fs::write;
+use tokio::fs::{create_dir_all, read, write};
 use tokio::runtime::Runtime;
 use tokio::spawn;
 use tokio::sync::Mutex;
@@ -94,8 +94,8 @@ pub enum MoreMenuAction {
 /// this, a cache-first display would show only the single `media` cover and no
 /// mosaic tiles until the network fetch re-interns.
 fn load_cached_playlists(cache_path: &Path) -> Option<Vec<Playlist>> {
-    let data = read(cache_path).ok()?;
-    let mut playlists: Vec<Playlist> = de::from_bytes(&data).ok()?;
+    let data = fs::read(cache_path).ok()?;
+    let mut playlists: Vec<Playlist> = from_bytes(&data).ok()?;
     for p in &mut playlists {
         p.mosaic_covers = p.mosaic_media.clone().unwrap_or_default();
     }
@@ -120,7 +120,7 @@ impl PlaylistActivity {
         let cache_path = playlist_cache_dir().join(cache_file);
         let cached_playlists = load_cached_playlists(&cache_path);
         if let Some(ref data) = cached_playlists {
-            fonts::scan_playlists(data);
+            scan_playlists(data);
         }
 
         let all_playlists = Arc::new(Mutex::new(cached_playlists.clone()));
@@ -161,14 +161,14 @@ impl PlaylistActivity {
 
             match result {
                 Ok(data) => {
-                    fonts::scan_playlists(&data);
+                    scan_playlists(&data);
                     *ap.lock().await = Some(data.clone());
                     let initial: Vec<_> = data.iter().take(20).cloned().collect();
                     *p.lock().await = LoadingState::Loaded(initial);
                     *hm.lock().await = data.len() > 20;
 
                     if let Some(parent) = cp_clone.parent() {
-                        let _ = tokio::fs::create_dir_all(parent).await;
+                        let _ = create_dir_all(parent).await;
                     }
                     let _ = write(
                         cp_clone,
@@ -265,9 +265,10 @@ impl PlaylistActivity {
         if let Some(playlists) = &*all {
             for playlist in playlists {
                 if let Some(art) = &playlist.media
-                    && let Some(uri) = cover_art_uri(&self.cache, art) {
-                        ctx.forget_image(&uri);
-                    }
+                    && let Some(uri) = cover_art_uri(&self.cache, art)
+                {
+                    ctx.forget_image(&uri);
+                }
                 if let Some(mosaic) = &playlist.mosaic_media {
                     for art in mosaic {
                         if let Some(uri) = cover_art_uri(&self.cache, art) {
@@ -310,7 +311,7 @@ impl PlaylistActivity {
         // enough to run on the UI thread, so navigating back to Playlists
         // renders the grid immediately instead of blocking on the network.
         if let Some(cached) = load_cached_playlists(&cache_path) {
-            fonts::scan_playlists(&cached);
+            scan_playlists(&cached);
             let initial: Vec<_> = cached.iter().take(20).cloned().collect();
             *self.all_playlists.blocking_lock() = Some(cached.clone());
             *self.playlists.blocking_lock() = LoadingState::Loaded(initial);
@@ -331,13 +332,13 @@ impl PlaylistActivity {
             };
             match result {
                 Ok(data) => {
-                    fonts::scan_playlists(&data);
+                    scan_playlists(&data);
                     *ap.lock().await = Some(data.clone());
                     let initial: Vec<_> = data.iter().take(20).cloned().collect();
                     *p.lock().await = LoadingState::Loaded(initial);
                     *hm.lock().await = data.len() > 20;
                     if let Some(parent) = cache_path.parent() {
-                        let _ = tokio::fs::create_dir_all(parent).await;
+                        let _ = create_dir_all(parent).await;
                     }
                     let _ = write(
                         cache_path,
@@ -405,7 +406,7 @@ impl PlaylistActivity {
                 match fetch_result {
                     Ok(data) => {
                         if let Some(parent) = cache_path.parent() {
-                            let _ = tokio::fs::create_dir_all(parent).await;
+                            let _ = create_dir_all(parent).await;
                         }
                         let _ = write(
                             cache_path.clone(),
@@ -420,8 +421,8 @@ impl PlaylistActivity {
                             "❌ [PlaylistActivity] Error fetching playlists in load_more: {}. Trying disk cache fallback.",
                             e
                         );
-                        if let Ok(file_data) = tokio::fs::read(&cache_path).await {
-                            if let Ok(mut cached_data) = de::from_bytes::<Vec<Playlist>>(&file_data) {
+                        if let Ok(file_data) = read(&cache_path).await {
+                            if let Ok(mut cached_data) = from_bytes::<Vec<Playlist>>(&file_data) {
                                 for p in &mut cached_data {
                                     songs.intern_playlist(p);
                                 }
@@ -444,7 +445,7 @@ impl PlaylistActivity {
             };
             drop(all_opt);
 
-            fonts::scan_playlists(&all);
+            scan_playlists(&all);
 
             let current_len = match &*playlists.lock().await {
                 LoadingState::Loaded(list) => list.len(),
@@ -546,7 +547,8 @@ impl PlaylistActivity {
                                     })
                                     .unwrap_or_default();
                                 if let Ok(mut guard) = self.header_stats_cache.try_lock() {
-                                    *guard = Some((playlist.id, stats.clone(), last_updated.clone()));
+                                    *guard =
+                                        Some((playlist.id, stats.clone(), last_updated.clone()));
                                 }
                                 (stats, last_updated)
                             }
@@ -740,14 +742,15 @@ impl PlaylistActivity {
                         .fill(theme.primary),
                 )
                 .on_hover_text("Create a new playlist");
-                ui.button("+ Add Songs").on_hover_text("Add songs to this playlist");
+                ui.button("+ Add Songs")
+                    .on_hover_text("Add songs to this playlist");
             });
             ui.add_space(12.0);
         }
 
         // ---- Search in playlist ----
         let mut search = self.track_search.blocking_lock().clone();
-        fonts::ensure_str(&search);
+        ensure_str(&search);
         ui.add_sized(
             [300.0, 24.0],
             TextEdit::singleline(&mut search).hint_text("Search in playlist"),
@@ -758,7 +761,12 @@ impl PlaylistActivity {
 
         // ---- Tracks heading + count ----
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Tracks").color(theme.text).size(20.0).strong());
+            ui.label(
+                RichText::new("Tracks")
+                    .color(theme.text)
+                    .size(20.0)
+                    .strong(),
+            );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.label(
                     RichText::new(format!("{} songs", detail.songs.len()))
@@ -829,11 +837,7 @@ impl PlaylistActivity {
                         }
                     });
                     row.col(|ui| {
-                        ui.label(
-                            song.play_count
-                                .map(format_play_count)
-                                .unwrap_or_default(),
-                        );
+                        ui.label(song.play_count.map(format_play_count).unwrap_or_default());
                     });
                     row.col(|ui| {
                         ui.label(
@@ -939,7 +943,7 @@ impl PlaylistActivity {
             }
 
             if let Some(search) = playlist_search {
-                fonts::ensure_str(search);
+                ensure_str(search);
                 ui.horizontal(|ui| {
                     ui.add(TextEdit::singleline(*search));
                     ui.add_space(15.0);
@@ -971,27 +975,29 @@ impl PlaylistActivity {
 
                             // Apply sort globally to entire list (all_playlists)
                             if let Ok(mut all_opt) = self.all_playlists.try_lock()
-                                && let Some(ref mut all) = *all_opt {
-                                    sort_items(
-                                        all,
-                                        current_sort,
-                                        current_sort_desc,
-                                        |p| p.name.to_string(),
-                                        |p| p.song_count.try_into().unwrap(),
-                                        |p| p.play_count.try_into().unwrap(),
-                                        |p| {
-                                            p.updated_at
-                                                .as_deref()
-                                                .or(p.created_at.as_deref())
-                                                .map(|s| s.to_string())
-                                        },
-                                    );
-                                    if let Ok(mut playlists_guard) = self.playlists.try_lock()
-                                        && let LoadingState::Loaded(list) = &mut *playlists_guard {
-                                            let current_len = list.len().max(20);
-                                            *list = all.iter().take(current_len).cloned().collect();
-                                        }
+                                && let Some(ref mut all) = *all_opt
+                            {
+                                sort_items(
+                                    all,
+                                    current_sort,
+                                    current_sort_desc,
+                                    |p| p.name.to_string(),
+                                    |p| p.song_count.try_into().unwrap(),
+                                    |p| p.play_count.try_into().unwrap(),
+                                    |p| {
+                                        p.updated_at
+                                            .as_deref()
+                                            .or(p.created_at.as_deref())
+                                            .map(|s| s.to_string())
+                                    },
+                                );
+                                if let Ok(mut playlists_guard) = self.playlists.try_lock()
+                                    && let LoadingState::Loaded(list) = &mut *playlists_guard
+                                {
+                                    let current_len = list.len().max(20);
+                                    *list = all.iter().take(current_len).cloned().collect();
                                 }
+                            }
                         }
                     }
                 });
@@ -1050,7 +1056,8 @@ impl PlaylistActivity {
                             // combined with a shrunk list (search filter, sort,
                             // load-more reset) would otherwise panic when
                             // slicing with start > len.
-                            let (start, end) = visible_range(offset_y, viewport_height, box_height, len);
+                            let (start, end) =
+                                visible_range(offset_y, viewport_height, box_height, len);
                             let scroll_output = ScrollArea::vertical().show(ui, |ui| {
                                 ui.add_space(start as f32 * box_height);
                                 for playlist in sorted_playlists[start..end].iter() {
@@ -1091,15 +1098,18 @@ impl PlaylistActivity {
                                                             &detail.songs,
                                                             cover_size,
                                                         );
-                                                        let rect =
-                                                            Rect::from_min_max(top, top + cover_size);
+                                                        let rect = Rect::from_min_max(
+                                                            top,
+                                                            top + cover_size,
+                                                        );
                                                         let resp = ui.interact(
                                                             rect,
                                                             ui.id().with(playlist.id),
                                                             Sense::click(),
                                                         );
                                                         if resp.clicked() {
-                                                            *self.selected_playlist_id
+                                                            *self
+                                                                .selected_playlist_id
                                                                 .blocking_lock() =
                                                                 Some(playlist.id);
                                                         }
@@ -1111,8 +1121,9 @@ impl PlaylistActivity {
                                                         play_playlist(detail);
                                                     }
                                                     if ui.button("View Playlist").clicked() {
-                                                        *self.selected_playlist_id.blocking_lock() =
-                                                            Some(playlist.id);
+                                                        *self
+                                                            .selected_playlist_id
+                                                            .blocking_lock() = Some(playlist.id);
                                                     }
                                                 });
                                             }
@@ -1247,7 +1258,10 @@ mod tests {
 
     #[test]
     fn test_format_relative_date_months() {
-        assert_eq!(format_relative_date(&iso_minutes_ago(45 * 24 * 60)), "1 months ago");
+        assert_eq!(
+            format_relative_date(&iso_minutes_ago(45 * 24 * 60)),
+            "1 months ago"
+        );
     }
 
     #[test]

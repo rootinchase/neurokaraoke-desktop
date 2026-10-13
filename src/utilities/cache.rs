@@ -1,13 +1,15 @@
 use crate::api::API_URLS;
 use crate::debug_log;
-use anyhow::Result;
+use anyhow::{Result, anyhow};
+use dashmap::mapref::entry::Entry;
 use dashmap::{DashMap, DashSet};
 use reqwest::Client;
+use std::fs;
+use std::io::Error;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock};
-use std::sync::atomic::AtomicU64;
+use std::sync::{Arc, OnceLock, atomic::AtomicU64};
 use std::time::{Duration, SystemTime};
-use tokio::fs::{File, metadata, read_dir, remove_file, rename}; // Added read_dir
+use tokio::fs::{File, create_dir_all, metadata, read_dir, remove_file, rename}; // Added read_dir
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{Notify, Semaphore};
 use uuid::Uuid;
@@ -34,24 +36,25 @@ pub fn cache_dir() -> &'static PathBuf {
         let dir = dirs::cache_dir()
             .expect("OS cache directory must exist")
             .join("neurokaraoke-desktop");
-        let _ = std::fs::create_dir_all(&dir);
-        let _ = std::fs::create_dir_all(dir.join("assets"));
-        let _ = std::fs::create_dir_all(dir.join("playlists"));
+        let _ = fs::create_dir_all(&dir);
+        let _ = fs::create_dir_all(dir.join("assets"));
+        let _ = fs::create_dir_all(dir.join("playlists"));
         dir
     })
 }
 
 pub fn playlist_cache_dir() -> PathBuf {
     let p = cache_dir().join("playlists");
-    let _ = std::fs::create_dir_all(&p);
+    let _ = fs::create_dir_all(&p);
     p
 }
 
 pub fn is_cache_fresh(path: &Path, max_age: Duration) -> bool {
-    if let Ok(metadata) = std::fs::metadata(path)
-        && let Ok(modified) = metadata.modified() {
-            return modified.elapsed().unwrap_or_default() < max_age;
-        }
+    if let Ok(metadata) = fs::metadata(path)
+        && let Ok(modified) = metadata.modified()
+    {
+        return modified.elapsed().unwrap_or_default() < max_age;
+    }
     false
 }
 
@@ -98,10 +101,11 @@ impl PersistentMediaCache {
 
         // 1. In-flight completed record.
         if let Some(status) = self.in_flight.get(&key)
-            && let DownloadStatus::Complete(path) = status.value() {
-                self.touch_in_flight(key);
-                return Some(path.clone());
-            }
+            && let DownloadStatus::Complete(path) = status.value()
+        {
+            self.touch_in_flight(key);
+            return Some(path.clone());
+        }
 
         // 2. Resolved-path cache: a single map lookup, no filesystem stat.
         if let Some(path) = self.resolved.get(&key) {
@@ -124,10 +128,10 @@ impl PersistentMediaCache {
             AssetType::Image | AssetType::FullImage => ["webp", "jpeg", "jpg", "png", "gif", "bin"]
                 .iter()
                 .map(|ext| Self::get_asset_path(id, Some(ext)))
-                .find(|p| std::fs::metadata(p).is_ok()),
+                .find(|p| fs::metadata(p).is_ok()),
             AssetType::Audio => {
                 let p = Self::get_asset_path(id, None);
-                if std::fs::metadata(&p).is_ok() {
+                if fs::metadata(&p).is_ok() {
                     Some(p)
                 } else {
                     None
@@ -167,7 +171,7 @@ impl PersistentMediaCache {
         for ext in &["webp", "jpeg", "jpg", "png", "gif", "bin", "tmp"] {
             let path = Self::get_asset_path(id, Some(ext));
             if path.exists() {
-                let _ = std::fs::remove_file(&path);
+                let _ = fs::remove_file(&path);
             }
         }
     }
@@ -182,7 +186,9 @@ impl PersistentMediaCache {
     /// Records a monotonic access timestamp for an asset key so LRU eviction
     /// can identify the least-recently-used entries.
     fn touch_in_flight(&self, key: (Uuid, AssetType)) {
-        let t = self.in_flight_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let t = self
+            .in_flight_counter
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.in_flight_last_used.insert(key, t);
     }
 
@@ -198,7 +204,7 @@ impl PersistentMediaCache {
         // Drop complete entries whose disk file no longer exists.
         self.in_flight.retain(|key, status| {
             let keep = match status {
-                DownloadStatus::Complete(path) => std::fs::metadata(path).is_ok(),
+                DownloadStatus::Complete(path) => fs::metadata(path).is_ok(),
                 DownloadStatus::InFlight(_) => true,
             };
             if !keep {
@@ -267,11 +273,8 @@ impl PersistentMediaCache {
 
         // Ensure the folder architecture exists. If missing, build it out.
         if !metadata(&dir_path).await.is_ok() {
-            if let Err(e) = tokio::fs::create_dir_all(&dir_path).await {
-                return Err(anyhow::anyhow!(
-                    "Failed to build baseline cache tree: {}",
-                    e
-                ));
+            if let Err(e) = create_dir_all(&dir_path).await {
+                return Err(anyhow!("Failed to build baseline cache tree: {}", e));
             }
             return Ok(()); // Brand new folder, no .tmp files can possibly be here yet
         }
@@ -281,9 +284,10 @@ impl PersistentMediaCache {
             let path = entry.path();
             if path.is_file()
                 && let Some(ext) = path.extension()
-                    && ext == "tmp" {
-                        let _ = remove_file(&path).await;
-                    }
+                && ext == "tmp"
+            {
+                let _ = remove_file(&path).await;
+            }
         }
         Ok(())
     }
@@ -291,17 +295,18 @@ impl PersistentMediaCache {
     pub fn cleanup_stale_downloads_sync() -> Result<()> {
         let dir_path = Self::get_assets_dir();
         if !dir_path.exists() {
-            std::fs::create_dir_all(&dir_path)?;
+            fs::create_dir_all(&dir_path)?;
             return Ok(());
         }
-        for entry in std::fs::read_dir(&dir_path)? {
+        for entry in fs::read_dir(&dir_path)? {
             let entry = entry?;
             let path = entry.path();
             if path.is_file()
                 && let Some(ext) = path.extension()
-                    && ext == "tmp" {
-                        drop(remove_file(&path))
-                    }
+                && ext == "tmp"
+            {
+                drop(remove_file(&path))
+            }
         }
         Ok(())
     }
@@ -359,10 +364,10 @@ impl PersistentMediaCache {
 
             let notify = Arc::new(Notify::new());
             match self.in_flight.entry(key) {
-                dashmap::mapref::entry::Entry::Occupied(_) => {
+                Entry::Occupied(_) => {
                     continue;
                 }
-                dashmap::mapref::entry::Entry::Vacant(entry) => {
+                Entry::Vacant(entry) => {
                     entry.insert(DownloadStatus::InFlight(notify.clone()));
                 }
             }
@@ -399,19 +404,24 @@ impl PersistentMediaCache {
         let _permit = self.network_gate.acquire().await?;
 
         let dir_path = Self::get_assets_dir();
-        if let Err(e) = tokio::fs::create_dir_all(&dir_path).await {
-            return Err(anyhow::anyhow!("Failed to create assets directory: {}", e));
+        if let Err(e) = create_dir_all(&dir_path).await {
+            return Err(anyhow!("Failed to create assets directory: {}", e));
         }
 
         debug_log!("🚀 [Cache] Fetching from network: {}", url);
         // Per-request timeout: image payloads are small, so a stalled
         // response must fail fast and release the in-flight entry plus its
         // blocked waiters instead of hanging the download task forever.
-        let response = self.client.get(&url).timeout(Duration::from_secs(30)).send().await?;
+        let response = self
+            .client
+            .get(&url)
+            .timeout(Duration::from_secs(30))
+            .send()
+            .await?;
         let status = response.status();
         if !status.is_success() {
             debug_log!("⚠️ [Cache] Network returned status: {}", status);
-            return Err(anyhow::anyhow!("HTTP Download error: {}", status));
+            return Err(anyhow!("HTTP Download error: {}", status));
         }
 
         let content_type = response
@@ -438,7 +448,7 @@ impl PersistentMediaCache {
         let final_path = Self::get_asset_path(id, Some(extension));
         let tmp_path = final_path.with_extension("tmp");
 
-        if tokio::fs::metadata(&tmp_path).await.is_ok() {
+        if metadata(&tmp_path).await.is_ok() {
             let _ = remove_file(&tmp_path).await;
         }
 
@@ -446,21 +456,18 @@ impl PersistentMediaCache {
             let mut file = File::create(&tmp_path).await?;
             file.write_all(&body_bytes).await?;
             file.flush().await?;
-            Ok::<(), std::io::Error>(())
+            Ok::<(), Error>(())
         }
         .await;
 
         if let Err(e) = write_result {
             let _ = remove_file(&tmp_path).await;
-            return Err(anyhow::anyhow!("Failed writing cache payload: {}", e));
+            return Err(anyhow!("Failed writing cache payload: {}", e));
         }
 
         if let Err(e) = rename(&tmp_path, &final_path).await {
             let _ = remove_file(&tmp_path).await;
-            return Err(anyhow::anyhow!(
-                "Failed promoting temporary cache file: {}",
-                e
-            ));
+            return Err(anyhow!("Failed promoting temporary cache file: {}", e));
         }
 
         Ok(final_path)
@@ -538,8 +545,8 @@ impl PersistentMediaCache {
 
             let notify = Arc::new(Notify::new());
             match self.in_flight.entry(key) {
-                dashmap::mapref::entry::Entry::Occupied(_) => continue, // Squeezed out by a race condition, try again
-                dashmap::mapref::entry::Entry::Vacant(entry) => {
+                Entry::Occupied(_) => continue, // Squeezed out by a race condition, try again
+                Entry::Vacant(entry) => {
                     entry.insert(DownloadStatus::InFlight(notify.clone()));
                 }
             }
@@ -550,14 +557,14 @@ impl PersistentMediaCache {
                 let _permit = self.network_gate.acquire().await?;
 
                 let dir_path = Self::get_assets_dir();
-                if let Err(e) = tokio::fs::create_dir_all(&dir_path).await {
-                    return Err(anyhow::anyhow!("Failed to create assets directory: {}", e));
+                if let Err(e) = create_dir_all(&dir_path).await {
+                    return Err(anyhow!("Failed to create assets directory: {}", e));
                 }
 
                 let response = client.get(&url).send().await?;
                 let status = response.status();
                 if !status.is_success() {
-                    return Err(anyhow::anyhow!("HTTP Stream download error: {}", status));
+                    return Err(anyhow!("HTTP Stream download error: {}", status));
                 }
 
                 let tmp_path = final_path.with_extension("tmp");
@@ -580,10 +587,7 @@ impl PersistentMediaCache {
                 // Promote temp tracking file atomically inside the operating system
                 if let Err(e) = rename(&tmp_path, &final_path).await {
                     let _ = remove_file(&tmp_path).await;
-                    return Err(anyhow::anyhow!(
-                        "Failed promoting audio temporary file: {}",
-                        e
-                    ));
+                    return Err(anyhow!("Failed promoting audio temporary file: {}", e));
                 }
 
                 Ok(final_path.clone())
@@ -625,17 +629,16 @@ impl PersistentMediaCache {
                 if path.extension().and_then(|s| s.to_str()) == Some("tmp") {
                     continue;
                 }
-                if !is_cache_fresh(&path, max_age)
-                    && remove_file(&path).await.is_ok() {
-                        evicted_count += 1;
-                        self.in_flight.retain(|_, status| {
-                            if let DownloadStatus::Complete(p) = status {
-                                p != &path
-                            } else {
-                                true
-                            }
-                        });
-                    }
+                if !is_cache_fresh(&path, max_age) && remove_file(&path).await.is_ok() {
+                    evicted_count += 1;
+                    self.in_flight.retain(|_, status| {
+                        if let DownloadStatus::Complete(p) = status {
+                            p != &path
+                        } else {
+                            true
+                        }
+                    });
+                }
             }
         }
         Ok(evicted_count)
@@ -740,7 +743,8 @@ pub fn get_thumbnail_url(cloudflare_id: Option<&str>, absolute_path: &str, fit: 
     };
 
     if let Some(abs) = clean_abs
-        && (abs.starts_with("http://") || abs.starts_with("https://")) {
+        && (abs.starts_with("http://") || abs.starts_with("https://"))
+    {
         return abs.to_string();
     }
 
@@ -821,7 +825,7 @@ pub fn get_full_image_url(cloudflare_id: Option<&str>, absolute_path: &str) -> S
 }
 
 pub fn touch_file(path: &Path) {
-    if let Ok(file) = std::fs::File::options().write(true).open(path) {
+    if let Ok(file) = fs::File::options().write(true).open(path) {
         let _ = file.set_modified(SystemTime::now());
     }
 }
@@ -833,8 +837,10 @@ mod tests {
     use std::env::temp_dir;
     use std::fs::File;
     use std::time::SystemTime;
-    use tokio::fs::{create_dir_all, write};
+    use tokio::fs::{create_dir_all, remove_dir_all, write};
     use tokio::runtime::Runtime;
+    use tokio::spawn;
+    use tokio::time::{sleep, timeout};
 
     #[test]
     fn test_cache_eviction_async() {
@@ -867,7 +873,7 @@ mod tests {
             assert!(!file1.exists());
 
             // Clean up isolated test temp directory
-            let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+            let _ = remove_dir_all(&temp_dir).await;
         });
     }
 
@@ -889,9 +895,10 @@ mod tests {
             for id in &ids {
                 let path = dir.join(format!("{}.webp", id));
                 write(&path, b"art bytes").await.unwrap();
-                cache
-                    .in_flight
-                    .insert((*id, AssetType::Image), DownloadStatus::Complete(path.clone()));
+                cache.in_flight.insert(
+                    (*id, AssetType::Image),
+                    DownloadStatus::Complete(path.clone()),
+                );
                 cache.touch_in_flight((*id, AssetType::Image));
             }
             assert_eq!(cache.in_flight_len(), 3);
@@ -912,7 +919,7 @@ mod tests {
             cache.evict_in_flight(10);
             assert_eq!(cache.in_flight_len(), 1);
 
-            let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+            let _ = remove_dir_all(&temp_dir).await;
         });
     }
 
@@ -928,21 +935,23 @@ mod tests {
             let id = Uuid::new_v4();
             let key = (id, AssetType::Image);
             let notify = Arc::new(Notify::new());
-            cache.in_flight.insert(key, DownloadStatus::InFlight(notify.clone()));
+            cache
+                .in_flight
+                .insert(key, DownloadStatus::InFlight(notify.clone()));
             cache.touch_in_flight(key);
 
             // A waiter blocks on the Notify, mimicking `get_or_download_image`
             // callers parked on a stalled download.
             let notify_waiter = notify.clone();
-            let waiter = tokio::spawn(async move {
-                tokio::time::timeout(Duration::from_secs(2), notify_waiter.notified())
+            let waiter = spawn(async move {
+                timeout(Duration::from_secs(2), notify_waiter.notified())
                     .await
                     .is_ok()
             });
 
             // `notify_waiters()` only wakes already-registered waiters, so let
             // the waiter task reach `notified()` before evicting.
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            sleep(Duration::from_millis(50)).await;
 
             // Evicting past the cap must drop the in-flight entry AND wake its
             // waiters, so the blocked task is released instead of parked forever.
@@ -972,10 +981,9 @@ mod tests {
             assert!(cache.has_in_flight(id, AssetType::Image));
 
             // Complete entry -> not in flight; a re-download may be spawned.
-            cache.in_flight.insert(
-                key,
-                DownloadStatus::Complete(PathBuf::from("/tmp/x.webp")),
-            );
+            cache
+                .in_flight
+                .insert(key, DownloadStatus::Complete(PathBuf::from("/tmp/x.webp")));
             assert!(!cache.has_in_flight(id, AssetType::Image));
 
             // Other asset types are tracked independently.

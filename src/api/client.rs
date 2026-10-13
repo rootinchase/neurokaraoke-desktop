@@ -1,21 +1,25 @@
 use crate::api::sources::classify_source_url;
 use crate::api::{
     API_URLS, Artwork, AzuraCastNowPlayingResponse, FavoriteEntry, FavoriteItem, FileUpload,
-    GameHubScheduledInfo, LazySongDatabase, LyricEntry, LoadingState, Playlist, PlaylistDetail,
+    GameHubScheduledInfo, LazySongDatabase, LoadingState, LyricEntry, Playlist, PlaylistDetail,
     ProfileResponse, RadioCurrentStateResponse, SetlistStats, Song, SongDTO, TrendingTimes,
     UploadSong, UploadSongResult, UserLimits,
 };
-use crate::app::fonts;
-use crate::utilities::lrc;
+
+use crate::app::fonts::{
+    detect_scripts, ensure_scripts, ensure_str, scan_playlist_detail, scan_playlists, scan_song,
+    scan_song_dto, scan_song_dtos,
+};
 use crate::config::SharedConfig;
 use crate::debug_log;
-use anyhow::anyhow;
+use crate::utilities::lrc;
+use anyhow::{Result, anyhow};
 use dashmap::DashMap;
-use reqwest::Client;
 use reqwest::multipart::{Form, Part};
-use serde::ser::SerializeMap;
+use reqwest::{Client, RequestBuilder};
+use serde::ser::{Error, SerializeMap};
 use serde::{Serialize, Serializer};
-use serde_json::{Value, json};
+use serde_json::{Value, from_slice, from_str, from_value, json};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
@@ -73,9 +77,7 @@ impl LazySongDatabase {
         });
         // Precompute the valid mosaic slice once so the grid renderer can read it
         // directly each frame instead of rebuilding a `Vec<&Artwork>` per frame.
-        p.mosaic_covers = p
-            .mosaic_media.clone()
-            .unwrap_or_default();
+        p.mosaic_covers = p.mosaic_media.clone().unwrap_or_default();
     }
 
     pub fn intern_playlist_detail(&self, d: &mut PlaylistDetail) {
@@ -107,11 +109,7 @@ impl LazySongDatabase {
             .filter(|e| matches!(e.value(), LoadingState::Loaded(_)))
             .filter(|e| !pinned_set.contains(e.key()))
             .map(|e| {
-                let t = self
-                    .last_used
-                    .get(e.key())
-                    .map(|v| *v.value())
-                    .unwrap_or(0);
+                let t = self.last_used.get(e.key()).map(|v| *v.value()).unwrap_or(0);
                 (*e.key(), t)
             })
             .collect();
@@ -127,7 +125,7 @@ impl LazySongDatabase {
         }
     }
 
-    pub async fn get_profile(&self, token: &str) -> anyhow::Result<ProfileResponse> {
+    pub async fn get_profile(&self, token: &str) -> Result<ProfileResponse> {
         let request = self
             .client
             .get(format!("{}/api/badge/profile", API_URLS.api))
@@ -139,14 +137,14 @@ impl LazySongDatabase {
         }
 
         let profile: ProfileResponse = response.json().await?;
-        fonts::ensure_str(&profile.profile.display_name);
+        ensure_str(&profile.profile.display_name);
         if let Some(title) = &profile.profile.level_title {
-            fonts::ensure_str(title);
+            ensure_str(title);
         }
         Ok(profile)
     }
 
-    pub async fn get_user_limits(&self) -> anyhow::Result<UserLimits> {
+    pub async fn get_user_limits(&self) -> Result<UserLimits> {
         let request = self
             .client
             .get(format!("{}/api/user/upload-limits", API_URLS.api));
@@ -164,7 +162,7 @@ impl LazySongDatabase {
         Ok(limits)
     }
 
-    pub async fn fetch_favorite_playlists(&self) -> anyhow::Result<Vec<Playlist>> {
+    pub async fn fetch_favorite_playlists(&self) -> Result<Vec<Playlist>> {
         let url = format!("{}/api/favorites/type?type=3", API_URLS.api);
         let request = self.client.get(url);
         let request = self.apply_auth(request).await;
@@ -186,14 +184,11 @@ impl LazySongDatabase {
             self.intern_playlist(p);
         }
 
-        fonts::scan_playlists(&playlists);
+        scan_playlists(&playlists);
         Ok(playlists)
     }
 
-    async fn apply_auth(
-        &self,
-        mut req_builder: reqwest::RequestBuilder,
-    ) -> reqwest::RequestBuilder {
+    async fn apply_auth(&self, mut req_builder: RequestBuilder) -> RequestBuilder {
         let token_lock = self.shared_config.auth_token.read().unwrap();
 
         if let Some(token) = token_lock.as_ref() {
@@ -213,7 +208,7 @@ impl LazySongDatabase {
         sort_desc: bool,
         start_index: u64,
         page_size: u64,
-    ) -> anyhow::Result<Vec<Playlist>> {
+    ) -> Result<Vec<Playlist>> {
         let mut url = format!(
             "{}/api/playlist/public?startIndex={}&pageSize={}",
             API_URLS.api, start_index, page_size
@@ -231,15 +226,15 @@ impl LazySongDatabase {
         }
 
         let json: Value = response.json().await?;
-        let mut playlists: Vec<Playlist> = serde_json::from_value(json)?;
+        let mut playlists: Vec<Playlist> = from_value(json)?;
         for p in &mut playlists {
             self.intern_playlist(p);
         }
-        fonts::scan_playlists(&playlists);
+        scan_playlists(&playlists);
         Ok(playlists)
     }
 
-    pub async fn get_user_playlists(&self) -> anyhow::Result<Vec<Playlist>> {
+    pub async fn get_user_playlists(&self) -> Result<Vec<Playlist>> {
         let mut request = self
             .client
             .get(format!("{}/api/user/playlists", API_URLS.api));
@@ -251,15 +246,15 @@ impl LazySongDatabase {
         }
 
         let json: Value = response.json().await?;
-        let mut playlists: Vec<Playlist> = serde_json::from_value(json)?;
+        let mut playlists: Vec<Playlist> = from_value(json)?;
         for p in &mut playlists {
             self.intern_playlist(p);
         }
-        fonts::scan_playlists(&playlists);
+        scan_playlists(&playlists);
         Ok(playlists)
     }
 
-    pub async fn get_official_setlists(&self, year: u32) -> anyhow::Result<Vec<Playlist>> {
+    pub async fn get_official_setlists(&self, year: u32) -> Result<Vec<Playlist>> {
         let url = format!(
             "{}/api/playlists?pageSize=75&isSetlist=True&year={}",
             API_URLS.api, year
@@ -273,14 +268,14 @@ impl LazySongDatabase {
         }
 
         let json: Value = response.json().await?;
-        let mut playlists: Vec<Playlist> = serde_json::from_value(json)?;
+        let mut playlists: Vec<Playlist> = from_value(json)?;
         for p in &mut playlists {
             self.intern_playlist(p);
         }
         Ok(playlists)
     }
 
-    pub async fn get_setlist_stats(&self) -> anyhow::Result<SetlistStats> {
+    pub async fn get_setlist_stats(&self) -> Result<SetlistStats> {
         let url = format!("{}/api/setlists/stats", API_URLS.api);
         let mut request = self.client.get(url);
         request = self.apply_auth(request).await;
@@ -297,7 +292,7 @@ impl LazySongDatabase {
         Ok(stats)
     }
 
-    pub async fn add_to_favorites(&self, song_id: Uuid) -> anyhow::Result<()> {
+    pub async fn add_to_favorites(&self, song_id: Uuid) -> Result<()> {
         debug_log!("Adding song to favorites: {}", song_id);
         let url = format!("{}/api/user/favorites/{}", API_URLS.api, song_id);
         let request = self.client.put(url).header("content-length", "0");
@@ -317,10 +312,7 @@ impl LazySongDatabase {
     /// the server's fast rejections verbatim. The server then fetches the source itself
     /// and answers `200` with `{"success":true,"songId":…,"title":…}`, or `400` with a
     /// bare JSON string such as `"Failed to retrieve video information. …"`.
-    pub async fn upload_song_from_url(
-        &self,
-        upload: UploadSong,
-    ) -> anyhow::Result<UploadSongResult> {
+    pub async fn upload_song_from_url(&self, upload: UploadSong) -> Result<UploadSongResult> {
         let kind = classify_source_url(&upload.url)?;
         debug_log!("Uploading song from source {:?}: {}", kind, upload.url);
         let url = format!("{}/api/user/song/download-from-url", API_URLS.idk);
@@ -333,10 +325,10 @@ impl LazySongDatabase {
         let body = response.text().await?;
         if !status.is_success() {
             // The server answers failures with a bare JSON string holding the reason.
-            let message = serde_json::from_str::<String>(&body).unwrap_or(body);
+            let message = from_str::<String>(&body).unwrap_or(body);
             return Err(anyhow!("Failed to upload: {}", message));
         }
-        Ok(serde_json::from_str::<UploadSongResult>(&body)?)
+        Ok(from_str::<UploadSongResult>(&body)?)
     }
 
     /// Uploads a local audio file to `POST /api/user/song/upload` on the IDK host.
@@ -347,7 +339,7 @@ impl LazySongDatabase {
     /// server transcodes the upload to m4a, stores it as `user-audio/{GUID}.m4a`,
     /// strips a leading `"<Artist> - "` prefix from the submitted title, and answers
     /// `200` with an empty body — so there is no payload to parse here.
-    pub async fn upload_song_file(&self, upload: FileUpload) -> anyhow::Result<()> {
+    pub async fn upload_song_file(&self, upload: FileUpload) -> Result<()> {
         debug_log!("Uploading local song file: {}", upload.path.display());
         let url = format!("{}/api/user/song/upload", API_URLS.idk);
 
@@ -376,7 +368,7 @@ impl LazySongDatabase {
     /// The generic `DELETE /api/songs/{id}` on the API host answers `200` with an empty
     /// body and leaves the song in place for regular users, so this owner-scoped route
     /// is the one that actually deletes.
-    pub async fn delete_uploaded_song(&self, song_id: Uuid) -> anyhow::Result<()> {
+    pub async fn delete_uploaded_song(&self, song_id: Uuid) -> Result<()> {
         debug_log!("Deleting uploaded song {}", song_id);
         let url = format!("{}/api/user/song/{}", API_URLS.idk, song_id);
 
@@ -387,13 +379,13 @@ impl LazySongDatabase {
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await?;
-            let message = serde_json::from_str::<String>(&body).unwrap_or(body);
+            let message = from_str::<String>(&body).unwrap_or(body);
             return Err(anyhow!("Failed to delete: {}", message));
         }
         Ok(())
     }
 
-    pub async fn remove_from_favorites(&self, song_id: Uuid) -> anyhow::Result<()> {
+    pub async fn remove_from_favorites(&self, song_id: Uuid) -> Result<()> {
         debug_log!("Removing song from favorites: {}", song_id);
         let url = format!("{}/api/user/favorites/{}", API_URLS.api, song_id);
         let request = self.client.delete(url).header("content-length", "0");
@@ -412,7 +404,7 @@ impl LazySongDatabase {
     /// Toggles a playlist favorite, `POST /api/favorites/toggle?itemId={id}&type=3`.
     /// The server answers `200` with a bare JSON boolean (`true` when the playlist
     /// is now favorited, `false` when it was removed).
-    pub async fn toggle_playlist_favorite(&self, playlist_id: Uuid) -> anyhow::Result<bool> {
+    pub async fn toggle_playlist_favorite(&self, playlist_id: Uuid) -> Result<bool> {
         debug_log!("Toggling playlist favorite: {}", playlist_id);
         let url = format!(
             "{}/api/favorites/toggle?itemId={}&type=3",
@@ -432,7 +424,7 @@ impl LazySongDatabase {
         Ok(is_favorite)
     }
 
-    pub async fn report_play_count(&self, song_id: Uuid) -> anyhow::Result<()> {
+    pub async fn report_play_count(&self, song_id: Uuid) -> Result<()> {
         if song_id == uuid!("00000000-0000-0000-0000-000000000000") {
             return Ok(());
         }
@@ -457,7 +449,7 @@ impl LazySongDatabase {
         Ok(())
     }
 
-    pub async fn get_favorite_songs(&self) -> anyhow::Result<Vec<SongDTO>> {
+    pub async fn get_favorite_songs(&self) -> Result<Vec<SongDTO>> {
         let mut request = self
             .client
             .get(format!("{}/api/favorites/type?type=0", API_URLS.api));
@@ -490,7 +482,7 @@ impl LazySongDatabase {
         // Parse items. Some might be wrapped in a "song" object
         let mut songs: Vec<SongDTO> = Vec::new();
         for v in items {
-            match serde_json::from_value::<FavoriteEntry>(v.clone()) {
+            match from_value::<FavoriteEntry>(v.clone()) {
                 Ok(fav_entry) => {
                     if let Some(mut song) = fav_entry.song {
                         if song.is_valid() {
@@ -512,7 +504,7 @@ impl LazySongDatabase {
             }
         }
 
-        fonts::scan_song_dtos(&songs);
+        scan_song_dtos(&songs);
         Ok(songs)
     }
 
@@ -520,7 +512,7 @@ impl LazySongDatabase {
     /// Tolerant parsing: the body may be a bare array, an object wrapping one under
     /// `songs`/`items`/`data`, and entries may be wrapped in a `song` key. Each parsed
     /// song is also inserted into the lazy song DB so artwork/audio/playback resolve.
-    pub async fn get_user_uploads(&self) -> anyhow::Result<Vec<SongDTO>> {
+    pub async fn get_user_uploads(&self) -> Result<Vec<SongDTO>> {
         let mut request = self.client.get(format!("{}/api/user/songs", API_URLS.api));
         request = self.apply_auth(request).await;
 
@@ -554,12 +546,12 @@ impl LazySongDatabase {
                 .cloned()
                 .unwrap_or(v.clone());
 
-            match serde_json::from_value::<SongDTO>(song_value.clone()) {
+            match from_value::<SongDTO>(song_value.clone()) {
                 Ok(mut dto) => {
                     if dto.is_valid() {
                         self.intern_song_dto(&mut dto);
                         // Populate the lazy song DB so artwork/audio/playback resolve.
-                        if let Ok(mut song) = serde_json::from_value::<Song>(song_value) {
+                        if let Ok(mut song) = from_value::<Song>(song_value) {
                             self.intern_song(&mut song);
                             self.map.insert(dto.id, LoadingState::Loaded(song));
                         }
@@ -577,15 +569,15 @@ impl LazySongDatabase {
             }
         }
 
-        fonts::scan_song_dtos(&songs);
+        scan_song_dtos(&songs);
         Ok(songs)
     }
 
-    pub async fn get_playlist_details(&self, id: Uuid) -> anyhow::Result<PlaylistDetail> {
+    pub async fn get_playlist_details(&self, id: Uuid) -> Result<PlaylistDetail> {
         let mut request = self
             .client
             .get(format!("{}/api/playlist/{}", API_URLS.api, id));
-        request = self.apply_auth(request).await; // <-- Inject headers
+        request = self.apply_auth(request).await;
 
         let response = request.send().await?;
         if !response.status().is_success() {
@@ -593,15 +585,15 @@ impl LazySongDatabase {
         }
 
         let json: Value = response.json().await?;
-        let mut detail: PlaylistDetail = serde_json::from_value(json)?;
+        let mut detail: PlaylistDetail = from_value(json)?;
         self.intern_playlist_detail(&mut detail);
-        fonts::scan_playlist_detail(&detail);
+        scan_playlist_detail(&detail);
         // debug_log!("Deserialized PlaylistDetail: {:?}", detail);
 
         Ok(detail)
     }
 
-    pub async fn get_suggested(&self, limit: usize) -> anyhow::Result<Vec<SongDTO>> {
+    pub async fn get_suggested(&self, limit: usize) -> Result<Vec<SongDTO>> {
         let url = format!("{}/api/user/suggestions?limit={}", API_URLS.api, limit);
         let request = self.client.get(url);
         let request = self.apply_auth(request).await;
@@ -618,11 +610,11 @@ impl LazySongDatabase {
         for dto in &mut songs {
             self.intern_song_dto(dto);
         }
-        fonts::scan_song_dtos(&songs);
+        scan_song_dtos(&songs);
         Ok(songs)
     }
 
-    pub async fn get_trending(&self, times: TrendingTimes) -> anyhow::Result<Vec<SongDTO>> {
+    pub async fn get_trending(&self, times: TrendingTimes) -> Result<Vec<SongDTO>> {
         let days = times as u32;
         let url = format!("{}/api/explore/trendings?days={}", API_URLS.api, days);
         let request = self.client.get(url);
@@ -640,7 +632,7 @@ impl LazySongDatabase {
         for dto in &mut songs {
             self.intern_song_dto(dto);
         }
-        fonts::scan_song_dtos(&songs);
+        scan_song_dtos(&songs);
         Ok(songs)
     }
 
@@ -665,24 +657,21 @@ impl LazySongDatabase {
             tokio::spawn(async move {
                 let url = format!("{}/api/songs/{}", API_URLS.api, id);
                 let mut req = client.get(url);
-                req = db_self.apply_auth(req).await; // <-- Inject token directly into the thread loop
+                req = db_self.apply_auth(req).await;
 
-                let state = match async {
-                    Ok(serde_json::from_slice(
-                        req.send().await?.bytes().await?.as_ref(),
-                    )?)
-                }
-                .await
-                .map_err(Arc::new)
-                {
-                    Ok(mut song) => {
-                        db_self.intern_song(&mut song);
-                        LoadingState::Loaded(song)
-                    }
-                    Err(err) => LoadingState::Failed(err),
-                };
+                let state =
+                    match async { Ok(from_slice(req.send().await?.bytes().await?.as_ref())?) }
+                        .await
+                        .map_err(Arc::new)
+                    {
+                        Ok(mut song) => {
+                            db_self.intern_song(&mut song);
+                            LoadingState::Loaded(song)
+                        }
+                        Err(err) => LoadingState::Failed(err),
+                    };
                 if let LoadingState::Loaded(song) = &state {
-                    fonts::scan_song(song);
+                    scan_song(song);
                 }
                 map.insert(id, state);
                 let t = counter.fetch_add(1, Ordering::Relaxed);
@@ -725,7 +714,7 @@ impl LazySongDatabase {
             let mut req = client.get(url);
             req = db_self.apply_auth(req).await;
 
-            let result: anyhow::Result<Arc<lrc::LyricsParsed>> = async {
+            let result: Result<Arc<lrc::LyricsParsed>> = async {
                 let resp = req.send().await?;
                 if resp.status().as_u16() == 404 {
                     debug_log!("🔍 [Lyrics] No lyrics found for song {} (404)", id);
@@ -739,12 +728,14 @@ impl LazySongDatabase {
                     );
                     return Err(anyhow!("Failed to fetch lyrics: {}", resp.status()));
                 }
-                let entries: Vec<LyricEntry> =
-                    serde_json::from_slice(resp.bytes().await?.as_ref())?;
+                let entries: Vec<LyricEntry> = from_slice(resp.bytes().await?.as_ref())?;
                 let parsed = lrc::parse_time_entries(&entries);
-                let joined: String =
-                    entries.iter().map(|e| e.text.as_str()).collect::<Vec<_>>().join("\n");
-                fonts::ensure_str(&joined);
+                let joined: String = entries
+                    .iter()
+                    .map(|e| e.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                ensure_str(&joined);
                 Ok(Arc::new(parsed))
             }
             .await;
@@ -769,10 +760,7 @@ impl LazySongDatabase {
         LoadingState::Loading
     }
 
-    pub async fn load_all<T>(
-        &self,
-        f: impl FnMut(&Song) -> T,
-    ) -> anyhow::Result<Arc<[LoadingState<T>]>> {
+    pub async fn load_all<T>(&self, f: impl FnMut(&Song) -> T) -> Result<Arc<[LoadingState<T>]>> {
         let json = self
             .client
             .post(format!("{}/api/songs", API_URLS.api))
@@ -795,7 +783,7 @@ impl LazySongDatabase {
             .json::<Value>()
             .await?
         {
-            let songs: Vec<Value> = serde_json::from_value(
+            let songs: Vec<Value> = from_value(
                 obj.remove("items")
                     .ok_or_else(|| anyhow!("missing items"))?,
             )?;
@@ -809,7 +797,7 @@ impl LazySongDatabase {
         &self,
         values: Vec<Value>,
         mut f: impl FnMut(&Song) -> T,
-    ) -> anyhow::Result<Arc<[LoadingState<T>]>> {
+    ) -> Result<Arc<[LoadingState<T>]>> {
         let mut result = Vec::with_capacity(values.len());
         for value in values {
             let id = Uuid::parse_str(
@@ -819,10 +807,10 @@ impl LazySongDatabase {
                     .as_str()
                     .ok_or_else(|| anyhow!("song missing id???"))?,
             )?;
-            match serde_json::from_value::<Song>(value) {
+            match from_value::<Song>(value) {
                 Ok(mut song) => {
                     self.intern_song(&mut song);
-                    fonts::scan_song(&song);
+                    scan_song(&song);
                     result.push(LoadingState::Loaded(f(&song)));
                     self.map.insert(id, LoadingState::Loaded(song));
                     self.mark_used(id);
@@ -842,7 +830,7 @@ impl LazySongDatabase {
         &self.map
     }
 
-    pub async fn get_radio_current_state(&self) -> anyhow::Result<RadioCurrentStateResponse> {
+    pub async fn get_radio_current_state(&self) -> Result<RadioCurrentStateResponse> {
         let url = format!("{}/api/radio/current-state", API_URLS.socket);
         let response = self.client.get(&url).send().await?;
         if !response.status().is_success() {
@@ -854,7 +842,7 @@ impl LazySongDatabase {
         let mut data: RadioCurrentStateResponse = response.json().await?;
         if let Some(current) = &mut data.current {
             self.intern_song_dto(current);
-            fonts::scan_song_dto(current);
+            scan_song_dto(current);
         }
         for dto in &mut data.upcoming {
             self.intern_song_dto(dto);
@@ -862,15 +850,15 @@ impl LazySongDatabase {
         for dto in &mut data.history {
             self.intern_song_dto(dto);
         }
-        fonts::scan_song_dtos(&data.upcoming);
-        fonts::scan_song_dtos(&data.history);
+        scan_song_dtos(&data.upcoming);
+        scan_song_dtos(&data.history);
         if let Some(name) = &data.playlist_name {
-            fonts::ensure_str(name);
+            ensure_str(name);
         }
         Ok(data)
     }
 
-    pub async fn get_azuracast_now_playing(&self) -> anyhow::Result<AzuraCastNowPlayingResponse> {
+    pub async fn get_azuracast_now_playing(&self) -> Result<AzuraCastNowPlayingResponse> {
         let url = format!("{}/api/nowplaying/neuro_21", API_URLS.radio);
         let response = self.client.get(&url).send().await?;
         if !response.status().is_success() {
@@ -889,21 +877,21 @@ impl LazySongDatabase {
             if let Some(song) = &track.song {
                 let mut mask = 0;
                 if let Some(t) = &song.title {
-                    mask |= fonts::detect_scripts(t);
+                    mask |= detect_scripts(t);
                 }
                 if let Some(a) = &song.artist {
-                    mask |= fonts::detect_scripts(a);
+                    mask |= detect_scripts(a);
                 }
                 if let Some(text) = &song.text {
-                    mask |= fonts::detect_scripts(text);
+                    mask |= detect_scripts(text);
                 }
-                fonts::ensure_scripts(mask);
+                ensure_scripts(mask);
             }
         }
         Ok(data)
     }
 
-    pub async fn get_gamehub_schedule(&self) -> anyhow::Result<GameHubScheduledInfo> {
+    pub async fn get_gamehub_schedule(&self) -> Result<GameHubScheduledInfo> {
         let url = format!("{}/api/gamehub/scheduled/info", API_URLS.socket);
         let response = self.client.get(&url).send().await?;
         if !response.status().is_success() {
@@ -927,7 +915,7 @@ impl Serialize for LazySongDatabase {
         for entry in self.map.iter() {
             if let LoadingState::Loaded(song) = entry.value() {
                 map.serialize_entry(entry.key(), song)
-                    .map_err(serde::ser::Error::custom)?;
+                    .map_err(Error::custom)?;
             }
         }
 
@@ -967,6 +955,7 @@ fn text_part(value: &str) -> Part {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::models::default_cover_art;
     use crate::config::SharedConfig;
     use std::sync::RwLock;
     use std::sync::atomic::{AtomicBool, AtomicU32};
@@ -1212,9 +1201,9 @@ mod tests {
         // Songs with no cover art deserialize to the default artwork, which has a
         // fixed id, so every default cover shares one interned Arc.
         let mut a = dto(Uuid::new_v4(), "x");
-        a.cover_art = crate::api::models::default_cover_art();
+        a.cover_art = default_cover_art();
         let mut b = dto(Uuid::new_v4(), "y");
-        b.cover_art = crate::api::models::default_cover_art();
+        b.cover_art = default_cover_art();
         db.intern_song_dto(&mut a);
         db.intern_song_dto(&mut b);
         assert!(Arc::ptr_eq(

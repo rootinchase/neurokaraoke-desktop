@@ -7,7 +7,7 @@ use crate::activity::{
 use chrono::{Timelike, Utc};
 
 use crate::api::{LazySongDatabase, ProfileResponse, UserLimits};
-use crate::app::state::{evict_art_paths, App};
+use crate::app::state::{App, evict_art_paths};
 use crate::app::system_tray::TrayIconMenu;
 use crate::audio::Player;
 use crate::config::Config;
@@ -24,14 +24,18 @@ use crate::utilities::{
 };
 use dashmap::DashMap;
 use eframe::egui;
+use eframe::egui::{Vec2, ViewportCommand};
 use egui_extras;
+use ron::ser::to_string_pretty;
 use std::collections::HashSet;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use tokio::fs::{read, write};
 use tokio::runtime::Runtime;
-use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::Mutex as TokioMutex;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::time::sleep;
 use uuid::Uuid;
 
 macro_rules! build_font_defs {
@@ -79,7 +83,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
     } else {
         1040.0
     };
-    ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::Vec2::new(
+    ctx.send_viewport_cmd(ViewportCommand::MinInnerSize(Vec2::new(
         initial_min_width,
         610.0,
     )));
@@ -113,31 +117,33 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
             let limits_cache_path = cache::cache_dir().join("limits.ron");
 
             // 1. Try loading cached profile and limits immediately as offline fallback
-            if let Ok(data) = tokio::fs::read(&profile_cache_path).await
-                && let Ok(profile_response) = ron::de::from_bytes::<ProfileResponse>(&data) {
-                    let _ = startup_tx
-                        .send(ProfileMessage::ProfileHeaderLoaded(
-                            profile_response.profile,
-                        ))
-                        .await;
-                    let _ = startup_tx
-                        .send(ProfileMessage::BadgesLoaded(profile_response.badges))
-                        .await;
-                }
-            if let Ok(data) = tokio::fs::read(&limits_cache_path).await
-                && let Ok(limits) = ron::de::from_bytes::<UserLimits>(&data) {
-                    let _ = startup_tx
-                        .send(ProfileMessage::UserLimitsLoaded(limits))
-                        .await;
-                }
+            if let Ok(data) = read(&profile_cache_path).await
+                && let Ok(profile_response) = ron::de::from_bytes::<ProfileResponse>(&data)
+            {
+                let _ = startup_tx
+                    .send(ProfileMessage::ProfileHeaderLoaded(
+                        profile_response.profile,
+                    ))
+                    .await;
+                let _ = startup_tx
+                    .send(ProfileMessage::BadgesLoaded(profile_response.badges))
+                    .await;
+            }
+            if let Ok(data) = read(&limits_cache_path).await
+                && let Ok(limits) = ron::de::from_bytes::<UserLimits>(&data)
+            {
+                let _ = startup_tx
+                    .send(ProfileMessage::UserLimitsLoaded(limits))
+                    .await;
+            }
 
             // 2. Try fetching fresh profile and limits from network
             match songs_clone.get_profile(&stored_token).await {
                 Ok(profile_response) => {
                     debug_log!("🟢 Startup profile synchronization complete!");
-                    let _ = tokio::fs::write(
+                    let _ = write(
                         &profile_cache_path,
-                        ron::ser::to_string_pretty(&profile_response, Default::default()).unwrap(),
+                        to_string_pretty(&profile_response, Default::default()).unwrap(),
                     )
                     .await;
 
@@ -153,9 +159,9 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
 
                     match songs_clone.get_user_limits().await {
                         Ok(limits) => {
-                            let _ = tokio::fs::write(
+                            let _ = write(
                                 &limits_cache_path,
-                                ron::ser::to_string_pretty(&limits, Default::default()).unwrap(),
+                                to_string_pretty(&limits, Default::default()).unwrap(),
                             )
                             .await;
                             let _ = startup_tx
@@ -173,7 +179,13 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
         });
     }
 
-    let player = Player::new(rt.clone(), ctx.clone(), songs.clone(), cache.clone(), client.clone());
+    let player = Player::new(
+        rt.clone(),
+        ctx.clone(),
+        songs.clone(),
+        cache.clone(),
+        client.clone(),
+    );
     player.volume(config.volume);
     player.shuffle(config.shuffle);
     player.looping(config.loop_mode);
@@ -292,9 +304,9 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
             {
                 last_update.lock().unwrap().replace(Instant::now());
                 if s.load_all(|_| ()).await.is_ok() {
-                    let write_res = tokio::fs::write(
+                    let write_res = write(
                         cache::cache_dir().join("songs.ron"),
-                        ron::ser::to_string_pretty(&s, Default::default()).unwrap(),
+                        to_string_pretty(&s, Default::default()).unwrap(),
                     )
                     .await;
 
@@ -307,7 +319,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
                 }
             }
 
-            tokio::time::sleep(Duration::from_secs(interval)).await;
+            sleep(Duration::from_secs(interval)).await;
         }
     });
 
@@ -407,7 +419,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
                                 debug_log!("[Setlist Poller] Failed to fetch stats: {}", e);
                             }
                         }
-                        tokio::time::sleep(Duration::from_secs(15 * 60)).await;
+                        sleep(Duration::from_secs(15 * 60)).await;
                     } else {
                         let target = now.date_naive().and_hms_opt(21, 0, 0).unwrap();
                         let target_utc = target.and_utc();
@@ -418,7 +430,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
                         } else {
                             Duration::from_secs(60 * 60)
                         };
-                        tokio::time::sleep(duration).await;
+                        sleep(duration).await;
                     }
                 }
             });

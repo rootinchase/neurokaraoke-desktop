@@ -1,6 +1,6 @@
 use crate::app::system_tray::TrayIconMenu;
-use dashmap::DashMap;
-use eframe::egui;
+use dashmap::{DashMap, DashSet};
+use eframe::egui::Context;
 use reqwest::Client;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -23,7 +23,8 @@ use crate::theme::ThemeManager;
 use crate::utilities::{
     cache::{self, PersistentMediaCache},
     discord::DiscordPresencePayload,
-    integration, playwire,
+    integration,
+    playwire::Repeat,
 };
 
 pub struct App {
@@ -67,7 +68,7 @@ pub struct App {
 
     // Image caching
     pub cached_art_paths: Arc<DashMap<Arc<str>, String>>,
-    pub active_art_downloads: Arc<dashmap::DashSet<Arc<str>>>,
+    pub active_art_downloads: Arc<DashSet<Arc<str>>>,
     /// Access-order tracker for the in-memory LRU eviction of `cached_art_paths`:
     /// maps each artwork key to the monotonic counter value of its last access.
     pub art_last_used: Arc<DashMap<Arc<str>, u64>>,
@@ -88,7 +89,7 @@ pub struct App {
 impl App {
     pub fn resolve_artwork_uri(
         &self,
-        ctx: &egui::Context,
+        ctx: &Context,
         cloudflare_id: Option<Arc<str>>,
         absolute_path: Arc<str>,
     ) -> Option<String> {
@@ -177,7 +178,7 @@ impl App {
     /// cached under a namespaced key so it never collides with the 512x512 thumbnail.
     pub fn resolve_full_artwork_uri(
         &self,
-        ctx: &egui::Context,
+        ctx: &Context,
         cloudflare_id: Option<Arc<str>>,
         absolute_path: Arc<str>,
     ) -> Option<String> {
@@ -262,9 +263,9 @@ impl App {
     pub fn update_os_playback(&mut self) {
         if let Some(state) = self.player.get_playback_state() {
             let repeat = match self.player.get_loop_mode() {
-                LoopMode::None => playwire::Repeat::Off,
-                LoopMode::One => playwire::Repeat::One,
-                LoopMode::All => playwire::Repeat::All,
+                LoopMode::None => Repeat::Off,
+                LoopMode::One => Repeat::One,
+                LoopMode::All => Repeat::All,
             };
             let shuffle = self.player.get_shuffle();
             let volume = self.player.get_volume() as f64;
@@ -342,10 +343,7 @@ pub fn evict_art_paths(
     let mut candidates: Vec<(Arc<str>, u64)> = cached
         .iter()
         .map(|e| {
-            let t = last_used
-                .get(e.key())
-                .map(|v| *v.value())
-                .unwrap_or(0);
+            let t = last_used.get(e.key()).map(|v| *v.value()).unwrap_or(0);
             (e.key().clone(), t)
         })
         .collect();

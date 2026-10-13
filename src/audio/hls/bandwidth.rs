@@ -118,7 +118,7 @@ impl TierSelector {
 
 #[cfg(test)]
 mod tests {
-use super::*;
+    use super::*;
 
     #[test]
     fn estimator_harmonic_mean() {

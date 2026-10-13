@@ -3,6 +3,7 @@ use crate::config::SharedConfig;
 use crate::debug_log;
 use crate::utilities::discord::DiscordPresencePayload;
 use crate::utilities::playwire::{self, MediaControls, Repeat, Track, init_playwire};
+use playwire::Capabilities;
 use tokio::sync::mpsc::UnboundedSender;
 
 pub struct PlaybackIntegrationManager {
@@ -60,7 +61,7 @@ impl PlaybackIntegrationManager {
                 volume,
                 repeat,
                 shuffle,
-                capabilities: playwire::Capabilities::default(),
+                capabilities: Capabilities::default(),
             });
         }
 

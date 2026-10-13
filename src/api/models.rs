@@ -574,9 +574,10 @@ impl AzuraCastNowPlayingResponse {
 
         if let Some(next) = &self.playing_next
             && let Some(played_at) = next.played_at
-                && now_secs >= played_at {
-                    return Some(next.clone());
-                }
+            && now_secs >= played_at
+        {
+            return Some(next.clone());
+        }
 
         self.now_playing.clone()
     }
@@ -638,9 +639,10 @@ impl AzuraCastStation {
             }
         }
         if streams.is_empty()
-            && let Some(listen_url) = &self.listen_url {
-                streams.push(("Default MP3".to_string(), listen_url.clone()));
-            }
+            && let Some(listen_url) = &self.listen_url
+        {
+            streams.push(("Default MP3".to_string(), listen_url.clone()));
+        }
         streams
     }
 }
@@ -677,15 +679,15 @@ impl AzuraCastTrackInfo {
         if let (Some(played_at), Some(dur)) = (self.played_at, self.duration)
             && let Ok(duration_since_epoch) =
                 std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH)
-            {
-                let now_secs = duration_since_epoch.as_secs();
-                if now_secs >= played_at {
-                    let elapsed = now_secs - played_at;
-                    if elapsed <= dur + 30 {
-                        return elapsed.min(dur);
-                    }
+        {
+            let now_secs = duration_since_epoch.as_secs();
+            if now_secs >= played_at {
+                let elapsed = now_secs - played_at;
+                if elapsed <= dur + 30 {
+                    return elapsed.min(dur);
                 }
             }
+        }
 
         if duration > 0 {
             base_elapsed.min(duration)

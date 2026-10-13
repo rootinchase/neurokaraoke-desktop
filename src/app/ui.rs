@@ -1,4 +1,6 @@
-use crate::activity::{self, ActivityType, profile::ProfileMessage};
+use crate::activity::{
+    ActivityType, profile::ProfileMessage, radio::render_radio_now_playing, sidebar::render_sidebar,
+};
 use crate::api::{API_URLS, LazySongDatabase, LoadingState, ProfileResponse, Song, SongDTO};
 use crate::app::{
     player_ui::render_fullscreen_player, player_ui::render_player_controls, state::App,
@@ -6,17 +8,24 @@ use crate::app::{
 use crate::audio::Player;
 use crate::auth::AuthService;
 use crate::debug_log;
-use crate::utilities::cache::PersistentMediaCache;
-use crate::utilities::util::log_memory;
-use crate::utilities::{cache, persistence};
-use rand::prelude::SliceRandom;
+use crate::utilities::{
+    cache,
+    cache::PersistentMediaCache,
+    persistence::{AppState, clear_app_state, save_app_state},
+    util::log_memory,
+};
+use rand::{prelude::SliceRandom, rng};
 use std::sync::Arc;
 
-use eframe;
+use dashmap::DashMap;
 use eframe::egui::{self, CentralPanel, Color32, Ui};
+use egui::{Frame, Mesh, Shape};
+use playwire::Track;
+use serde_json::from_str;
 use std::time::{Duration, Instant};
 use tokio::spawn;
 use tokio::time::sleep;
+use url::Url;
 use uuid::Uuid;
 
 impl eframe::App for App {
@@ -32,10 +41,11 @@ impl eframe::App for App {
         );
 
         if let Some(end) = self.sleep_timer_end
-            && Instant::now() >= end {
-                self.player.pause();
-                self.sleep_timer_end = None;
-            }
+            && Instant::now() >= end
+        {
+            self.player.pause();
+            self.sleep_timer_end = None;
+        }
 
         if let Some(msg) = self.profile_activity.poll_messages() {
             match msg {
@@ -70,7 +80,7 @@ impl eframe::App for App {
                                 if prof_res.status().is_success() {
                                     if let Ok(raw_prof_text) = prof_res.text().await {
                                         if let Ok(profile_response) =
-                                            serde_json::from_str::<ProfileResponse>(&raw_prof_text)
+                                            from_str::<ProfileResponse>(&raw_prof_text)
                                         {
                                             debug_log!("🟢 Profile synchronization complete!");
                                             let _ = tx_channel
@@ -83,7 +93,7 @@ impl eframe::App for App {
                                             let limits_tx = tx_channel.clone();
                                             let db = LazySongDatabase::new(
                                                 limits_client,
-                                                Arc::new(dashmap::DashMap::new()),
+                                                Arc::new(DashMap::new()),
                                                 "".into(),
                                                 shared_config,
                                             );
@@ -180,7 +190,7 @@ impl eframe::App for App {
 
         // background gradient
         let rect = ui.max_rect();
-        let mut mesh = egui::Mesh::default();
+        let mut mesh = Mesh::default();
         mesh.colored_vertex(rect.left_top(), self.theme.background_mid);
         mesh.colored_vertex(rect.right_top(), self.theme.background_secondary);
         mesh.colored_vertex(rect.right_bottom(), self.theme.background_mid);
@@ -189,12 +199,12 @@ impl eframe::App for App {
         mesh.add_triangle(0, 1, 2);
         mesh.add_triangle(0, 2, 3);
 
-        ui.painter().add(egui::Shape::mesh(mesh));
+        ui.painter().add(Shape::mesh(mesh));
 
         // sidebar
         let mut temp_theme = self.config.theme;
         let prev_activity = self.activity;
-        activity::sidebar::render_sidebar(
+        render_sidebar(
             ui,
             &mut self.config,
             &self.theme,
@@ -248,7 +258,8 @@ impl eframe::App for App {
                 self.home_activity.fetch_recent_setlist();
             }
             if self.activity == ActivityType::Profile {
-                self.profile_activity.refetch(&self.songs, &self.rt, ui.ctx().clone());
+                self.profile_activity
+                    .refetch(&self.songs, &self.rt, ui.ctx().clone());
             }
             if self.activity == ActivityType::Playlists {
                 self.playlist_activity.refetch();
@@ -283,21 +294,21 @@ impl eframe::App for App {
                 };
                 if song.is_none()
                     && let Ok(meta) = self.player.current_url_metadata.lock()
-                        && let Some(meta) = &*meta
-                            && meta.id == state.song()
-                        {
-                            song = Some(Song {
-                                id: state.song(),
-                                title: meta.title.clone(),
-                                absolute_path: meta.audio_url.clone().map(|s| s.to_string().into()),
-                                opus: None,
-                                cover_artists: meta.cover_artists.clone(),
-                                original_artists: meta.original_artists.clone(),
-                                cover_art: meta.cover_art.clone(),
-                                play_count: None,
-                                duration: None,
-                            });
-                        }
+                    && let Some(meta) = &*meta
+                    && meta.id == state.song()
+                {
+                    song = Some(Song {
+                        id: state.song(),
+                        title: meta.title.clone(),
+                        absolute_path: meta.audio_url.clone().map(|s| s.to_string().into()),
+                        opus: None,
+                        cover_artists: meta.cover_artists.clone(),
+                        original_artists: meta.original_artists.clone(),
+                        cover_art: meta.cover_art.clone(),
+                        play_count: None,
+                        duration: None,
+                    });
+                }
                 if let Some(s) = song {
                     let artwork_url = s
                         .cover_art
@@ -317,7 +328,7 @@ impl eframe::App for App {
                                 .cache
                                 .get_cached_path(target_uuid, cache::AssetType::Image)
                             {
-                                match url::Url::from_file_path(&path) {
+                                match Url::from_file_path(&path) {
                                     Ok(url) => Some(url.to_string()),
                                     Err(()) => Some(format!(
                                         "file:///{}",
@@ -334,15 +345,12 @@ impl eframe::App for App {
                         })
                         .unwrap_or_default();
 
-                    let track = playwire::Track {
+                    let track = Track {
                         title: s.title.to_string(),
                         artists: s.original_artists.iter().map(|s| s.to_string()).collect(),
                         url: s.absolute_path.map(|p| p.to_string()).unwrap_or_default(),
                         id: s.id.to_string(),
-                        album: self
-                            .player
-                            .get_playlist_name()
-                            .unwrap_or_default(),
+                        album: self.player.get_playlist_name().unwrap_or_default(),
                         artwork_url,
                     };
                     self.integration.update_metadata(track);
@@ -360,7 +368,7 @@ impl eframe::App for App {
         // central panel
         ui.push_id("central_panel", |ui| {
             CentralPanel::default()
-                .frame(egui::Frame::NONE.fill(Color32::TRANSPARENT))
+                .frame(Frame::NONE.fill(Color32::TRANSPARENT))
                 .show(ui, |ui| {
                     ui.heading(self.activity.as_str());
                     ui.push_id(self.activity.as_str(), |ui| {
@@ -399,9 +407,9 @@ impl eframe::App for App {
     fn on_exit(&mut self) {
         if let Some(state) = self.player.get_playback_state() {
             if state.song() == Uuid::nil() {
-                let _ = persistence::clear_app_state();
+                let _ = clear_app_state();
             } else {
-                let app_state = persistence::AppState {
+                let app_state = AppState {
                     current_song_uuid: Some(state.song()),
                     current_position_secs: state.position().as_secs(),
                     playlist: self.player.get_playlist(),
@@ -411,7 +419,7 @@ impl eframe::App for App {
                     shuffle: self.player.get_shuffle(),
                     loop_mode: self.player.get_loop_mode(),
                 };
-                let _ = persistence::save_app_state(&app_state);
+                let _ = save_app_state(&app_state);
             }
         }
         let _ = PersistentMediaCache::cleanup_stale_downloads_sync();
@@ -438,7 +446,7 @@ impl App {
                 move |playlist| {
                     let mut songs = playlist.songs.clone();
                     if player1.get_shuffle() && !songs.is_empty() {
-                        songs.shuffle(&mut rand::rng());
+                        songs.shuffle(&mut rng());
                     }
                     let pl: Vec<Uuid> = songs.iter().map(|s| s.id).collect();
                     player1.clear_playlist();
@@ -492,7 +500,7 @@ impl App {
                 &self.songs,
                 &self.theme,
                 move |state| {
-                    let _ = persistence::clear_app_state();
+                    let _ = clear_app_state();
                     player1.volume(state.volume);
                     player1.shuffle(state.shuffle);
                     player1.looping(state.loop_mode);
@@ -514,7 +522,7 @@ impl App {
                     player2.play_song(song_id);
                 },
                 move |ui| {
-                    activity::radio::render_radio_now_playing(
+                    render_radio_now_playing(
                         ui,
                         theme_ref,
                         &cache,
@@ -649,7 +657,7 @@ fn play_playlist(player: &mut Player, songs: &[SongDTO], name: &str) {
     debug_log!("Playlist '{}' has {} songs.", name, songs.len());
     let mut songs_vec = songs.to_vec();
     if player.get_shuffle() && !songs_vec.is_empty() {
-        songs_vec.shuffle(&mut rand::rng());
+        songs_vec.shuffle(&mut rng());
     }
     let pl: Vec<Uuid> = songs_vec.iter().map(|s| s.id).collect();
     player.clear_playlist();
@@ -658,7 +666,7 @@ fn play_playlist(player: &mut Player, songs: &[SongDTO], name: &str) {
         Some(songs_vec.clone().into()),
         Some(name.to_string()),
     );
-    let _ = persistence::clear_app_state();
+    let _ = clear_app_state();
 
     if let Some(first_song) = songs_vec.first() {
         player.url_playback(Some(first_song.id), first_song.clone(), Player::play);
@@ -670,7 +678,7 @@ fn play_playlist(player: &mut Player, songs: &[SongDTO], name: &str) {
 fn shuffle_playlist(player: &mut Player, songs: &[SongDTO], name: &str) {
     debug_log!("Shuffling playlist '{}' ({} songs).", name, songs.len());
     let mut songs_vec = songs.to_vec();
-    songs_vec.shuffle(&mut rand::rng());
+    songs_vec.shuffle(&mut rng());
     let pl: Vec<Uuid> = songs_vec.iter().map(|s| s.id).collect();
 
     player.clear_playlist();
@@ -680,7 +688,7 @@ fn shuffle_playlist(player: &mut Player, songs: &[SongDTO], name: &str) {
         Some(name.to_string()),
     );
 
-    let _ = persistence::clear_app_state();
+    let _ = clear_app_state();
 
     if let Some(first_song) = songs_vec.first() {
         player.url_playback(Some(first_song.id), first_song.clone(), Player::play);
@@ -695,7 +703,7 @@ fn play_song(player: &mut Player, songs: Vec<SongDTO>, song_id: Uuid, name: &str
         Some(songs.clone().into()),
         Some(name.to_string()),
     );
-    let _ = persistence::clear_app_state();
+    let _ = clear_app_state();
 
     if let Some(index) = songs.iter().position(|s| s.id == song_id) {
         player.url_playback(Some(songs[index].id), songs[index].clone(), Player::play);

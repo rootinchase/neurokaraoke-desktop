@@ -10,13 +10,13 @@ use std::num::NonZero;
 use std::sync::mpsc;
 use std::time::Duration;
 
+use crate::audio::hls::playlist::{MasterPlaylist, MediaPlaylist, parse_master, parse_media};
 use anyhow::{Result, anyhow};
 use reqwest::Client;
-use symphonia::core::audio::SampleBuffer;
-use symphonia::core::io::MediaSourceStream;
-use symphonia::core::probe::Hint;
-
-use crate::audio::hls::playlist::{MasterPlaylist, MediaPlaylist, parse_master, parse_media};
+use rodio::Source;
+use rodio::source::SeekError;
+use symphonia::core::{audio::SampleBuffer, codecs, io::MediaSourceStream, probe::Hint};
+use symphonia::default;
 
 /// Resolves a relative playlist/segment URI against a base HLS URL.
 ///
@@ -295,15 +295,15 @@ pub fn decode_adts(adts: &[u8]) -> Result<(Vec<f32>, NonZero<u16>, NonZero<u32>)
     let mut hint = Hint::new();
     hint.with_extension("aac");
     let mss = MediaSourceStream::new(Box::new(Cursor::new(adts.to_vec())), Default::default());
-    let probe = symphonia::default::get_probe();
+    let probe = default::get_probe();
     let mut format = probe
         .format(&hint, mss, &Default::default(), &Default::default())?
         .format;
-    let codecs = symphonia::default::get_codecs();
+    let codecs = default::get_codecs();
     let track = format
         .tracks()
         .iter()
-        .find(|t| t.codec_params.codec != symphonia::core::codecs::CODEC_TYPE_NULL)
+        .find(|t| t.codec_params.codec != codecs::CODEC_TYPE_NULL)
         .ok_or_else(|| anyhow!("no audio track in ADTS stream"))?;
     let params = &track.codec_params;
     let mut decoder = codecs.make(params, &Default::default())?;
@@ -389,7 +389,7 @@ impl HlsSource {
     }
 }
 
-impl rodio::Source for HlsSource {
+impl Source for HlsSource {
     fn current_span_len(&self) -> Option<usize> {
         Some(self.current.len() - self.idx)
     }
@@ -402,8 +402,8 @@ impl rodio::Source for HlsSource {
     fn total_duration(&self) -> Option<Duration> {
         None
     }
-    fn try_seek(&mut self, _pos: Duration) -> Result<(), rodio::source::SeekError> {
-        Err(rodio::source::SeekError::NotSupported {
+    fn try_seek(&mut self, _pos: Duration) -> Result<(), SeekError> {
+        Err(SeekError::NotSupported {
             underlying_source: "HLS live stream",
         })
     }
@@ -476,13 +476,13 @@ mod tests {
         let mut hint = Hint::new();
         hint.with_extension("aac");
         let mss = MediaSourceStream::new(Box::new(Cursor::new(adts.to_vec())), Default::default());
-        let probe = symphonia::default::get_probe();
+        let probe = default::get_probe();
         let mut f = probe
             .format(&hint, mss, &Default::default(), &Default::default())
             .expect("symphonia must accept the demuxed ADTS stream")
             .format;
         let params = f.tracks().first().unwrap().codec_params.clone();
-        let codecs = symphonia::default::get_codecs();
+        let codecs = default::get_codecs();
         let mut dec = codecs.make(&params, &Default::default()).unwrap();
         let mut total = 0usize;
         let mut n = 0usize;

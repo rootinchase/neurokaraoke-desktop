@@ -208,9 +208,10 @@ impl SetlistActivity {
         if let LoadingState::Loaded(list) = &*setlists {
             for setlist in list {
                 if let Some(art) = &setlist.media
-                    && let Some(uri) = cover_art_uri(&self.cache, art) {
-                        ctx.forget_image(&uri);
-                    }
+                    && let Some(uri) = cover_art_uri(&self.cache, art)
+                {
+                    ctx.forget_image(&uri);
+                }
                 if let Some(mosaic) = &setlist.mosaic_media {
                     for art in mosaic {
                         if let Some(uri) = cover_art_uri(&self.cache, art) {
@@ -275,7 +276,8 @@ impl SetlistActivity {
                         // Clamp start to len: a stale deep scroll offset
                         // combined with a shrunk list would otherwise panic
                         // when slicing with start > len.
-                        let (start, end) = visible_range(offset_y, viewport_height, box_height, len);
+                        let (start, end) =
+                            visible_range(offset_y, viewport_height, box_height, len);
                         let scroll_output = ScrollArea::vertical().show(ui, |ui| {
                             ui.add_space(start as f32 * box_height);
                             for setlist in setlists[start..end].iter() {

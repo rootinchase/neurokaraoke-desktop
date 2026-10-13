@@ -3,20 +3,23 @@ use crate::app::state::App;
 use crate::audio::{LoopMode, PlaybackState, Player};
 use crate::debug_log;
 use crate::theme::ThemeManager;
-use crate::utilities::lrc;
+use crate::utilities::lrc::LyricsParsed;
 use crate::utilities::util::format_duration;
+use chrono::Local;
 use eframe::egui::{
     self, Align, Align2, Button, Color32, Context, CursorIcon, Image, ImageSource, Key, Layout,
     Order, PopupKind, Pos2, Rgba, RichText, Sense, Stroke, TextWrapMode, Ui, Vec2, include_image,
     lerp,
 };
+use egui::containers::scroll_area::ScrollBarVisibility;
+use egui::load::{Bytes, SizeHint, TexturePoll};
 use egui::{
     Area, Frame, Id, InnerResponse, Label, Margin, Mesh, Panel, Popup, PopupAnchor, Rect,
     ScrollArea, Shape, TextureOptions, vec2,
 };
-use egui::containers::scroll_area::ScrollBarVisibility;
-use std::sync::Arc;
-use std::sync::atomic::Ordering::SeqCst;
+use std::borrow::Cow;
+use std::fs::read;
+use std::sync::{Arc, atomic::Ordering::SeqCst};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
@@ -49,11 +52,11 @@ pub fn render_sleep_timer_popup(app: &mut App, ctx: &Context, pos: Pos2) -> Inne
                 }
 
                 if ui.button("Set Custom").clicked()
-                    && let Ok(minutes) = custom_text.parse::<u64>() {
-                        app.sleep_timer_end =
-                            Some(Instant::now() + Duration::from_secs(minutes * 60));
-                        app.show_timer_menu = false;
-                    }
+                    && let Ok(minutes) = custom_text.parse::<u64>()
+                {
+                    app.sleep_timer_end = Some(Instant::now() + Duration::from_secs(minutes * 60));
+                    app.show_timer_menu = false;
+                }
 
                 ui.add_space(5.0);
                 ui.label("Shut off at (HH:MM):");
@@ -73,44 +76,43 @@ pub fn render_sleep_timer_popup(app: &mut App, ctx: &Context, pos: Pos2) -> Inne
                     let time_clean = input.replace("am", "").replace("pm", "").trim().to_string();
 
                     if let Some((h_str, m_str)) = time_clean.split_once(':')
-                        && let (Ok(h_raw), Ok(m)) = (h_str.parse::<u32>(), m_str.parse::<u32>()) {
-                            let mut h = h_raw;
+                        && let (Ok(h_raw), Ok(m)) = (h_str.parse::<u32>(), m_str.parse::<u32>())
+                    {
+                        let mut h = h_raw;
 
-                            if is_pm && h < 12 {
-                                h += 12;
-                            } else if is_am && h == 12 {
-                                h = 0;
-                            }
-
-                            if h < 24 && m < 60 {
-                                let now = chrono::Local::now();
-                                let target = now.date_naive().and_hms_opt(h, m, 0).unwrap();
-                                let target_dt = target.and_local_timezone(chrono::Local).unwrap();
-
-                                let target_dt = if target_dt <= now {
-                                    target_dt + chrono::Duration::days(1)
-                                } else {
-                                    target_dt
-                                };
-
-                                let duration = target_dt.signed_duration_since(now);
-
-                                app.sleep_timer_end = Some(
-                                    Instant::now()
-                                        + Duration::from_secs(duration.num_seconds() as u64),
-                                );
-                                app.show_timer_menu = false;
-                            }
+                        if is_pm && h < 12 {
+                            h += 12;
+                        } else if is_am && h == 12 {
+                            h = 0;
                         }
+
+                        if h < 24 && m < 60 {
+                            let now = Local::now();
+                            let target = now.date_naive().and_hms_opt(h, m, 0).unwrap();
+                            let target_dt = target.and_local_timezone(Local).unwrap();
+
+                            let target_dt = if target_dt <= now {
+                                target_dt + chrono::Duration::days(1)
+                            } else {
+                                target_dt
+                            };
+
+                            let duration = target_dt.signed_duration_since(now);
+
+                            app.sleep_timer_end = Some(
+                                Instant::now() + Duration::from_secs(duration.num_seconds() as u64),
+                            );
+                            app.show_timer_menu = false;
+                        }
+                    }
                 }
 
                 ui.separator();
 
-                if app.sleep_timer_end.is_some()
-                    && ui.button("Cancel Timer").clicked() {
-                        app.sleep_timer_end = None;
-                        app.show_timer_menu = false;
-                    }
+                if app.sleep_timer_end.is_some() && ui.button("Cancel Timer").clicked() {
+                    app.sleep_timer_end = None;
+                    app.show_timer_menu = false;
+                }
 
                 ui.separator();
 
@@ -136,62 +138,64 @@ fn resolve_current_song(
         let mut s = None;
         if let Ok(az_guard) = app.radio_activity.azuracast_state.try_lock()
             && let LoadingState::Loaded(az) = &*az_guard
-                && let Some(np) = az.effective_now_playing() {
-                    az_elapsed = np.elapsed_secs();
-                    az_duration = np.duration_secs();
-                    if let Some(az_song) = &np.song {
-                        let song_id_uuid = az_song.song_id_uuid();
+            && let Some(np) = az.effective_now_playing()
+        {
+            az_elapsed = np.elapsed_secs();
+            az_duration = np.duration_secs();
+            if let Some(az_song) = &np.song {
+                let song_id_uuid = az_song.song_id_uuid();
 
-                        let art_uuid = song_id_uuid.unwrap_or_else(|| {
-                            if let Some(art_url) = &az_song.art {
-                                Uuid::new_v5(&Uuid::NAMESPACE_URL, art_url.as_bytes())
-                            } else {
-                                Uuid::nil()
-                            }
-                        });
-
-                        let art = if let Some(art_url) = &az_song.art {
-                            Artwork::from_url(art_uuid, art_url)
-                        } else {
-                            Artwork::default_art()
-                        };
-                        s = Some(Song {
-                            id: Uuid::nil(),
-                            title: az_song
-                                .title
-                                .clone()
-                                .unwrap_or_else(|| "Radio Stream".into())
-                                .into(),
-                            absolute_path: None,
-                            opus: None,
-                            cover_artists: Arc::from([]),
-                            original_artists: az_song
-                                .artist
-                                .clone()
-                                .map(|a| Arc::from([a.into()]))
-                                .unwrap_or_else(|| Arc::from([])),
-                            cover_art: Some(Arc::new(art)),
-                            play_count: None,
-                            duration: np.duration,
-                        });
+                let art_uuid = song_id_uuid.unwrap_or_else(|| {
+                    if let Some(art_url) = &az_song.art {
+                        Uuid::new_v5(&Uuid::NAMESPACE_URL, art_url.as_bytes())
+                    } else {
+                        Uuid::nil()
                     }
-                }
+                });
+
+                let art = if let Some(art_url) = &az_song.art {
+                    Artwork::from_url(art_uuid, art_url)
+                } else {
+                    Artwork::default_art()
+                };
+                s = Some(Song {
+                    id: Uuid::nil(),
+                    title: az_song
+                        .title
+                        .clone()
+                        .unwrap_or_else(|| "Radio Stream".into())
+                        .into(),
+                    absolute_path: None,
+                    opus: None,
+                    cover_artists: Arc::from([]),
+                    original_artists: az_song
+                        .artist
+                        .clone()
+                        .map(|a| Arc::from([a.into()]))
+                        .unwrap_or_else(|| Arc::from([])),
+                    cover_art: Some(Arc::new(art)),
+                    play_count: None,
+                    duration: np.duration,
+                });
+            }
+        }
         if s.is_none()
             && let Ok(guard) = app.radio_activity.current_state.try_lock()
-                && let LoadingState::Loaded(curr) = &*guard
-                    && let Some(cur_song) = &curr.current {
-                        s = Some(Song {
-                            id: Uuid::nil(),
-                            title: cur_song.title.clone(),
-                            absolute_path: cur_song.audio_url.clone().map(|x| x.to_string().into()),
-                            opus: None,
-                            cover_artists: cur_song.cover_artists.clone(),
-                            original_artists: cur_song.original_artists.clone(),
-                            cover_art: cur_song.cover_art.clone(),
-                            play_count: None,
-                            duration: cur_song.duration,
-                        });
-                    }
+            && let LoadingState::Loaded(curr) = &*guard
+            && let Some(cur_song) = &curr.current
+        {
+            s = Some(Song {
+                id: Uuid::nil(),
+                title: cur_song.title.clone(),
+                absolute_path: cur_song.audio_url.clone().map(|x| x.to_string().into()),
+                opus: None,
+                cover_artists: cur_song.cover_artists.clone(),
+                original_artists: cur_song.original_artists.clone(),
+                cover_art: cur_song.cover_art.clone(),
+                play_count: None,
+                duration: cur_song.duration,
+            });
+        }
         if s.is_none() {
             s = Some(Song {
                 id: Uuid::nil(),
@@ -215,21 +219,21 @@ fn resolve_current_song(
         // Fallback to URL-based metadata if database lookup failed
         if s.is_none()
             && let Ok(meta) = app.player.current_url_metadata.lock()
-                && let Some(meta) = &*meta
-                    && meta.id == state.song()
-                {
-                    s = Some(Song {
-                        id: state.song(),
-                        title: meta.title.clone(),
-                        absolute_path: meta.audio_url.clone().map(|s| s.to_string().into()),
-                        opus: None,
-                        cover_artists: meta.cover_artists.clone(),
-                        original_artists: meta.original_artists.clone(),
-                        cover_art: meta.cover_art.clone(),
-                        play_count: None,
-                        duration: None,
-                    });
-                }
+            && let Some(meta) = &*meta
+            && meta.id == state.song()
+        {
+            s = Some(Song {
+                id: state.song(),
+                title: meta.title.clone(),
+                absolute_path: meta.audio_url.clone().map(|s| s.to_string().into()),
+                opus: None,
+                cover_artists: meta.cover_artists.clone(),
+                original_artists: meta.original_artists.clone(),
+                cover_art: meta.cover_art.clone(),
+                play_count: None,
+                duration: None,
+            });
+        }
         s
     };
 
@@ -246,18 +250,20 @@ fn current_artwork_refs(
     let mut current_img_uuid: Option<Arc<str>> = None;
     let mut current_abs_path: Option<Arc<str>> = None;
     if let Some(s) = song
-        && let Some(cover_art) = &s.cover_art {
-            current_img_uuid = cover_art.cloudflare_id.clone();
-            current_abs_path = Some(cover_art.absolute_path.clone());
-        }
+        && let Some(cover_art) = &s.cover_art
+    {
+        current_img_uuid = cover_art.cloudflare_id.clone();
+        current_abs_path = Some(cover_art.absolute_path.clone());
+    }
     if current_img_uuid.is_none()
         && let Ok(meta) = app.player.current_url_metadata.lock()
-            && let Some(meta) = &*meta
-                && meta.id == state.song()
-                && let Some(art) = &meta.cover_art {
-                    current_img_uuid = art.cloudflare_id.clone();
-                    current_abs_path = Some(art.absolute_path.clone());
-                }
+        && let Some(meta) = &*meta
+        && meta.id == state.song()
+        && let Some(art) = &meta.cover_art
+    {
+        current_img_uuid = art.cloudflare_id.clone();
+        current_abs_path = Some(art.absolute_path.clone());
+    }
     (current_img_uuid, current_abs_path)
 }
 
@@ -409,12 +415,9 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                             if !app.show_fullscreen {
                                 let size = 80.0;
                                 if let Some(path_str) = cached_path_str {
-                                    if let Ok(image_bytes) = std::fs::read(&path_str) {
+                                    if let Ok(image_bytes) = read(&path_str) {
                                         let image_source = ImageSource::Bytes {
-                                            uri: std::borrow::Cow::Owned(format!(
-                                                "bytes://{}",
-                                                path_str
-                                            )),
+                                            uri: Cow::Owned(format!("bytes://{}", path_str)),
                                             bytes: image_bytes.into(),
                                         };
 
@@ -428,8 +431,11 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                                 } else {
                                     let (rect, _) = ui
                                         .allocate_exact_size(Vec2::new(size, size), Sense::hover());
-                                    ui.painter()
-                                        .rect_filled(rect, 8.0, app.theme.background_elevated);
+                                    ui.painter().rect_filled(
+                                        rect,
+                                        8.0,
+                                        app.theme.background_elevated,
+                                    );
                                 }
                             }
 
@@ -654,47 +660,49 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                                 }
 
                                 if (resp.dragged() || resp.clicked())
-                                    && let Some(pos) = ui.pointer_latest_pos() {
-                                        let p = ((rect.bottom() - pos.y) / rect.height())
-                                            .clamp(0.0, 1.0);
-                                        if (app.config.volume - p).abs() > f32::EPSILON {
-                                            app.config.volume = p;
-                                            app.player.volume(app.config.volume);
-                                            app.shared_config
-                                                ._volume
-                                                .store(app.config.volume.to_bits(), SeqCst);
-                                            let _ = app.config.write();
-                                            ui.ctx().request_repaint();
-                                        }
+                                    && let Some(pos) = ui.pointer_latest_pos()
+                                {
+                                    let p =
+                                        ((rect.bottom() - pos.y) / rect.height()).clamp(0.0, 1.0);
+                                    if (app.config.volume - p).abs() > f32::EPSILON {
+                                        app.config.volume = p;
+                                        app.player.volume(app.config.volume);
+                                        app.shared_config
+                                            ._volume
+                                            .store(app.config.volume.to_bits(), SeqCst);
+                                        let _ = app.config.write();
+                                        ui.ctx().request_repaint();
                                     }
+                                }
 
                                 if (resp.hovered() || resp.dragged())
-                                    && let Some(pos) = ui.pointer_latest_pos() {
-                                        Popup::new(
-                                            ui.id().with("volume_tooltip"),
-                                            ui.ctx().clone(),
-                                            PopupAnchor::Position(Pos2::new(
-                                                rect.center().x,
-                                                pos.y.clamp(rect.top(), rect.bottom()),
-                                            )),
-                                            ui.layer_id(),
-                                        )
-                                        .align(Default::default())
-                                        .kind(PopupKind::Tooltip)
-                                        .open(true)
-                                        .show(|ui| {
-                                            ui.add(
-                                                Label::new(
-                                                    RichText::new(format!(
-                                                        "{:.0}%",
-                                                        app.config.volume * 100.0
-                                                    ))
-                                                    .size(11.0),
-                                                )
-                                                .wrap_mode(TextWrapMode::Extend),
-                                            );
-                                        });
-                                    }
+                                    && let Some(pos) = ui.pointer_latest_pos()
+                                {
+                                    Popup::new(
+                                        ui.id().with("volume_tooltip"),
+                                        ui.ctx().clone(),
+                                        PopupAnchor::Position(Pos2::new(
+                                            rect.center().x,
+                                            pos.y.clamp(rect.top(), rect.bottom()),
+                                        )),
+                                        ui.layer_id(),
+                                    )
+                                    .align(Default::default())
+                                    .kind(PopupKind::Tooltip)
+                                    .open(true)
+                                    .show(|ui| {
+                                        ui.add(
+                                            Label::new(
+                                                RichText::new(format!(
+                                                    "{:.0}%",
+                                                    app.config.volume * 100.0
+                                                ))
+                                                .size(11.0),
+                                            )
+                                            .wrap_mode(TextWrapMode::Extend),
+                                        );
+                                    });
+                                }
 
                                 // Draw background track
                                 let track_rect =
@@ -719,39 +727,38 @@ pub fn render_player_controls(app: &mut App, ui: &mut Ui) {
                                 // Favorite button - conditional on song
                                 // NOTE: This block is intentionally restricted to songs.
                                 // Do not allow radio or other media types here, as they cannot be favorited.
-                                if !is_radio
-                                    && let Some(state) = app.player.get_playback_state() {
-                                        let current_song_uuid = state.song();
-                                        let is_favorite =
-                                            app.favorites_activity.is_favorite(&current_song_uuid);
-                                        let icon = if is_favorite {
-                                            include_image!("../../assets/favorite.svg")
-                                        } else {
-                                            include_image!("../../assets/favorite-empty.svg")
-                                        };
+                                if !is_radio && let Some(state) = app.player.get_playback_state() {
+                                    let current_song_uuid = state.song();
+                                    let is_favorite =
+                                        app.favorites_activity.is_favorite(&current_song_uuid);
+                                    let icon = if is_favorite {
+                                        include_image!("../../assets/favorite.svg")
+                                    } else {
+                                        include_image!("../../assets/favorite-empty.svg")
+                                    };
 
-                                        let resp = ui
-                                            .add(
-                                                Image::new(icon)
-                                                    .fit_to_exact_size(Vec2::new(24.0, 24.0))
-                                                    .tint(if is_favorite {
-                                                        app.theme.accent_light
-                                                    } else {
-                                                        app.theme.text
-                                                    }),
-                                            )
-                                            .interact(Sense::click());
+                                    let resp = ui
+                                        .add(
+                                            Image::new(icon)
+                                                .fit_to_exact_size(Vec2::new(24.0, 24.0))
+                                                .tint(if is_favorite {
+                                                    app.theme.accent_light
+                                                } else {
+                                                    app.theme.text
+                                                }),
+                                        )
+                                        .interact(Sense::click());
 
-                                        if resp.hovered() {
-                                            ui.set_cursor_icon(CursorIcon::PointingHand);
-                                        }
-
-                                        if resp.clicked() {
-                                            app.favorites_activity
-                                                .toggle_favorite(current_song_uuid, &app.songs);
-                                        }
-                                        ui.add_space(10.0);
+                                    if resp.hovered() {
+                                        ui.set_cursor_icon(CursorIcon::PointingHand);
                                     }
+
+                                    if resp.clicked() {
+                                        app.favorites_activity
+                                            .toggle_favorite(current_song_uuid, &app.songs);
+                                    }
+                                    ui.add_space(10.0);
+                                }
 
                                 // Always visible buttons
                                 let is_timer_active = app.sleep_timer_end.is_some();
@@ -917,22 +924,18 @@ fn resolve_lyrics_target(app: &App, state: &PlaybackState, is_radio: bool) -> (O
 fn draw_dimmed_cover(ui: &mut Ui, ctx: &Context, rect: Rect, artwork_path: &str) -> Rect {
     let uri = format!("bytes://{}", artwork_path);
     if ctx.try_load_bytes(&uri).is_err() {
-        if let Ok(image_bytes) = std::fs::read(artwork_path) {
-            ctx.include_bytes(uri.clone(), egui::load::Bytes::from(image_bytes));
+        if let Ok(image_bytes) = read(artwork_path) {
+            ctx.include_bytes(uri.clone(), Bytes::from(image_bytes));
         } else {
             return rect;
         }
     }
 
     let poll = ctx
-        .try_load_texture(
-            &uri,
-            TextureOptions::LINEAR,
-            egui::load::SizeHint::Scale(1.0.into()),
-        )
+        .try_load_texture(&uri, TextureOptions::LINEAR, SizeHint::Scale(1.0.into()))
         .ok();
     let texture = match poll {
-        Some(egui::load::TexturePoll::Ready { texture }) => texture,
+        Some(TexturePoll::Ready { texture }) => texture,
         _ => return rect,
     };
 
@@ -969,7 +972,7 @@ fn draw_lyrics_panel(
     ui: &mut Ui,
     ctx: &Context,
     app: &mut App,
-    parsed: &lrc::LyricsParsed,
+    parsed: &LyricsParsed,
     pos: Duration,
     song_uuid: Uuid,
     artwork_path: Option<&str>,
@@ -988,7 +991,8 @@ fn draw_lyrics_panel(
         rect
     };
     // Translucent dark overlay over the cover only, leaving the bars transparent.
-    ui.painter().rect_filled(cover_rect, 0.0, Color32::from_black_alpha(140));
+    ui.painter()
+        .rect_filled(cover_rect, 0.0, Color32::from_black_alpha(140));
 
     ScrollArea::vertical()
         .auto_shrink([false, false])
@@ -1047,7 +1051,7 @@ fn draw_lyrics_panel(
 fn draw_unsynced_panel(
     ui: &mut Ui,
     ctx: &Context,
-    parsed: &lrc::LyricsParsed,
+    parsed: &LyricsParsed,
     artwork_path: Option<&str>,
 ) {
     let rect = ui.available_rect_before_wrap();
@@ -1060,7 +1064,8 @@ fn draw_unsynced_panel(
         rect
     };
     // Translucent dark overlay over the cover only, leaving the bars transparent.
-    ui.painter().rect_filled(cover_rect, 0.0, Color32::from_black_alpha(140));
+    ui.painter()
+        .rect_filled(cover_rect, 0.0, Color32::from_black_alpha(140));
 
     ScrollArea::vertical()
         .auto_shrink([false, false])
@@ -1212,10 +1217,7 @@ pub fn render_fullscreen_player(app: &mut App, ctx: &Context) {
                             // Lyrics cannot be found for this song.
                             let target = uuid.unwrap_or(state.song());
                             if app.logged_lyrics_missing.insert(target) {
-                                debug_log!(
-                                    "🔍 [Lyrics] No lyrics available for song {}",
-                                    target
-                                );
+                                debug_log!("🔍 [Lyrics] No lyrics available for song {}", target);
                             }
                         }
                     }
@@ -1231,10 +1233,10 @@ pub fn render_fullscreen_player(app: &mut App, ctx: &Context) {
                         // registered for this URI; only read from disk on the first frame.
                         let uri = format!("bytes://{}", path_str);
                         let image_source = if ctx.try_load_bytes(&uri).is_ok() {
-                            ImageSource::Uri(std::borrow::Cow::Owned(uri))
-                        } else if let Ok(image_bytes) = std::fs::read(&path_str) {
+                            ImageSource::Uri(Cow::Owned(uri))
+                        } else if let Ok(image_bytes) = read(&path_str) {
                             ImageSource::Bytes {
-                                uri: std::borrow::Cow::Owned(uri),
+                                uri: Cow::Owned(uri),
                                 bytes: image_bytes.into(),
                             }
                         } else {

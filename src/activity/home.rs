@@ -17,6 +17,7 @@ use ron::ser::to_string_pretty;
 use std::sync::Arc;
 use tokio::fs::{read, write};
 use tokio::runtime::Runtime;
+use tokio::spawn;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -64,7 +65,7 @@ impl HomeActivity {
         let songs = self.songs.clone();
         let ctx = self.ctx.clone();
 
-        tokio::spawn(async move {
+        spawn(async move {
             let cache_path = cache_dir().join("home_suggested.ron");
             let has_cached = load_cached_song_list(&cache_path, &songs_state, &songs).await;
 
@@ -93,7 +94,7 @@ impl HomeActivity {
         let songs = self.songs.clone();
         let ctx = self.ctx.clone();
 
-        tokio::spawn(async move {
+        spawn(async move {
             let cache_path = cache_dir().join("home_trending.ron");
             let has_cached = load_cached_song_list(&cache_path, &songs_state, &songs).await;
 
@@ -123,7 +124,7 @@ impl HomeActivity {
         let songs = self.songs.clone();
         let ctx = self.ctx.clone();
 
-        tokio::spawn(async move {
+        spawn(async move {
             let cache_path = cache_dir().join("home_recent_setlist.ron");
             let mut has_cached = false;
             if let Ok(data) = read(&cache_path).await

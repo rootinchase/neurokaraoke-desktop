@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::activity::render_duration_label;
 use crate::api::{LazySongDatabase, LoadingState};
+use crate::app::fonts::ensure_str;
 use crate::audio::types::Player;
 use crate::utilities::util::split_by_space_respecting_quotes;
 
@@ -62,7 +63,7 @@ impl SearchActivity {
         // Only scan the query for required scripts when the text actually
         // changed, not on every repaint.
         if text_response.changed() {
-            crate::app::fonts::ensure_str(&self.search);
+            ensure_str(&self.search);
         }
 
         ui.add_space(10.0);
@@ -81,7 +82,9 @@ impl SearchActivity {
                     |s| {
                         let title_match = contains_ignore_case(&s.title, &title_lower);
                         let original_match = original_lower.as_ref().is_none_or(|q| {
-                            s.original_artists.iter().any(|a| contains_ignore_case(a, q))
+                            s.original_artists
+                                .iter()
+                                .any(|a| contains_ignore_case(a, q))
                         });
                         let cover_match = cover_lower.as_ref().is_none_or(|q| {
                             s.cover_artists.iter().any(|a| contains_ignore_case(a, q))

@@ -2,7 +2,12 @@ use crate::api::AuthContext;
 use crate::audio::types::LoopMode;
 use crate::theme::SelectableTheme;
 use crate::utilities::util::AsArcMutex;
-use ron::{de, ser};
+use defaults::{
+    art_path_max_entries, cache_expiration_secs, cache_size_limit_mb, cache_sweep_interval_secs,
+    framerate_when_not_focused, in_flight_max_entries, playlist_cache_ttl_secs, show_lyrics,
+    song_database_update_interval_secs, song_map_max_entries, volume,
+};
+use ron::{de::from_bytes, ser};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::fs::{create_dir_all, read, write};
@@ -99,14 +104,14 @@ pub struct CacheConfig {
 impl Default for CacheConfig {
     fn default() -> Self {
         Self {
-            cache_expiration_secs: defaults::cache_expiration_secs(),
-            cache_sweep_interval_secs: defaults::cache_sweep_interval_secs(),
-            cache_size_limit_mb: defaults::cache_size_limit_mb(),
-            song_database_update_interval_secs: defaults::song_database_update_interval_secs(),
-            playlist_cache_ttl_secs: defaults::playlist_cache_ttl_secs(),
-            song_map_max_entries: defaults::song_map_max_entries(),
-            art_path_max_entries: defaults::art_path_max_entries(),
-            in_flight_max_entries: defaults::in_flight_max_entries(),
+            cache_expiration_secs: cache_expiration_secs(),
+            cache_sweep_interval_secs: cache_sweep_interval_secs(),
+            cache_size_limit_mb: cache_size_limit_mb(),
+            song_database_update_interval_secs: song_database_update_interval_secs(),
+            playlist_cache_ttl_secs: playlist_cache_ttl_secs(),
+            song_map_max_entries: song_map_max_entries(),
+            art_path_max_entries: art_path_max_entries(),
+            in_flight_max_entries: in_flight_max_entries(),
         }
     }
 }
@@ -206,16 +211,16 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            volume: defaults::volume(),
+            volume: volume(),
             shuffle: false,
             loop_mode: LoopMode::None,
             radio_url: Default::default(),
             preferred_tier: PreferredTier::default(),
             theme: Default::default(),
             cache: Default::default(),
-            framerate_when_not_focused: defaults::framerate_when_not_focused(),
+            framerate_when_not_focused: framerate_when_not_focused(),
             compact_sidebar: false,
-            show_lyrics: defaults::show_lyrics(),
+            show_lyrics: show_lyrics(),
             auth: None, // Defaults to logged-out state
         }
     }
@@ -232,7 +237,7 @@ pub struct SharedConfig {
 
 impl Config {
     pub fn read() -> anyhow::Result<Self> {
-        Ok(de::from_bytes(read(config_file())?.as_slice())?)
+        Ok(from_bytes(read(config_file())?.as_slice())?)
     }
 
     pub fn write_config(&self) -> anyhow::Result<()> {

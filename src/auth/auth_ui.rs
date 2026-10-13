@@ -6,14 +6,15 @@ use crate::debug_log;
 use crate::theme::ThemeManager;
 use eframe::egui::{Button, Frame, RichText, TextEdit, Ui, Vec2};
 use std::sync::Arc;
+use tokio::{runtime::Runtime, sync::mpsc::Sender};
 
 pub fn render_login_form(
     ui: &mut Ui,
     theme: &ThemeManager,
     state: &mut ProfileState,
     auth_service: &AuthService,
-    tx: tokio::sync::mpsc::Sender<ProfileMessage>,
-    rt: &Arc<tokio::runtime::Runtime>,
+    tx: Sender<ProfileMessage>,
+    rt: &Arc<Runtime>,
 ) {
     let ctx = ui.ctx().clone();
     Frame::new()

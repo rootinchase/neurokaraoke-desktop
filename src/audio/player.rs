@@ -1,21 +1,26 @@
 use crate::api::{API_URLS, LazySongDatabase, LoadingState, SongDTO};
-use crate::audio::hls::{HlsClient, HlsSource, TsDemuxer, decode_adts};
+use crate::audio::hls::{HlsChunk, HlsClient, HlsSource, HlsStatus, TsDemuxer, decode_adts};
 use crate::audio::types::*;
+use crate::config::PreferredTier;
 use crate::debug_log;
 use crate::utilities::cache::{AssetType, PersistentMediaCache, cache_dir, get_thumbnail_url};
 use crate::utilities::util::resolve_audio_url;
 use eframe::egui;
-use reqwest::Client;
-use rand::prelude::SliceRandom;
-use rodio::Source;
-use rodio::decoder::DecoderBuilder;
-use std::io::BufReader;
+use egui::Context;
+use io::{ErrorKind, Seek, SeekFrom};
+use rand::{prelude::SliceRandom, rng};
+use reqwest::{Client, blocking};
+use rodio::{DeviceSinkBuilder, Source, decoder::DecoderBuilder};
+use std::fs::{File, remove_file};
+use std::io::{BufReader, Error, Read};
 use std::num::NonZero;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
-use std::thread;
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
-use tokio::runtime::Runtime;
+use std::{io, thread};
+use thread::{sleep, spawn};
+use tokio::{runtime::Runtime, sync::mpsc::channel, time};
 use uuid::Uuid;
 
 impl PlaybackState {
@@ -87,12 +92,12 @@ impl Clone for Player {
 impl Player {
     pub fn new(
         rt: Arc<Runtime>,
-        ctx: egui::Context,
+        ctx: Context,
         database: LazySongDatabase,
         cache: Arc<PersistentMediaCache>,
         client: Client,
     ) -> Player {
-        let (tx, rx) = tokio::sync::mpsc::channel(64);
+        let (tx, rx) = channel(64);
         let rx = Arc::new(Mutex::new(rx));
 
         let p = Player {
@@ -108,7 +113,7 @@ impl Player {
             })),
             sender: tx,
             current_url_metadata: Arc::new(Mutex::new(None)),
-            hls_status: Arc::new(Mutex::new(crate::audio::hls::HlsStatus::default())),
+            hls_status: Arc::new(Mutex::new(HlsStatus::default())),
         };
 
         let mut player = p.clone();
@@ -125,7 +130,7 @@ impl Player {
         // fresh client on every worker iteration.
         let client_for_thread = client.clone();
 
-        thread::spawn(move || {
+        spawn(move || {
             // Hoist the Arc clones outside the loop so the catch_unwind closure
             // borrows them instead of re-cloning 7 Arcs on every iteration.
             let player_worker = player_clone;
@@ -137,16 +142,16 @@ impl Player {
             let client_for_closure = client_for_thread;
 
             loop {
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let result = catch_unwind(AssertUnwindSafe(|| {
                     let mut handle = loop {
-                        match rodio::DeviceSinkBuilder::open_default_sink() {
+                        match DeviceSinkBuilder::open_default_sink() {
                             Ok(h) => break h,
                             Err(e) => {
                                 debug_log!(
                                     "⚠️ [Audio] Failed to open default audio sink: {}. Retrying in 2s...",
                                     e
                                 );
-                                thread::sleep(Duration::from_secs(2));
+                                sleep(Duration::from_secs(2));
                             }
                         }
                     };
@@ -285,7 +290,7 @@ impl Player {
                             if let Some(pl) = pl {
                                 let len = pl.len();
                                 let mut indices: Vec<usize> = (0..len).collect();
-                                indices.shuffle(&mut rand::rng());
+                                indices.shuffle(&mut rng());
 
                                 let mut new_pl: Vec<Uuid> =
                                     indices.iter().map(|&i| pl[i]).collect();
@@ -297,20 +302,21 @@ impl Player {
                                     .unwrap_or_default();
 
                                 if let Some(song) = song
-                                    && let Some(i) = new_pl.iter().position(|s| *s == song) {
-                                        if swap {
-                                            new_pl.swap(0, i);
-                                            if !new_upl.is_empty() {
-                                                new_upl.swap(0, i);
-                                            }
-                                        } else if i == 0 && len > 1 {
-                                            let swap_idx = rand::random_range(1..len);
-                                            new_pl.swap(0, swap_idx);
-                                            if !new_upl.is_empty() {
-                                                new_upl.swap(0, swap_idx);
-                                            }
+                                    && let Some(i) = new_pl.iter().position(|s| *s == song)
+                                {
+                                    if swap {
+                                        new_pl.swap(0, i);
+                                        if !new_upl.is_empty() {
+                                            new_upl.swap(0, i);
+                                        }
+                                    } else if i == 0 && len > 1 {
+                                        let swap_idx = rand::random_range(1..len);
+                                        new_pl.swap(0, swap_idx);
+                                        if !new_upl.is_empty() {
+                                            new_upl.swap(0, swap_idx);
                                         }
                                     }
+                                }
                                 *playlist = Some(new_pl.clone().into());
                                 ps.playlist = Some(new_pl.into());
                                 ps.url_playlist = if new_upl.is_empty() {
@@ -333,18 +339,20 @@ impl Player {
                                 && !state.paused()
                                 && !state.loading
                             {
-                                if state.song() == Uuid::nil() && mixer.empty()
-                                    && let Some(url) = &active_radio_url {
-                                        debug_log!(
-                                            "🔄 [Radio Stream] Stream ended or stalled, auto-reconnecting to: {}",
-                                            url
-                                        );
-                                        let url_clone = url.clone();
-                                        let pw = player_worker.clone();
-                                        drop(lock);
-                                        pw.radio_stream(url_clone, Player::play);
-                                        break 'block;
-                                    }
+                                if state.song() == Uuid::nil()
+                                    && mixer.empty()
+                                    && let Some(url) = &active_radio_url
+                                {
+                                    debug_log!(
+                                        "🔄 [Radio Stream] Stream ended or stalled, auto-reconnecting to: {}",
+                                        url
+                                    );
+                                    let url_clone = url.clone();
+                                    let pw = player_worker.clone();
+                                    drop(lock);
+                                    pw.radio_stream(url_clone, Player::play);
+                                    break 'block;
+                                }
 
                                 let pos = state.position();
                                 let dur = state.duration();
@@ -353,21 +361,20 @@ impl Player {
                                 if reported_play_song != Some(song_uuid)
                                     && (pos >= Duration::from_secs(30)
                                         || (dur > Duration::from_secs(0) && pos >= dur))
-                                    {
-                                        reported_play_song = Some(song_uuid);
-                                        let db_clone = database_worker.clone();
-                                        rt_worker.spawn(async move {
-                                            if let Err(e) =
-                                                db_clone.report_play_count(song_uuid).await
-                                            {
-                                                debug_log!(
-                                                    "❌ Failed to report play count for {}: {}",
-                                                    song_uuid,
-                                                    e
-                                                );
-                                            }
-                                        });
-                                    }
+                                {
+                                    reported_play_song = Some(song_uuid);
+                                    let db_clone = database_worker.clone();
+                                    rt_worker.spawn(async move {
+                                        if let Err(e) = db_clone.report_play_count(song_uuid).await
+                                        {
+                                            debug_log!(
+                                                "❌ Failed to report play count for {}: {}",
+                                                song_uuid,
+                                                e
+                                            );
+                                        }
+                                    });
+                                }
 
                                 if pos >= dur && dur > Duration::from_secs(0) {
                                     debug_log!(
@@ -696,13 +703,14 @@ impl Player {
                                                         if url_playlist.len() == playlist.len() {
                                                             if let Some(next_song) =
                                                                 url_playlist.get(next_idx)
-                                                                && next_song.audio_url.is_some() {
-                                                                    next_song_to_play = Some((
-                                                                        Some(playlist[next_idx]),
-                                                                        Some(next_song.clone()),
-                                                                    ));
-                                                                    break;
-                                                                }
+                                                                && next_song.audio_url.is_some()
+                                                            {
+                                                                next_song_to_play = Some((
+                                                                    Some(playlist[next_idx]),
+                                                                    Some(next_song.clone()),
+                                                                ));
+                                                                break;
+                                                            }
                                                         } else {
                                                             next_song_to_play = Some((
                                                                 Some(playlist[next_idx]),
@@ -932,12 +940,13 @@ impl Player {
                                         .as_ref()
                                         .map(|s| s.song());
                                     if let (Some(incoming), Some(current)) = (uuid, current_song_id)
-                                        && incoming != current {
-                                            debug_log!(
-                                                "⚠️ [Audio API] Discarding outdated network stream."
-                                            );
-                                            continue;
-                                        }
+                                        && incoming != current
+                                    {
+                                        debug_log!(
+                                            "⚠️ [Audio API] Discarding outdated network stream."
+                                        );
+                                        continue;
+                                    }
 
                                     if let Ok(decoder) = DecoderBuilder::new()
                                         .with_data(BufReader::new(file))
@@ -1042,12 +1051,12 @@ impl Player {
                                     let handle = player_worker.clone();
                                     let temp_path = cache_dir().join("radio_stream.tmp");
                                     if temp_path.exists() {
-                                        let _ = std::fs::remove_file(&temp_path);
+                                        let _ = remove_file(&temp_path);
                                     }
                                     let mut initial_cb = Some(cb);
                                     let cancel_for_thread = cancel_flag.clone();
 
-                                    thread::spawn(move || {
+                                    spawn(move || {
                                         loop {
                                             if cancel_for_thread.load(Ordering::Relaxed) {
                                                 break;
@@ -1056,7 +1065,7 @@ impl Player {
                                                 "🔌 [Radio Stream] Connecting to stream: {}",
                                                 url
                                             );
-                                            let client = reqwest::blocking::Client::builder()
+                                            let client = blocking::Client::builder()
                                                 .user_agent(concat!(
                                                     env!("CARGO_PKG_NAME"),
                                                     "/",
@@ -1070,14 +1079,13 @@ impl Player {
                                                 Ok(mut resp) => {
                                                     if resp.status().is_success() {
                                                         if temp_path.exists() {
-                                                            let _ =
-                                                                std::fs::remove_file(&temp_path);
+                                                            let _ = remove_file(&temp_path);
                                                         }
-                                                        if let Ok(mut file) =
-                                                            std::fs::File::options()
-                                                                .create(true).truncate(true)
-                                                                .write(true)
-                                                                .open(&temp_path)
+                                                        if let Ok(mut file) = File::options()
+                                                            .create(true)
+                                                            .truncate(true)
+                                                            .write(true)
+                                                            .open(&temp_path)
                                                         {
                                                             let mut buf = [0u8; 8192];
                                                             use std::io::{Read, Write};
@@ -1106,7 +1114,7 @@ impl Player {
                                                                             if !ready_sent && total_bytes_written >= 32 * 1024 {
                                                                                 ready_sent = true;
                                                                                 let cb_to_use = initial_cb.take().unwrap_or_else(|| Box::new(Player::play));
-                                                                                if let Ok(read_file) = std::fs::File::open(&temp_path) {
+                                                                                if let Ok(read_file) = File::open(&temp_path) {
                                                                                     handle.sender.try_send(PlaybackCommand::RadioStreamReady(read_file, cb_to_use)).ok();
                                                                                     debug_log!("🟢 [Radio Stream] Stream ready signal sent to player.");
                                                                                 }
@@ -1137,7 +1145,7 @@ impl Player {
                                                     );
                                                 }
                                             }
-                                            thread::sleep(Duration::from_secs(2));
+                                            sleep(Duration::from_secs(2));
                                         }
                                     });
                                 }
@@ -1195,7 +1203,7 @@ impl Player {
                                             let url_clone = url.clone();
                                             let pw = player_worker.clone();
                                             rt_worker.spawn(async move {
-                                                tokio::time::sleep(Duration::from_secs(2)).await;
+                                                time::sleep(Duration::from_secs(2)).await;
                                                 pw.radio_stream(url_clone, Player::play);
                                             });
                                         }
@@ -1239,7 +1247,7 @@ impl Player {
                                     let client_for_hls = client.clone();
                                     let status_for_thread = player_worker.hls_status.clone();
 
-                                    thread::spawn(move || {
+                                    spawn(move || {
                                         hls_worker(
                                             client_for_hls,
                                             url,
@@ -1294,7 +1302,7 @@ impl Player {
                             }
                         }
 
-                        thread::sleep(Duration::from_millis(10));
+                        sleep(Duration::from_millis(10));
                     }
                 }));
 
@@ -1313,7 +1321,7 @@ impl Player {
                             "💥 [Audio Thread] Audio worker panicked: {}. Restarting audio worker in 1s...",
                             err_msg
                         );
-                        thread::sleep(Duration::from_secs(1));
+                        sleep(Duration::from_secs(1));
                     }
                 }
             }
@@ -1461,7 +1469,7 @@ impl Player {
     pub fn hls_stream(
         &self,
         url: String,
-        preferred_tier: crate::config::PreferredTier,
+        preferred_tier: PreferredTier,
         commands_after_load: impl FnOnce(&Player) + Send + 'static,
     ) {
         self.sender
@@ -1511,12 +1519,13 @@ impl Player {
 
         if let Some(playlist) = &player_state.playlist
             && let Some(index) = playlist.iter().position(|&id| id == uuid)
-                && let Some(url_playlist) = &player_state.url_playlist
-                    && let Some(song_dto) = url_playlist.get(index)
-                        && song_dto.audio_url.is_some() {
-                            self.url_playback(Some(uuid), song_dto.clone(), Player::play);
-                            return;
-                        }
+            && let Some(url_playlist) = &player_state.url_playlist
+            && let Some(song_dto) = url_playlist.get(index)
+            && song_dto.audio_url.is_some()
+        {
+            self.url_playback(Some(uuid), song_dto.clone(), Player::play);
+            return;
+        }
 
         self.song(Some(uuid), Player::play);
     }
@@ -1589,7 +1598,7 @@ impl<S: Iterator<Item = f32>> Iterator for SafeSource<S> {
     type Item = f32;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.inner.next()));
+        let result = catch_unwind(AssertUnwindSafe(|| self.inner.next()));
 
         result.unwrap_or_else(|e| {
             debug_log!("⚠️ [Audio] Caught panic in audio decoder .next(): {:?}", e);
@@ -1599,37 +1608,37 @@ impl<S: Iterator<Item = f32>> Iterator for SafeSource<S> {
 }
 
 struct TailReader {
-    file: std::fs::File,
+    file: File,
     last_data_instant: Instant,
     timeout: Duration,
 }
 
-impl std::io::Read for TailReader {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+impl Read for TailReader {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         loop {
             match self.file.read(buf) {
                 Ok(0) => {
                     if self.last_data_instant.elapsed() > self.timeout {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::TimedOut,
+                        return Err(Error::new(
+                            ErrorKind::TimedOut,
                             "Radio stream stalled / timed out waiting for data",
                         ));
                     }
-                    thread::sleep(Duration::from_millis(50));
+                    sleep(Duration::from_millis(50));
                     continue;
                 }
                 Ok(n) => {
                     self.last_data_instant = Instant::now();
                     return Ok(n);
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {
                     if self.last_data_instant.elapsed() > self.timeout {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::TimedOut,
+                        return Err(Error::new(
+                            ErrorKind::TimedOut,
                             "Radio stream stalled / timed out (WouldBlock)",
                         ));
                     }
-                    thread::sleep(Duration::from_millis(50));
+                    sleep(Duration::from_millis(50));
                     continue;
                 }
                 Err(e) => return Err(e),
@@ -1638,8 +1647,8 @@ impl std::io::Read for TailReader {
     }
 }
 
-impl std::io::Seek for TailReader {
-    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+impl Seek for TailReader {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         self.file.seek(pos)
     }
 }
@@ -1650,17 +1659,17 @@ impl std::io::Seek for TailReader {
 fn hls_worker(
     client: Client,
     url: String,
-    preferred_tier: crate::config::PreferredTier,
+    preferred_tier: PreferredTier,
     rt: Arc<Runtime>,
     handle: Player,
     cancel: Arc<AtomicBool>,
-    status: Arc<Mutex<crate::audio::hls::HlsStatus>>,
+    status: Arc<Mutex<HlsStatus>>,
     cb: Box<dyn FnOnce(&Player) + Send + 'static>,
 ) {
     use crate::audio::hls::{BandwidthEstimator, TierSelector, tier_name};
     use crate::config::PreferredTier;
 
-    let (tx, rx) = std::sync::mpsc::channel::<crate::audio::hls::HlsChunk>();
+    let (tx, rx) = mpsc::channel::<HlsChunk>();
     // `rx` is handed to the player exactly once (the first decoded segment); keep it in an
     // `Option` so the compiler sees a single move.
     let mut ready_rx = Some(rx);
@@ -1729,11 +1738,7 @@ fn hls_worker(
                 let bytes = match client.fetch_segment(&seg.uri).await {
                     Ok(b) => b,
                     Err(e) => {
-                        debug_log!(
-                            "⚠️ [HLS] Failed to fetch segment {}: {}",
-                            seg.sequence,
-                            e
-                        );
+                        debug_log!("⚠️ [HLS] Failed to fetch segment {}: {}", seg.sequence, e);
                         continue;
                     }
                 };
@@ -1749,10 +1754,10 @@ fn hls_worker(
                 match decode_adts(&adts) {
                     Ok((samples, ch, sr)) => {
                         if seg.discontinuity {
-                            let _ = tx.send(crate::audio::hls::HlsChunk::Flush);
+                            let _ = tx.send(HlsChunk::Flush);
                         }
                         if tx
-                            .send(crate::audio::hls::HlsChunk::Samples {
+                            .send(HlsChunk::Samples {
                                 samples,
                                 channels: ch,
                                 sample_rate: sr,
@@ -1762,9 +1767,8 @@ fn hls_worker(
                             return;
                         }
                         if let Some(rx) = ready_rx.take() {
-                            let cb_to_use = initial_cb
-                                .take()
-                                .unwrap_or_else(|| Box::new(Player::play));
+                            let cb_to_use =
+                                initial_cb.take().unwrap_or_else(|| Box::new(Player::play));
                             handle
                                 .sender
                                 .try_send(PlaybackCommand::HlsStreamReady(rx, cb_to_use))
@@ -1773,11 +1777,7 @@ fn hls_worker(
                         }
                     }
                     Err(e) => {
-                        debug_log!(
-                            "⚠️ [HLS] Failed to decode segment {}: {}",
-                            seg.sequence,
-                            e
-                        );
+                        debug_log!("⚠️ [HLS] Failed to decode segment {}: {}", seg.sequence, e);
                     }
                 }
                 next_seq = Some(seg.sequence + 1);
@@ -1797,7 +1797,7 @@ fn hls_worker(
                     current_tier = new_tier;
                     next_seq = None; // restart from the new tier's current window
                     demuxer.reset(); // the new tier is a different elementary stream
-                    let _ = tx.send(crate::audio::hls::HlsChunk::Flush);
+                    let _ = tx.send(HlsChunk::Flush);
                     debug_log!(
                         "🔀 [HLS] Switching to tier {} (est {} bps)",
                         tier_name(bandwidths[new_tier]),
@@ -1811,7 +1811,7 @@ fn hls_worker(
                 break;
             }
             let target = media.target_duration.max(1);
-            tokio::time::sleep(Duration::from_secs(target)).await;
+            time::sleep(Duration::from_secs(target)).await;
         }
     });
 }

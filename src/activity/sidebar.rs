@@ -1,7 +1,7 @@
 use eframe::egui::{
     self, Align, CornerRadius, CursorIcon, Layout, RichText, Sense, Ui, Vec2, include_image,
 };
-use egui::{Button, Image, Label, Panel, TextureOptions};
+use egui::{Button, Frame, Image, ImageSource, Label, Panel, TextureOptions};
 
 use crate::activity::{ActivityType, profile::AvatarState, profile::ProfileActivity};
 use crate::config::Config;
@@ -45,7 +45,7 @@ fn render_theme_button(
     config_theme: &mut SelectableTheme,
     select_theme: SelectableTheme,
     label: &str,
-    icon_source: egui::ImageSource<'static>,
+    icon_source: ImageSource<'static>,
 ) {
     let current = *config_theme;
     let is_selected = current == select_theme;
@@ -76,9 +76,7 @@ fn render_theme_button(
 
     let resp = ui
         .scope(|ui| {
-            let btn_frame = egui::Frame::new()
-                .fill(fill_color)
-                .corner_radius(corner_radius);
+            let btn_frame = Frame::new().fill(fill_color).corner_radius(corner_radius);
             btn_frame.show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
                 ui.horizontal(|ui| {
@@ -117,7 +115,7 @@ fn render_twins_button(
 
     let resp = ui
         .scope(|ui| {
-            let btn_frame = egui::Frame::new()
+            let btn_frame = Frame::new()
                 .fill(fill_color)
                 .corner_radius(CornerRadius::ZERO);
             btn_frame.show(ui, |ui| {
@@ -155,7 +153,7 @@ fn render_compact_theme_btn(
     theme: &ThemeManager,
     config_theme: &mut SelectableTheme,
     select_theme: SelectableTheme,
-    icon_source: egui::ImageSource<'static>,
+    icon_source: ImageSource<'static>,
     tooltip: &str,
 ) {
     let current = *config_theme;
@@ -168,7 +166,7 @@ fn render_compact_theme_btn(
 
     let resp = ui
         .scope(|ui| {
-            let btn_frame = egui::Frame::new().fill(fill_color).corner_radius(4.0);
+            let btn_frame = Frame::new().fill(fill_color).corner_radius(4.0);
             btn_frame.show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
                 ui.horizontal(|ui| {
@@ -215,7 +213,7 @@ fn render_compact_twins_btn(
 
     let resp = ui
         .scope(|ui| {
-            let btn_frame = egui::Frame::new().fill(fill_color).corner_radius(4.0);
+            let btn_frame = Frame::new().fill(fill_color).corner_radius(4.0);
             btn_frame.show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
                 ui.horizontal(|ui| {
@@ -472,8 +470,9 @@ pub fn render_sidebar(
                     // Settings icon on the right side of the profile name
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         ui.add_space(4.0);
-                        let mut settings_img = Image::new(ActivityType::Settings.icon().unwrap().clone())
-                            .fit_to_exact_size(Vec2::new(20.0, 20.0));
+                        let mut settings_img =
+                            Image::new(ActivityType::Settings.icon().unwrap().clone())
+                                .fit_to_exact_size(Vec2::new(20.0, 20.0));
                         if *current_activity == ActivityType::Settings {
                             settings_img = settings_img.tint(theme.primary);
                         }

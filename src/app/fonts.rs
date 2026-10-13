@@ -11,8 +11,8 @@ use dashmap::DashSet;
 use eframe::egui::epaint::text::{FontInsert, FontPriority, InsertFontFamily};
 use eframe::egui::{Context, FontData, FontFamily};
 use flate2::read::GzDecoder;
-use std::io::Read;
 use std::sync::{Arc, OnceLock};
+use std::{io::Read, slice::from_ref};
 use tokio::runtime::Runtime;
 
 use crate::api::{Playlist, PlaylistDetail, Song, SongDTO};
@@ -195,7 +195,7 @@ pub fn scan_song(song: &Song) {
 }
 
 pub fn scan_song_dto(dto: &SongDTO) {
-    scan_song_dtos(std::slice::from_ref(dto));
+    scan_song_dtos(from_ref(dto));
 }
 
 pub fn scan_song_dtos(songs: &[SongDTO]) {
