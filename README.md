@@ -30,17 +30,27 @@
 - Queue viewing
 - Themes and multi-language font support (Korean, Chinese, Roboto)
 - Song and artwork caching (with tier-2 playlist caching and preemptive fetching)
+- Fullscreen player (full-resolution cover art with play/pause, seek, volume, favorite, sleep timer, and queue controls; Esc to exit)
+- Fullscreen playlist view (cover art, stats, searchable tracks table, play/shuffle/favorite, and copy playlist link)
+- Radio support (Shoutcast live radio with persistent volume and smooth switching between radio and tracks)
+- HLS radio playback (MPEG-TS segments demuxed into ADTS AAC and decoded to PCM)
+- HLS adaptive bitrate (bandwidth estimation, automatic tier switching, and a manual tier lock: Auto/Lofi/Midfi/Hifi)
+- My Uploads view (your own uploaded songs with cover-art mosaic, sortable columns, and per-song play/queue controls)
+- Song uploads from local audio files (drag-and-drop, system file picker, editable title/artist)
+- Song uploads from YouTube, Bilibili, and Discord URLs, validated offline before upload
+- Uploaded song removal
+- OS drag-and-drop of audio files (X11 and Windows; Wayland needs the unreleased winit 0.31.x)
+- Songs and storage quota bars
+- Dedicated settings screen
+- Cache management (time- and storage-based eviction, TTL updates, and stale download cleanup)
+- Default cover art fallback for songs without cover art metadata
+- Lazy font loading (Noto fallback fonts are decompressed only when their scripts appear)
+- Debug log file output
 - ...and more coming soon!
 
 ## Upcoming Features:
 #### 0.4.x
-- Full screen Player
-  - Lyrics
-- Radio Support
-- Playlist View
-- Uploads
-  - View
-  - Upload new songs
+- Lyrics in the fullscreen player
 
 #### 0.5.x
 - Editing playlists
