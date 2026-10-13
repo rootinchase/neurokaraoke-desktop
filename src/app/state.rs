@@ -2,6 +2,7 @@ use crate::app::system_tray::TrayIconMenu;
 use dashmap::DashMap;
 use eframe::egui;
 use reqwest::Client;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
@@ -56,6 +57,10 @@ pub struct App {
 
     pub current_song_uuid: Option<Uuid>,
     pub current_playback_state: Option<PlaybackState>,
+
+    /// Songs whose "no lyrics available" message has already been logged, so the
+    /// fullscreen lyrics panel logs it once per song instead of every frame.
+    pub logged_lyrics_missing: HashSet<Uuid>,
 
     pub rt: Arc<Runtime>,
     pub client: Client,

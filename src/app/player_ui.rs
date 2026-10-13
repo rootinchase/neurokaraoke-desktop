@@ -997,6 +997,13 @@ fn draw_lyrics_panel(
             ui.with_layout(Layout::top_down(Align::Center), |ui| {
                 // Top spacer so the first lines can scroll above center.
                 ui.add_space(40.0);
+                // When no line is active (e.g. at the start of a new song, before
+                // the first line's timestamp), pin the panel to the top so the
+                // lyrics begin from the top instead of keeping the previous song's
+                // scroll offset.
+                if active.is_none() {
+                    ui.scroll_to_cursor(Some(Align::Min));
+                }
                 for (i, line) in parsed.lines.iter().enumerate() {
                     let (size, alpha) = match active {
                         Some(a) if i == a => (32.0, 255u8),
@@ -1023,7 +1030,11 @@ fn draw_lyrics_panel(
                     // Small split between lines.
                     ui.add_space(14.0);
                     if active == Some(i) {
-                        ui.scroll_to_cursor(Some(Align::Center));
+                        // At the start of a song, pin the first line to the top
+                        // so the lyrics begin at the top of the panel; afterwards
+                        // center the active line.
+                        let align = if i == 0 { Align::Min } else { Align::Center };
+                        ui.scroll_to_cursor(Some(align));
                     }
                 }
                 ui.add_space(40.0);
@@ -1196,6 +1207,15 @@ pub fn render_fullscreen_player(app: &mut App, ctx: &Context) {
                                     ctx.request_repaint();
                                 }
                                 LoadingState::Failed(_) => {}
+                            }
+                        } else {
+                            // Lyrics cannot be found for this song.
+                            let target = uuid.unwrap_or(state.song());
+                            if app.logged_lyrics_missing.insert(target) {
+                                debug_log!(
+                                    "🔍 [Lyrics] No lyrics available for song {}",
+                                    target
+                                );
                             }
                         }
                     }

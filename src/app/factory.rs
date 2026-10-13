@@ -438,6 +438,7 @@ pub fn create_app(creation_ctx: &eframe::CreationContext, rt: Arc<Runtime>) -> A
 
         current_song_uuid: None,
         current_playback_state: None,
+        logged_lyrics_missing: HashSet::new(),
         rt: rt.clone(),
         client,
         config,

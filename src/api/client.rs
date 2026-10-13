@@ -728,9 +728,15 @@ impl LazySongDatabase {
             let result: anyhow::Result<Arc<lrc::LyricsParsed>> = async {
                 let resp = req.send().await?;
                 if resp.status().as_u16() == 404 {
+                    debug_log!("🔍 [Lyrics] No lyrics found for song {} (404)", id);
                     return Ok(Arc::new(lrc::LyricsParsed::default()));
                 }
                 if !resp.status().is_success() {
+                    debug_log!(
+                        "⚠️ [Lyrics] Fetch failed for song {}: {}",
+                        id,
+                        resp.status()
+                    );
                     return Err(anyhow!("Failed to fetch lyrics: {}", resp.status()));
                 }
                 let entries: Vec<LyricEntry> =
@@ -751,6 +757,7 @@ impl LazySongDatabase {
                     }
                 }
                 Err(e) => {
+                    debug_log!("⚠️ [Lyrics] Fetch failed for song {}: {}", id, e);
                     let mut slot = cache.lock().unwrap();
                     if slot.as_ref().map(|(cid, _)| *cid) == Some(id) {
                         *slot = Some((id, LoadingState::Failed(Arc::new(e))));
