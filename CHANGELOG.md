@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file.
     * When enabled and the current song has lyrics, the synced lyrics overlay is drawn centered over the cover art: the active line is white at full opacity (2rem), the next line is 0.6 opacity (1.375rem), and past lines are 0.35 opacity (1.125rem).
     * The overlay forces the fullscreen `Area` to the current screen size each frame so it shrinks cleanly when the window is resized smaller.
     * The radio current song's lyrics use the catalog `current.id` (not the nil playback id).
+* **Clickable Lyrics Seek:** Each lyric line in the fullscreen panel (`draw_lyrics_panel` in `src/app/player_ui.rs`) is made clickable via `ui.interact(..., Sense::click())` with a `PointingHand` cursor; clicking a line seeks playback to that line's `start` timestamp (`app.player.seek(line.start)`), guarded by `app.current_song_uuid == Some(song_uuid)` so a stale click cannot seek the wrong song.
+* **Lyrics Scroll to Top on Song Start:** The fullscreen lyrics panel pins the first line to the top (`Align::Min`) and, when no line is active (the start of a new song before the first line's timestamp), scrolls the `ScrollArea` to the top so lyrics begin from the top instead of keeping the previous song's scroll offset.
+* **Lyrics Not-Found Logging:** `get_lyrics` (`src/api/client.rs`) logs via `debug_log!` when lyrics cannot be found — a `404` ("No lyrics found"), a non-success status, and a fetch error. The fullscreen panel logs "No lyrics available" once per song for songs whose metadata reports no lyrics, tracked in `App::logged_lyrics_missing` (`src/app/state.rs`) so the per-frame render loop does not spam the log.
 
 ## v0.4.3: Memory improvements
 
