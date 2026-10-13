@@ -24,6 +24,7 @@ use ron::ser;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fs::read;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::fs::write;
 use tokio::runtime::Runtime;
@@ -83,6 +84,24 @@ pub enum MoreMenuAction {
     // DeletePlaylist,
 }
 
+/// Reads the on-disk playlist cache (`playlists.ron` / `my_playlists.ron`) and
+/// returns the cached playlists, ready to render. The disk read + RON parse is
+/// ~15 ms for ~300 playlists, so this can run on the UI thread.
+///
+/// `mosaic_covers` is `#[serde(skip)]`, so it is empty after deserialization.
+/// The grid renderer (`render_playlist_art_advanced`) reads `mosaic_covers`
+/// directly, so we rebuild it from the serialized `mosaic_media` here. Without
+/// this, a cache-first display would show only the single `media` cover and no
+/// mosaic tiles until the network fetch re-interns.
+fn load_cached_playlists(cache_path: &Path) -> Option<Vec<Playlist>> {
+    let data = read(cache_path).ok()?;
+    let mut playlists: Vec<Playlist> = de::from_bytes(&data).ok()?;
+    for p in &mut playlists {
+        p.mosaic_covers = p.mosaic_media.clone().unwrap_or_default();
+    }
+    Some(playlists)
+}
+
 impl PlaylistActivity {
     pub fn new(
         songs: LazySongDatabase,
@@ -99,9 +118,7 @@ impl PlaylistActivity {
             "playlists.ron"
         };
         let cache_path = playlist_cache_dir().join(cache_file);
-        let cached_playlists: Option<Vec<Playlist>> = read(&cache_path)
-            .ok()
-            .and_then(|data| de::from_bytes(&data).ok());
+        let cached_playlists = load_cached_playlists(&cache_path);
         if let Some(ref data) = cached_playlists {
             fonts::scan_playlists(data);
         }
@@ -276,8 +293,11 @@ impl PlaylistActivity {
         debug_log!("🧹 [Playlist Activity] Cleared memory and cover textures on navigation away.");
     }
 
-    /// Re-fetches the playlist list from the server, repopulating the loaded
-    /// playlists after `clear_sync()`. Mirrors the fetch performed in `new()`.
+    /// Re-populates the playlist list after `clear_sync()`. Reads the on-disk
+    /// cache first so the grid renders immediately (~15 ms), then re-fetches
+    /// from the server in the background to refresh. Mirrors the cache-first
+    /// behavior of `new()`; without the cache read the view sits on
+    /// "Loading..." for the full ~12 s network fetch of 500 public playlists.
     pub fn refetch(&self) {
         let cache_file = if self.is_personal {
             "my_playlists.ron"
@@ -285,6 +305,18 @@ impl PlaylistActivity {
             "playlists.ron"
         };
         let cache_path = playlist_cache_dir().join(cache_file);
+
+        // Show cached playlists at once. The disk read + RON parse is fast
+        // enough to run on the UI thread, so navigating back to Playlists
+        // renders the grid immediately instead of blocking on the network.
+        if let Some(cached) = load_cached_playlists(&cache_path) {
+            fonts::scan_playlists(&cached);
+            let initial: Vec<_> = cached.iter().take(20).cloned().collect();
+            *self.all_playlists.blocking_lock() = Some(cached.clone());
+            *self.playlists.blocking_lock() = LoadingState::Loaded(initial);
+            *self.has_more.blocking_lock() = cached.len() > 20;
+        }
+
         let p = self.playlists.clone();
         let ap = self.all_playlists.clone();
         let hm = self.has_more.clone();
@@ -314,6 +346,9 @@ impl PlaylistActivity {
                     .await;
                 }
                 Err(err) => {
+                    // Only overwrite with a failure if there is nothing cached
+                    // to show; a cache-first display stays visible on a network
+                    // error.
                     let mut p_lock = p.lock().await;
                     if matches!(*p_lock, LoadingState::Loading) {
                         *p_lock = LoadingState::Failed(Arc::new(err));
